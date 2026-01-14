@@ -1,7 +1,8 @@
 import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
 import { Separator } from "@radix-ui/react-separator";
-import { Music, Video } from "lucide-react";
+import { Image, Music, Video } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 const sidebarItems = [
   {
@@ -22,28 +23,51 @@ const sidebarItems = [
     path: "/music",
     type: "music",
   },
+  {
+    icon: Image,
+    label: "Image",
+    path: "/image",
+    type: "image",
+  },
 ];
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { sfx, music, video } = useAssetStore((state) => state);
+  const { sfx, music, video, image, path, setPath } = useAssetStore(
+    (state) => state,
+  );
 
   const renderCount = (type: string) => {
     if (type === "sfx") return sfx;
     if (type === "video") return video;
     if (type === "music") return music;
+    if (type === "image") return image;
     return null;
+  };
+
+  const handleSetPath = async () => {
+    try {
+      const path = await open({
+        directory: true,
+      });
+
+      if (path) {
+        setPath(path);
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
     <div className="flex flex-col pt-4 px-3 w-[170px] bg-sidebar text-sidebar-foreground">
       <h3 className="text-sm font-medium">Editon</h3>
       <Separator />
-      <div className="mt-4 gap-1 flex flex-col">
+      <div className="mt-4 gap-1 flex flex-col h-screen">
         {sidebarItems.map((item) => (
           <div
             key={item.path}
-            className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer ${
+            className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-sidebar-accent/50 ${
               activeItem === item.path ? "bg-sidebar-accent" : ""
             }`}
             onClick={() => setActiveItem(item.path)}
@@ -58,6 +82,12 @@ const Navbar = () => {
           </div>
         ))}
       </div>
+      <button
+        className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent rounded-md p-2"
+        onClick={handleSetPath}
+      >
+        Set Folder
+      </button>
     </div>
   );
 };
