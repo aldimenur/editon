@@ -1,13 +1,22 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 interface NavStore {
-  activeItem: string | null;
+  activeItem: string;
   setActiveItem: (item: string) => void;
 }
 
-const useNavStore = create<NavStore>((set) => ({
-  activeItem: null,
-  setActiveItem: (item: string) => set({ activeItem: item }),
-}));
+const useNavStore = create<NavStore>()(
+  persist(
+    (set) => ({
+      activeItem: "/sound",
+      setActiveItem: (item: string) => set({ activeItem: item }),
+    }),
+    {
+      name: "nav-store",
+      storage: createJSONStorage(() => localStorage),
+    },
+  ),
+);
 
 export default useNavStore;
