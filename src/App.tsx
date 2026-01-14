@@ -1,11 +1,14 @@
 import "./App.css";
+import Navbar from "./components/Navbar";
 import { ThemeProvider } from "./components/theme-provider";
-import AppRouterProvider from "./components/router-provider";
 
 function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <AppRouterProvider />
+      <div className="bg-background text-foreground w-screen h-screen">
+        <Navbar />
+        <main className="flex-1">Home</main>
+      </div>
     </ThemeProvider>
   );
 }
