@@ -1,7 +1,12 @@
+import { Link } from "react-router-dom";
+
 const NewPage = () => {
   return (
-    <div>NewPage</div>
-  )
-}
+    <div>
+      NewPage
+      <Link to={"/"}>Home</Link>
+    </div>
+  );
+};
 
-export default NewPage
+export default NewPage;
