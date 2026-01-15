@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const ITEM_HEIGHT = 90; // approximate height of each item (px), used for virtualization
 
@@ -15,10 +16,7 @@ const SfxPage = () => {
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
 
-  // virtualization state
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
 
   const hasMore = files.length < searchCount;
 
@@ -65,48 +63,31 @@ const SfxPage = () => {
     return () => clearTimeout(timeout);
   }, [searchQuery, sfxPath]);
 
-  // measure container height for virtualization
+  const rowVirtualizer = useVirtualizer({
+    count: files.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ITEM_HEIGHT,
+    overscan: 10,
+  });
+
+  // infinite scroll with virtualizer
   useEffect(() => {
-    if (!containerRef.current) return;
-    const handleResize = () => {
-      if (containerRef.current) {
-        setContainerHeight(containerRef.current.clientHeight);
-      }
-    };
+    if (!hasMore || isLoading || files.length === 0) return;
 
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (!virtualItems.length) return;
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    const { scrollTop, scrollHeight, clientHeight } = target;
-    setScrollTop(scrollTop);
+    const lastItem = virtualItems[virtualItems.length - 1];
 
-    // infinite scroll: load more when near bottom
-    const threshold = 200; // px from bottom
-    if (
-      !isLoading &&
-      hasMore &&
-      scrollTop + clientHeight >= scrollHeight - threshold
-    ) {
+    // when we scroll within a few items of the end, load next page
+    if (lastItem.index >= files.length - 5) {
       const nextPage = Math.floor(files.length / pageSize) + 1;
       readMediaFiles(nextPage);
     }
-  };
+  }, [files.length, hasMore, isLoading, pageSize, rowVirtualizer]);
 
-  // virtualization calculations
-  const totalHeight = files.length * ITEM_HEIGHT;
-  const visibleCount = containerHeight
-    ? Math.ceil(containerHeight / ITEM_HEIGHT) + 6 // some buffer
-    : files.length;
-  const startIndex = containerHeight
-    ? Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 3)
-    : 0;
-  const endIndex = Math.min(files.length, startIndex + visibleCount);
-  const offsetY = startIndex * ITEM_HEIGHT;
-  const visibleFiles = files.slice(startIndex, endIndex);
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize();
 
   const showEmptyState = !isLoading && files.length === 0;
 
@@ -125,11 +106,7 @@ const SfxPage = () => {
           {searchCount} Items
         </div>
       </div>
-      <div
-        ref={containerRef}
-        className="h-[calc(100vh-60px)] overflow-y-auto"
-        onScroll={handleScroll}
-      >
+      <div ref={containerRef} className="h-[calc(100vh-60px)] overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
             {searchQuery
@@ -141,27 +118,36 @@ const SfxPage = () => {
             className="relative w-full"
             style={{ height: totalHeight || (isLoading ? ITEM_HEIGHT : 0) }}
           >
-            <div
-              className="absolute left-0 right-0 space-y-2"
-              style={{ transform: `translateY(${offsetY}px)` }}
-            >
-              {visibleFiles.map((file: any) => (
-                <div
-                  key={file.path}
-                  className="border rounded-lg"
-                  style={{ height: ITEM_HEIGHT }}
-                >
-                  <p className="text-xs font-medium mb-2 bg-accent p-1 text-ellipsis overflow-hidden whitespace-nowrap">
-                    {file.name}
-                  </p>
-                  <WavesurferRender
-                    src={file.path}
-                    height={50}
-                    width={"100%"}
-                  />
-                </div>
-              ))}
-            </div>
+            {!!virtualItems.length && (
+              <div
+                className="absolute left-0 right-0 space-y-2"
+                style={{
+                  transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+                }}
+              >
+                {virtualItems.map((virtualRow) => {
+                  const file = files[virtualRow.index];
+                  if (!file) return null;
+
+                  return (
+                    <div
+                      key={file.path}
+                      className="border rounded-lg"
+                      style={{ height: virtualRow.size }}
+                    >
+                      <p className="text-xs font-medium mb-2 bg-accent p-1 text-ellipsis overflow-hidden whitespace-nowrap">
+                        {file.name}
+                      </p>
+                      <WavesurferRender
+                        src={file.path}
+                        height={50}
+                        width={"100%"}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         {isLoading && (
