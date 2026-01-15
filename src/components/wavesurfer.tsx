@@ -34,8 +34,29 @@ const WavesurferRender = (props: {
     };
   }, [src]);
 
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-    <div className="">
+    <div
+      className="cursor-grab active:cursor-grabbing"
+      draggable
+      onDragStart={handleDragStart}
+      onDrag={handleDrag}
+      onDragEnd={handleDragEnd}
+    >
       <div ref={containerRef} />
     </div>
   );
