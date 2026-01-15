@@ -1,4 +1,4 @@
-use std::fs;
+use walkdir::WalkDir;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,19 +21,27 @@ pub struct PaginatedAssets {
 // Fungsi ini tidak bisa dipanggil Frontend, cuma pembantu biar codingan rapi
 fn scan_folder_by_extensions(folder_path: &str, valid_extensions: &[&str]) -> Vec<Asset> {
     let mut assets = Vec::new();
-    
-    if let Ok(entries) = fs::read_dir(folder_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    let ext_str = ext.to_str().unwrap_or("").to_lowercase();
-                    // Cek apakah ekstensi ada di daftar yang diinginkan
-                    if valid_extensions.contains(&ext_str.as_str()) {
+
+    // Scan folder secara rekursif menggunakan WalkDir
+    for entry in WalkDir::new(folder_path).into_iter().flatten() {
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                let ext_str = ext.to_str().unwrap_or("").to_lowercase();
+
+                // Cek apakah ekstensi ada di daftar yang diinginkan
+                if valid_extensions.contains(&ext_str.as_str()) {
+                    // Gunakan metadata dari WalkDir entry untuk efisiensi
+                    if let Ok(metadata) = entry.metadata() {
                         assets.push(Asset {
-                            name: entry.file_name().to_string_lossy().to_string(),
+                            name: path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
                             path: path.to_string_lossy().to_string(),
-                            size: entry.metadata().unwrap().len(),
+                            size: metadata.len(),
                         });
                     }
                 }

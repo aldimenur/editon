@@ -40,7 +40,9 @@ function App() {
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <div className="bg-background text-foreground w-screen h-screen flex">
         <Navbar />
-        <main className="flex-1">{renderContent()}</main>
+        <main className="flex-1 max-h-screen overflow-y-hidden">
+          {renderContent()}
+        </main>
       </div>
     </ThemeProvider>
   );
