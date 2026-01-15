@@ -9,6 +9,8 @@
     "fs:default",
     "fs:allow-read-dir",
     "fs:scope",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "core:window:allow-start-dragging",
+    "drag:default"
   ]
 }

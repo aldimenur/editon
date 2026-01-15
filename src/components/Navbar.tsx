@@ -34,7 +34,16 @@ const sidebarItems = [
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { sfx, music, video, image, setPath } = useAssetStore((state) => state);
+  const {
+    sfx,
+    music,
+    video,
+    image,
+    setSfxPath,
+    setVideoPath,
+    setMusicPath,
+    setImagePath,
+  } = useAssetStore((state) => state);
 
   const renderCount = (type: string) => {
     if (type === "sfx") return sfx;
@@ -44,14 +53,25 @@ const Navbar = () => {
     return null;
   };
 
-  const handleSetPath = async () => {
+  const handleSetPath = async (type: string) => {
     try {
       const path = await open({
         directory: true,
       });
 
       if (path) {
-        setPath(path);
+        if (type === "sfx") {
+          setSfxPath(path);
+        }
+        if (type === "video") {
+          setVideoPath(path);
+        }
+        if (type === "music") {
+          setMusicPath(path);
+        }
+        if (type === "image") {
+          setImagePath(path);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -81,12 +101,18 @@ const Navbar = () => {
           </div>
         ))}
       </div>
-      <button
-        className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent rounded-md p-2"
-        onClick={handleSetPath}
-      >
-        Set Folder
-      </button>
+      <div className="grid grid-cols-2 mb-2">
+        {sidebarItems.map((item) => (
+          <div key={item.path}>
+            <button
+              className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent rounded-md p-2"
+              onClick={() => handleSetPath(item.type)}
+            >
+              {item.label}
+            </button>
+          </div>
+        ))}
+      </div>
       <div className="mb-2">
         <ModeToggle />
       </div>

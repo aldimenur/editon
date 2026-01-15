@@ -6,8 +6,14 @@ interface AssetStore {
   video: number;
   music: number;
   image: number;
-  path: string;
-  setPath: (path: string) => void;
+  sfxPath: string;
+  videoPath: string;
+  musicPath: string;
+  imagePath: string;
+  setSfxPath: (path: string) => void;
+  setVideoPath: (path: string) => void;
+  setMusicPath: (path: string) => void;
+  setImagePath: (path: string) => void;
   setSfx: (count: number) => void;
   setVideo: (count: number) => void;
   setMusic: (count: number) => void;
@@ -21,8 +27,14 @@ const useAssetStore = create<AssetStore>()(
       video: 0,
       music: 0,
       image: 0,
-      path: "",
-      setPath: (path: string) => set({ path }),
+      sfxPath: "",
+      videoPath: "",
+      musicPath: "",
+      imagePath: "",
+      setSfxPath: (path: string) => set({ sfxPath: path }),
+      setVideoPath: (path: string) => set({ videoPath: path }),
+      setMusicPath: (path: string) => set({ musicPath: path }),
+      setImagePath: (path: string) => set({ imagePath: path }),
       setSfx: (count: number) => set({ sfx: count }),
       setVideo: (count: number) => set({ video: count }),
       setMusic: (count: number) => set({ music: count }),

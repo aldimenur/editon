@@ -6,24 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
 const SfxPage = () => {
-  const path = useAssetStore((state) => state.path);
+  const { sfxPath } = useAssetStore((state) => state);
   const [files, setFiles] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const { setSfx } = useAssetStore((state) => state);
 
   useEffect(() => {
     readMediaFiles();
-  }, [path, searchQuery]);
+  }, [sfxPath]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      readMediaFiles();
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
   const readMediaFiles = async () => {
     try {
       const files: any = await invoke("list_sounds", {
-        folderPath: path,
+        folderPath: sfxPath,
         page: 1,
         pageSize: 6,
         query: searchQuery || null,
       });
-      setSfx(files.total);
       setFiles(files.assets as any[]);
     } catch (error) {
       console.error(error);

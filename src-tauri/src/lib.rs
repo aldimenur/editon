@@ -117,10 +117,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
-            list_images, 
-            list_videos, 
-            list_musics, 
+            list_images,
+            list_videos,
+            list_musics,
             list_sounds,
         ])
         .run(tauri::generate_context!())
