@@ -15,7 +15,7 @@ const SfxPage = () => {
   const [searchCount, setSearchCount] = useState(0);
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
-  const [sliderValue, setSliderValue] = useState(4);
+  const [sliderValue] = useState(4);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const hasMore = files.length < searchCount;
