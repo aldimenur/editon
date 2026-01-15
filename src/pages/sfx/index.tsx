@@ -5,17 +5,17 @@ import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Slider } from "@/components/ui/slider";
 
 const ITEM_HEIGHT = 90; // approximate height of each item (px), used for virtualization
 
 const SfxPage = () => {
-  const { sfxPath } = useAssetStore((state) => state);
+  const { sfxPath, sfxSearch, setSfxSearch } = useAssetStore((state) => state);
   const [files, setFiles] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
   const [searchCount, setSearchCount] = useState(0);
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
-
+  const [sliderValue, setSliderValue] = useState(4);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const hasMore = files.length < searchCount;
@@ -28,7 +28,7 @@ const SfxPage = () => {
         folderPath: sfxPath,
         page: pageParam,
         pageSize: pageSize,
-        query: searchQuery || null,
+        query: sfxSearch || null,
       });
       const assets = (result.assets || []) as any[];
       setFiles((prev) => (reset ? assets : [...prev, ...assets]));
@@ -61,7 +61,7 @@ const SfxPage = () => {
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [searchQuery, sfxPath]);
+  }, [sfxSearch, sfxPath]);
 
   const rowVirtualizer = useVirtualizer({
     count: files.length,
@@ -93,23 +93,29 @@ const SfxPage = () => {
 
   return (
     <div className="pt-4 px-4">
-      <div className="relative mb-2">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-        <Input
-          type="text"
-          placeholder="Search..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10 pr-10 text-sm"
-        />
-        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-md px-2 text-xs">
-          {searchCount} Items
+      <div className="flex items-center justify-between">
+        {/* View Option */}
+        <div className="w-24 mr-2">
+          <Slider defaultValue={[4]} max={8} step={1} value={[sliderValue]} />
+        </div>
+        <div className="relative mb-2">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            type="text"
+            placeholder="Search..."
+            value={sfxSearch}
+            onChange={(e) => setSfxSearch(e.target.value)}
+            className="pl-10 pr-10 text-sm"
+          />
+          <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-md px-2 text-xs">
+            {searchCount} Items
+          </div>
         </div>
       </div>
       <div ref={containerRef} className="h-[calc(100vh-60px)] overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
-            {searchQuery
+            {sfxSearch
               ? "No files found matching your search"
               : "No sound files found"}
           </div>
