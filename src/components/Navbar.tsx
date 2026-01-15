@@ -3,6 +3,7 @@ import useNavStore from "@/stores/nav-store";
 import { Separator } from "@radix-ui/react-separator";
 import { Image, Music, Video } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { ModeToggle } from "./mode-toggle";
 
 const sidebarItems = [
   {
@@ -33,9 +34,7 @@ const sidebarItems = [
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { sfx, music, video, image, path, setPath } = useAssetStore(
-    (state) => state,
-  );
+  const { sfx, music, video, image, setPath } = useAssetStore((state) => state);
 
   const renderCount = (type: string) => {
     if (type === "sfx") return sfx;
@@ -88,6 +87,9 @@ const Navbar = () => {
       >
         Set Folder
       </button>
+      <div className="mb-2">
+        <ModeToggle />
+      </div>
     </div>
   );
 };
