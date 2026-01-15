@@ -92,7 +92,7 @@ const SfxPage = () => {
   const showEmptyState = !isLoading && files.length === 0;
 
   return (
-    <div className="pt-4 px-4">
+    <div className="px-4">
       <div className="flex items-center justify-between">
         {/* View Option */}
         <div className="w-24 mr-2">
@@ -112,7 +112,7 @@ const SfxPage = () => {
           </div>
         </div>
       </div>
-      <div ref={containerRef} className="h-[calc(100vh-60px)] overflow-y-auto">
+      <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
             {sfxSearch
