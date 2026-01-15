@@ -6,6 +6,7 @@ import SfxPage from "./pages/sfx";
 import useNavStore from "./stores/nav-store";
 import { invoke } from "@tauri-apps/api/core";
 import useAssetStore from "./stores/asset-store";
+import TitleBar from "./components/title-bar";
 
 const router = [
   {
@@ -41,6 +42,7 @@ function App() {
       <div className="bg-background text-foreground w-screen h-screen flex">
         <Navbar />
         <main className="flex-1 max-h-screen overflow-y-hidden">
+          <TitleBar />
           {renderContent()}
         </main>
       </div>

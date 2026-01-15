@@ -1,18 +1,8 @@
 import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
-import {
-  Image,
-  Music,
-  Video,
-  Minus,
-  Square,
-  SquaresExclude,
-  X,
-} from "lucide-react";
+import { Image, Music, Video } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ModeToggle } from "./mode-toggle";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useState } from "react";
 
 const sidebarItems = [
   {
@@ -53,7 +43,6 @@ const Navbar = () => {
     setMusicPath,
     setImagePath,
   } = useAssetStore((state) => state);
-  const [isMaximized, setIsMaximized] = useState(false);
 
   const renderCount = (type: string) => {
     if (type === "sfx") return sfx;
@@ -88,49 +77,10 @@ const Navbar = () => {
     }
   };
 
-  const appWindow = getCurrentWindow();
-
-  useEffect(() => {
-    appWindow.isMaximized().then(setIsMaximized);
-  }, [appWindow]);
-
   return (
     <div className="flex flex-col w-[170px] bg-sidebar text-sidebar-foreground">
-      <div
-        className="flex items-center justify-between cursor-grab pt-3 px-3"
-        data-tauri-drag-region
-      >
-        <h3 className="text-sm font-medium select-none" data-tauri-drag-region>
-          Editon
-        </h3>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => appWindow.minimize()}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={() => {
-              if (isMaximized) {
-                appWindow.unmaximize();
-                setIsMaximized(false);
-              } else {
-                appWindow.maximize();
-                setIsMaximized(true);
-              }
-            }}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
-          >
-            {!isMaximized ? <Square size={12} /> : <SquaresExclude size={12} />}
-          </button>
-          <button
-            onClick={() => appWindow.close()}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
-          >
-            <X size={16} />
-          </button>
-        </div>
+      <div className="flex items-center justify-between pt-3 px-3">
+        <h3 className="text-sm font-medium select-none">Editon</h3>
       </div>
       <div className="mt-4 gap-1 flex flex-col h-screen px-3">
         {sidebarItems.map((item) => (
