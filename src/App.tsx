@@ -7,11 +7,16 @@ import useNavStore from "./stores/nav-store";
 import { invoke } from "@tauri-apps/api/core";
 import useAssetStore from "./stores/asset-store";
 import TitleBar from "./components/title-bar";
+import VideoPage from "./pages/video";
 
 const router = [
   {
     path: "/sound",
     element: <SfxPage />,
+  },
+  {
+    path: "/video",
+    element: <VideoPage />,
   },
 ];
 

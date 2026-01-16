@@ -1,11 +1,15 @@
 use walkdir::WalkDir;
+use std::sync::Mutex;
 use serde::{Serialize, Deserialize};
+use tauri::{State, Manager};
+use rusqlite::{Connection, Result};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Asset {
+    id: i32,
     name: String,
     path: String,
-    size: u64,
+    size: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -35,13 +39,14 @@ fn scan_folder_by_extensions(folder_path: &str, valid_extensions: &[&str]) -> Ve
                     // Gunakan metadata dari WalkDir entry untuk efisiensi
                     if let Ok(metadata) = entry.metadata() {
                         assets.push(Asset {
+                            id: 0,
                             name: path
                                 .file_name()
                                 .unwrap_or_default()
                                 .to_string_lossy()
                                 .to_string(),
                             path: path.to_string_lossy().to_string(),
-                            size: metadata.len(),
+                            size: metadata.len() as i64,
                         });
                     }
                 }
@@ -119,11 +124,103 @@ fn list_sounds(folder_path: String, page: usize, page_size: usize, query: Option
     paginate_assets(filtered_assets, page, page_size)
 }
 
+struct DbState {
+    conn: Mutex<Connection>,
+}
+
+// --- 3. Tauri Commands (API untuk React) ---
+
+// CREATE
+#[tauri::command]
+fn add_asset(state: State<DbState>, name: String, path: Option<String>, size: Option<i64>) -> Result<(), String> {
+    let conn = state.conn.lock().unwrap();
+    conn.execute(
+        "INSERT INTO assets (name, path, size) VALUES (?1, ?2, ?3)",
+        (&name, path.unwrap_or_default(), size.unwrap_or(0)),
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// READ
+#[tauri::command]
+fn get_assets(state: State<DbState>) -> Result<Vec<Asset>, String> {
+    let conn = state.conn.lock().unwrap();
+    
+    let mut stmt = conn.prepare("SELECT id, name, path, size FROM assets").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Asset {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            path: row.get(2)?,
+            size: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut assets = Vec::new();
+    for row in rows {
+        assets.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(assets)
+}
+
 // --- REGISTER ---
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+        tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            // A. Tentukan lokasi database (di folder AppData user)
+            let app_data_dir = app.path().app_data_dir().unwrap();
+            std::fs::create_dir_all(&app_data_dir).unwrap();
+            let db_path = app_data_dir.join("my_database.db");
+
+            // B. Buka Koneksi
+            let conn = Connection::open(db_path).unwrap();
+
+            // C. RAHASIA PERFORMA: Aktifkan WAL Mode (Write-Ahead Logging)
+            // Tanpa ini, app akan crash "Database Locked" kalau scan file di background
+            conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+            conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
+
+            // D. Buat Tabel jika belum ada
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS assets (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    path TEXT NOT NULL DEFAULT '',
+                    size INTEGER NOT NULL DEFAULT 0
+                )",
+                (),
+            ).unwrap();
+
+            // E. Migration: Add missing columns if they don't exist
+            // Check if path column exists, if not add it
+            let has_path: Result<i32, rusqlite::Error> = conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='path'",
+                [],
+                |row| row.get(0)
+            );
+            
+            if let Ok(0) = has_path {
+                conn.execute("ALTER TABLE assets ADD COLUMN path TEXT NOT NULL DEFAULT ''", ()).unwrap();
+            }
+
+            // Check if size column exists, if not add it
+            let has_size: Result<i32, rusqlite::Error> = conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='size'",
+                [],
+                |row| row.get(0)
+            );
+            
+            if let Ok(0) = has_size {
+                conn.execute("ALTER TABLE assets ADD COLUMN size INTEGER NOT NULL DEFAULT 0", ()).unwrap();
+            }
+
+            // E. Simpan koneksi ke State Tauri
+            app.manage(DbState { conn: Mutex::new(conn) });
+
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
@@ -131,6 +228,8 @@ pub fn run() {
             list_videos,
             list_musics,
             list_sounds,
+            add_asset,
+            get_assets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
