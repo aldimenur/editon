@@ -11,36 +11,33 @@ const WavesurferRender = (props: {
   const { src, width, height } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const isLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    setIsLoading(true);
+    const placeholderPeaks = [1, 1, 0.4, 0.5]; // in the future change this with the raw optimized peaks from backend
+    const duration = 5;
 
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
-      url: convertFileSrc(src),
       waveColor: "#11ddaa",
       width: width,
       height: height,
       cursorColor: "#ffffff55",
-    });
-
-    wavesurfer.on("click", () => {
-      wavesurfer.play();
-    });
-
-    wavesurfer.on("ready", () => {
-      setIsLoading(false);
+      backend: "MediaElement",
+      peaks: [placeholderPeaks],
+      duration: duration,
     });
 
     wavesurferRef.current = wavesurfer;
+    isLoadedRef.current = false;
 
     return () => {
       wavesurfer.destroy();
     };
-  }, [src]);
+  }, [width, height]);
 
   const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -60,13 +57,39 @@ const WavesurferRender = (props: {
     }
   };
 
+  const handleMouseEnter = async () => {
+    if (wavesurferRef.current) {
+      if (!isLoadedRef.current) {
+        setIsLoading(true);
+        await wavesurferRef.current.load(convertFileSrc(src));
+        isLoadedRef.current = true;
+        setIsLoading(false);
+        wavesurferRef.current.play();
+      } else {
+        wavesurferRef.current.play();
+      }
+    }
+  };
+
+  const handleMouseLeave = async () => {
+    if (wavesurferRef.current) {
+      wavesurferRef.current.pause();
+    }
+  };
+
   return (
     <div
-      className="cursor-grab active:cursor-grabbing relative"
+      className="cursor-pointer active:cursor-grabbing relative"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
+      <div
+        ref={containerRef}
+        style={{ visibility: isLoading ? "hidden" : "visible" }}
+      />
       {isLoading && (
         <div
           className="absolute inset-0 flex items-center justify-center z-10"
@@ -77,7 +100,6 @@ const WavesurferRender = (props: {
           </div>
         </div>
       )}
-      <div ref={containerRef} />
     </div>
   );
 };

@@ -96,7 +96,7 @@ const SfxPage = () => {
       <div className="flex items-center justify-between">
         {/* View Option */}
         <div className="w-24 mr-2">
-          <Slider defaultValue={[4]} max={8} step={1} value={[sliderValue]} />
+          {/* <Slider defaultValue={[4]} max={8} step={1} value={[sliderValue]} />   */}
         </div>
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
