@@ -19,6 +19,8 @@
     "core:window:allow-close",
     "core:window:allow-set-fullscreen",
     "core:window:allow-start-dragging",
-    "core:window:allow-start-resize-dragging"
+    "core:window:allow-start-resize-dragging",
+    "dialog:allow-message",
+    "dialog:default"
   ]
 }

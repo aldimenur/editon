@@ -4,10 +4,11 @@ import Navbar from "./components/Navbar";
 import { ThemeProvider } from "./components/theme-provider";
 import SfxPage from "./pages/sfx";
 import useNavStore from "./stores/nav-store";
-import { invoke } from "@tauri-apps/api/core";
-import useAssetStore from "./stores/asset-store";
 import TitleBar from "./components/title-bar";
 import VideoPage from "./pages/video";
+import { Progress } from "./components/ui/progress";
+import { useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 const router = [
   {
@@ -22,25 +23,43 @@ const router = [
 
 function App() {
   const { activeItem } = useNavStore((state) => state);
-  // const { setSfx, sfxPath } = useAssetStore((state) => state);
 
   const renderContent = () => {
     return router.find((route) => route.path === activeItem)?.element;
   };
 
-  // const getSoundCount = async () => {
-  //   const soundCount: any = await invoke("list_sounds", {
-  //     folderPath: sfxPath,
-  //     page: 1,
-  //     pageSize: 6,
-  //     query: null,
-  //   });
-  //   setSfx(soundCount.total);
-  // };
+  const [progress, setProgress] = useState<any>(null); // { current, total, filename }
 
-  // useEffect(() => {
-  //   getSoundCount();
-  // }, [sfxPath]);
+  useEffect(() => {
+    let unlistenFunction: any
+
+    async function setupListener() {
+      // Mendengarkan event 'waveform-progress' dari Rust
+      unlistenFunction = await listen("waveform-progress", (event) => {
+        const payload = event.payload as {
+          current: number;
+          total: number;
+          filename: string;
+          status: string;
+        }
+
+        setProgress(payload)
+
+        if (payload.status === "done") {
+          setProgress(null);
+        }
+      });
+    }
+
+    setupListener();
+
+    // Cleanup saat komponen didestroy
+    return () => {
+      if (unlistenFunction) unlistenFunction();
+    };
+  }, [])
+
+  const progressPercentage = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
@@ -49,6 +68,39 @@ function App() {
         <main className="flex-1 max-h-screen overflow-y-hidden">
           <TitleBar />
           {renderContent()}
+          {/* Compact Floating Progress - Bottom Right */}
+          {progress && (
+            <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-2 fade-in duration-300">
+              <div className="bg-card border rounded-lg shadow-lg p-3 w-80 space-y-2">
+                {/* Header */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-semibold">Optimizing Assets...</h4>
+                    <p className="text-xs text-muted-foreground truncate" title={progress.filename}>
+                      {progress.filename}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-primary shrink-0">
+                    {Math.round(progressPercentage)}%
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <Progress value={progressPercentage} className="h-1.5" />
+
+                {/* Stats */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{progress.current} / {progress.total} files</span>
+                  {progress.status && progress.status !== "done" && (
+                    <span className="flex items-center gap-1">
+                      <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
+                      {progress.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </ThemeProvider>

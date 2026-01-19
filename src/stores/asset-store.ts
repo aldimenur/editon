@@ -14,6 +14,8 @@ interface AssetStore {
   videoSearch: string;
   musicSearch: string;
   imageSearch: string;
+  parentPath: string;
+  setParentPath: (path: string) => void;
   setSfxPath: (path: string) => void;
   setVideoPath: (path: string) => void;
   setMusicPath: (path: string) => void;
@@ -35,6 +37,7 @@ const useAssetStore = create<AssetStore>()(
       video: 0,
       music: 0,
       image: 0,
+      parentPath: "",
       sfxPath: "",
       videoPath: "",
       musicPath: "",
@@ -43,6 +46,7 @@ const useAssetStore = create<AssetStore>()(
       videoSearch: "",
       musicSearch: "",
       imageSearch: "",
+      setParentPath: (path: string) => set({ parentPath: path }),
       setSfxPath: (path: string) => set({ sfxPath: path }),
       setVideoPath: (path: string) => set({ videoPath: path }),
       setMusicPath: (path: string) => set({ musicPath: path }),

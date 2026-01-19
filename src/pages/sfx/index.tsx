@@ -3,11 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Search, RefreshCw } from "lucide-react";
+import { Search } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { Asset, PaginatedAssets, SyncResult } from "@/types/tauri";
-// import { Slider } from "@/components/ui/slider";
+import type { Asset } from "@/types/tauri";
+import { Slider } from "@/components/ui/slider";
 
 const ITEM_HEIGHT = 90; // approximate height of each item (px), used for virtualization
 
@@ -17,49 +16,28 @@ const SfxPage = () => {
   const [searchCount, setSearchCount] = useState(0);
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  // const [sliderValue] = useState(4);
+  const [sliderValue, setSliderValue] = useState(0.5);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
   const hasMore = files.length < searchCount;
-
-  const handleSync = async () => {
-    if (!sfxPath || isSyncing) return;
-    try {
-      setIsSyncing(true);
-      const result = await invoke<SyncResult>("sync_assets", {
-        folderPath: sfxPath,
-        assetType: "sound",
-      });
-      
-      console.log("Sync completed:", result);
-      alert(`Sync completed!\nAdded: ${result.added}\nUpdated: ${result.updated}\nRemoved: ${result.removed}\nTotal: ${result.total}`);
-      
-      // Reload the first page after sync
-      readMediaFiles(1, true);
-    } catch (error) {
-      console.error("Sync error:", error);
-      alert("Sync failed: " + error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const readMediaFiles = async (pageParam: number, reset: boolean = false) => {
     if (!sfxPath) return;
     try {
       setIsLoading(true);
-      const result = await invoke<PaginatedAssets>("get_assets", {
+      const result = await invoke<any>("get_assets_paginated", {
         page: pageParam,
-        pageSize: pageSize,
-        query: sfxSearch || null,
-      });
-      
-      const assets = result.assets || [];
-      setFiles((prev) => (reset ? assets : [...prev, ...assets]));
-      setSearchCount(result.total ?? 0);
 
-      console.log("Loaded page", pageParam, "Total:", result.total, "Assets:", assets.length);
+
+        pageSize: pageSize,
+        query: sfxSearch || "",
+        assetType: "audio",
+      });
+
+      const assets = result.data || [];
+      setFiles((prev) => (reset ? assets : [...prev, ...assets]));
+      setSearchCount(result.total_items ?? 0);
+
+      console.log("Loaded page", pageParam, "Total:", result.total_items, "Assets:", assets.length);
 
     } catch (error) {
       console.error(error);
@@ -121,22 +99,13 @@ const SfxPage = () => {
   const showEmptyState = !isLoading && files.length === 0;
 
   return (
-    <div className="px-4">
+    <div className="px-4 relative">
       <div className="flex items-center justify-between gap-2">
         {/* View Option */}
         <div className="w-24 mr-2">
-          {/* <Slider defaultValue={[4]} max={8} step={1} value={[sliderValue]} />   */}
+          <Slider defaultValue={[sliderValue]} min={0} max={1} step={0.1} value={[sliderValue]} onValueChange={(value) => setSliderValue(value[0])} />
         </div>
-        <Button
-          onClick={handleSync}
-          disabled={!sfxPath || isSyncing}
-          variant="outline"
-          size="sm"
-          className="mb-2"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-          Sync
-        </Button>
+
         <div className="relative mb-2 flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
@@ -181,10 +150,12 @@ const SfxPage = () => {
                       style={{ height: virtualRow.size }}
                     >
                       <p className="text-xs font-medium mb-2 bg-accent p-1 text-ellipsis overflow-hidden whitespace-nowrap">
-                        {file.name}
+                        {file.filename}
                       </p>
                       <WavesurferRender
-                        src={file.path}
+                        src={file.original_path}
+                        waveform={file.waveform_data || []}
+                        volume={sliderValue}
                         height={50}
                         width={"100%"}
                       />
@@ -193,11 +164,6 @@ const SfxPage = () => {
                 })}
               </div>
             )}
-          </div>
-        )}
-        {isLoading && (
-          <div className="py-4 text-center text-xs text-muted-foreground">
-            Loading...
           </div>
         )}
       </div>

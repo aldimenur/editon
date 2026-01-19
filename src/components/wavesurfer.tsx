@@ -7,8 +7,10 @@ const WavesurferRender = (props: {
   src: string;
   width: number | string;
   height: number;
+  waveform: number[];
+  volume: number;
 }) => {
-  const { src, width, height } = props;
+  const { src, width, height, waveform, volume } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -18,7 +20,8 @@ const WavesurferRender = (props: {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const placeholderPeaks = [1, 1, 0.4, 0.5]; // in the future change this with the raw optimized peaks from backend
+    // Generate 10 numbers between -1 and 1
+    const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6 , -1, -0.5, 0, -0.2, 1, 0.5 , 0];
     const duration = 5;
 
     const wavesurfer = WaveSurfer.create({
@@ -33,7 +36,6 @@ const WavesurferRender = (props: {
     });
 
     wavesurferRef.current = wavesurfer;
-    wavesurfer.setVolume(0.1);
     isLoadedRef.current = false;
 
     return () => {
@@ -58,6 +60,12 @@ const WavesurferRender = (props: {
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    if (wavesurferRef.current) {
+      wavesurferRef.current.setVolume(volume);
+    }
+  }, [volume]);
 
   const handleMouseEnter = async () => {
     // Clear any existing timeout
