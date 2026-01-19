@@ -3,36 +3,64 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, RefreshCw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Slider } from "@/components/ui/slider";
+import type { Asset, PaginatedAssets, SyncResult } from "@/types/tauri";
+// import { Slider } from "@/components/ui/slider";
 
 const ITEM_HEIGHT = 90; // approximate height of each item (px), used for virtualization
 
 const SfxPage = () => {
   const { sfxPath, sfxSearch, setSfxSearch } = useAssetStore((state) => state);
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<Asset[]>([]);
   const [searchCount, setSearchCount] = useState(0);
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
-  const [sliderValue] = useState(4);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // const [sliderValue] = useState(4);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const hasMore = files.length < searchCount;
+
+  const handleSync = async () => {
+    if (!sfxPath || isSyncing) return;
+    try {
+      setIsSyncing(true);
+      const result = await invoke<SyncResult>("sync_assets", {
+        folderPath: sfxPath,
+        assetType: "sound",
+      });
+      
+      console.log("Sync completed:", result);
+      alert(`Sync completed!\nAdded: ${result.added}\nUpdated: ${result.updated}\nRemoved: ${result.removed}\nTotal: ${result.total}`);
+      
+      // Reload the first page after sync
+      readMediaFiles(1, true);
+    } catch (error) {
+      console.error("Sync error:", error);
+      alert("Sync failed: " + error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const readMediaFiles = async (pageParam: number, reset: boolean = false) => {
     if (!sfxPath) return;
     try {
       setIsLoading(true);
-      const result: any = await invoke("list_sounds", {
-        folderPath: sfxPath,
+      const result = await invoke<PaginatedAssets>("get_assets", {
         page: pageParam,
         pageSize: pageSize,
         query: sfxSearch || null,
       });
-      const assets = (result.assets || []) as any[];
+      
+      const assets = result.assets || [];
       setFiles((prev) => (reset ? assets : [...prev, ...assets]));
-      setSearchCount(result.total ?? assets.length);
+      setSearchCount(result.total ?? 0);
+
+      console.log("Loaded page", pageParam, "Total:", result.total, "Assets:", assets.length);
+
     } catch (error) {
       console.error(error);
     } finally {
@@ -82,9 +110,10 @@ const SfxPage = () => {
     // when we scroll within a few items of the end, load next page
     if (lastItem.index >= files.length - 5) {
       const nextPage = Math.floor(files.length / pageSize) + 1;
+      console.log("Loading next page:", nextPage);
       readMediaFiles(nextPage);
     }
-  }, [files.length, hasMore, isLoading, pageSize, rowVirtualizer]);
+  }, [rowVirtualizer.getVirtualItems(), files.length, hasMore, isLoading, pageSize]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalHeight = rowVirtualizer.getTotalSize();
@@ -93,12 +122,22 @@ const SfxPage = () => {
 
   return (
     <div className="px-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         {/* View Option */}
         <div className="w-24 mr-2">
           {/* <Slider defaultValue={[4]} max={8} step={1} value={[sliderValue]} />   */}
         </div>
-        <div className="relative mb-2">
+        <Button
+          onClick={handleSync}
+          disabled={!sfxPath || isSyncing}
+          variant="outline"
+          size="sm"
+          className="mb-2"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+          Sync
+        </Button>
+        <div className="relative mb-2 flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             type="text"
@@ -137,7 +176,7 @@ const SfxPage = () => {
 
                   return (
                     <div
-                      key={file.path}
+                      key={file.id}
                       className="border rounded-lg"
                       style={{ height: virtualRow.size }}
                     >

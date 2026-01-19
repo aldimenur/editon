@@ -22,25 +22,25 @@ const router = [
 
 function App() {
   const { activeItem } = useNavStore((state) => state);
-  const { setSfx, sfxPath } = useAssetStore((state) => state);
+  // const { setSfx, sfxPath } = useAssetStore((state) => state);
 
   const renderContent = () => {
     return router.find((route) => route.path === activeItem)?.element;
   };
 
-  const getSoundCount = async () => {
-    const soundCount: any = await invoke("list_sounds", {
-      folderPath: sfxPath,
-      page: 1,
-      pageSize: 6,
-      query: null,
-    });
-    setSfx(soundCount.total);
-  };
+  // const getSoundCount = async () => {
+  //   const soundCount: any = await invoke("list_sounds", {
+  //     folderPath: sfxPath,
+  //     page: 1,
+  //     pageSize: 6,
+  //     query: null,
+  //   });
+  //   setSfx(soundCount.total);
+  // };
 
-  useEffect(() => {
-    getSoundCount();
-  }, [sfxPath]);
+  // useEffect(() => {
+  //   getSoundCount();
+  // }, [sfxPath]);
 
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">

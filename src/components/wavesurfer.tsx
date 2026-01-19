@@ -13,6 +13,7 @@ const WavesurferRender = (props: {
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const isLoadedRef = useRef(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -32,6 +33,7 @@ const WavesurferRender = (props: {
     });
 
     wavesurferRef.current = wavesurfer;
+    wavesurfer.setVolume(0.1);
     isLoadedRef.current = false;
 
     return () => {
@@ -58,20 +60,34 @@ const WavesurferRender = (props: {
   };
 
   const handleMouseEnter = async () => {
-    if (wavesurferRef.current) {
-      if (!isLoadedRef.current) {
-        setIsLoading(true);
-        await wavesurferRef.current.load(convertFileSrc(src));
-        isLoadedRef.current = true;
-        setIsLoading(false);
-        wavesurferRef.current.play();
-      } else {
-        wavesurferRef.current.play();
-      }
+    // Clear any existing timeout
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
     }
+
+    // Wait 1 second before detecting the mouse
+    hoverTimeoutRef.current = setTimeout(async () => {
+      if (wavesurferRef.current) {
+        if (!isLoadedRef.current) {
+          setIsLoading(true);
+          await wavesurferRef.current.load(convertFileSrc(src));
+          isLoadedRef.current = true;
+          setIsLoading(false);
+          wavesurferRef.current.play();
+        } else {
+          wavesurferRef.current.play();
+        }
+      }
+    }, 500);
   };
 
   const handleMouseLeave = async () => {
+    // Clear the timeout if mouse leaves before 1 second
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+
     if (wavesurferRef.current) {
       wavesurferRef.current.pause();
     }

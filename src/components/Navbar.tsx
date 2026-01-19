@@ -3,6 +3,7 @@ import useNavStore from "@/stores/nav-store";
 import { Image, Music, Video } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ModeToggle } from "./mode-toggle";
+import { invoke } from "@tauri-apps/api/core";
 
 const sidebarItems = [
   {
@@ -61,6 +62,10 @@ const Navbar = () => {
       if (path) {
         if (type === "sfx") {
           setSfxPath(path);
+          await invoke("scan_and_add_assets", {
+            folderPath: path,
+            assetType: "sound",
+          });
         }
         if (type === "video") {
           setVideoPath(path);
