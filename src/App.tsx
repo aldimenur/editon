@@ -54,6 +54,21 @@ function App() {
           setProgress(null);
         }
       });
+
+      unlistenFunction = await listen("thumbnail-progress", (event) => {
+        const payload = event.payload as {
+          current: number;
+          total: number;
+          filename: string;
+          status: string;
+        }
+
+        setProgress(payload)
+
+        if (payload.status === "done") {
+          setProgress(null);
+        }
+      });
     }
 
     setupListener();

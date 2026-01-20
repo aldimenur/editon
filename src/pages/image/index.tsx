@@ -8,6 +8,7 @@ import type { Asset } from "@/types/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { createThumbnailUrl, revokeThumbnailUrl } from "@/lib/utils";
 
 type ViewMode = "list" | "grid" | "large";
 
@@ -147,10 +148,8 @@ const ImagePage = () => {
     };
 
     const renderImageCard = (file: Asset, imageHeight: string, minHeight?: number) => {
-        if (!file.id) return null;
-
         const isHovered = hoveredId === file.id;
-        const imageSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
+        const imageSrc = file.thumbnail_blob ? createThumbnailUrl(file.thumbnail_blob) : "";
 
         return (
             <div

@@ -54,7 +54,8 @@ const Navbar = () => {
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-        await invoke("generate_missing_waveforms");
+        // await invoke("generate_missing_waveforms");
+        // await invoke("generate_missing_thumbnails");
       }
     } catch (error) {
       console.error(error);

@@ -51,6 +51,7 @@ const WavesurferRender = (props: {
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    wavesurferRef.current?.pause();
     try {
       startDrag({
         item: [src],
@@ -86,7 +87,7 @@ const WavesurferRender = (props: {
           wavesurferRef.current.play();
         }
       }
-    }, 500);
+    }, 100);
   };
 
   const handleMouseLeave = async () => {

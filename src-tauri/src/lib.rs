@@ -53,7 +53,7 @@ pub struct Asset {
     pub type_name: String, // 'audio', 'video', 'image'
     
     pub thumbnail_path: Option<String>,
-    pub thumbnail_blob: Vec<u8>,
+    pub thumbnail_blob: Option<Vec<u8>>,
     pub duration_sec: f64,
     pub file_size: i64,
     
@@ -122,8 +122,8 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
         // Gunakan INSERT OR IGNORE: Jika file dengan path yang sama sudah ada, skip (tidak error).
         let mut stmt = tx.prepare_cached(
             "INSERT OR IGNORE INTO assets 
-            (uuid, filename, extension, original_path, type, file_size, waveform_data, metadata, duration_sec, thumbnail_blob) 
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+            (uuid, filename, extension, original_path, type, file_size, waveform_data, metadata, duration_sec) 
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
         ).map_err(|e| e.to_string())?;
 
         // C. Loop Folder (Recursive)
@@ -137,7 +137,7 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
 
                     // Cek tipe (Image/Video/Audio)
                     if let Some(media_type) = get_media_type(&ext_str) {
-                        
+
                         // Siapkan data dasar
                         let filename = path.file_name().unwrap().to_string_lossy().to_string();
                         let path_str = path.to_string_lossy().to_string();
@@ -156,7 +156,6 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
                             "[]",               // ?7 Waveform JSON (kosong)
                             "{}",               // ?8 Metadata JSON (kosong)
                             0.0,                // ?9 Duration (0 detik)
-                            "".to_string()       // ?10 Thumbnail BLOB (kosong)
                         ]).map_err(|e| e.to_string())?;
 
                         count += 1;
@@ -235,20 +234,17 @@ fn get_assets_paginated(
         // Parsing JSON manual dari String DB ke Struct Rust
         let waveform_str: String = row.get("waveform_data").unwrap_or("[]".to_string());
         let metadata_str: String = row.get("metadata").unwrap_or("{}".to_string());
-
+        
         Ok(Asset {
             id: row.get("id")?,
             uuid: row.get("uuid")?,
             filename: row.get("filename")?,
             extension: row.get("extension")?,
             original_path: row.get("original_path")?,
-            type_name: row.get("type")?, // Kolom 'type' di DB, field 'type_name' di Rust
+            type_name: row.get("type")?,
             thumbnail_path: row.get("thumbnail_path")?,
             duration_sec: row.get("duration_sec")?,
-            thumbnail_blob: row.get("thumbnail_blob")?,
-            file_size: row.get("file_size")?,
-            
-            // Konversi JSON String -> Vec/Value
+            thumbnail_blob: row.get("thumbnail_blob")?,            file_size: row.get("file_size")?,
             waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
             metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
         })
@@ -490,6 +486,76 @@ pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8
     Ok(buffer.into_inner())
 }
 
+#[tauri::command]
+fn generate_missing_thumbnails(app: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let db_arc = state.conn.clone();
+    // 1. Ambil daftar file (khusus image) yang thumbnail_blob-nya masih kosong/NULL
+    let to_process: Vec<(String, String, String)> = {
+        let conn = db_arc.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT uuid, original_path, filename FROM assets 
+             WHERE (thumbnail_blob IS NULL OR length(thumbnail_blob) = 0)
+             AND type = 'image'" // Untuk saat ini kita fokus ke image
+        ).map_err(|e| e.to_string())?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // uuid
+                row.get::<_, String>(1)?, // path
+                row.get::<_, String>(2)?  // filename
+            ))
+        }).map_err(|e| e.to_string())?;
+
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let total_files = to_process.len();
+    if total_files == 0 {
+        return Ok("Semua thumbnail sudah lengkap.".to_string());
+    }
+
+    // 2. Jalankan proses di background thread
+    std::thread::spawn(move || {
+        for (i, (uuid, path, filename)) in to_process.iter().enumerate() {
+            
+            // A. Emit progress ke frontend
+            let _ = app.emit("thumbnail-progress", ProgressEvent {
+                current: i + 1,
+                total: total_files,
+                filename: filename.clone(),
+                status: "processing".to_string(),
+            });
+
+            // B. Generate thumbnail menggunakan fungsi yang sudah Anda buat
+            // Kita set width misalnya 200px
+            match generate_thumbnail_buffer(path, 200) {
+                Ok(blob) => {
+                    // C. Update database
+                    if let Ok(conn) = db_arc.lock() {
+                        let _ = conn.execute(
+                            "UPDATE assets SET thumbnail_blob = ?1 WHERE uuid = ?2",
+                            rusqlite::params![blob, uuid],
+                        );
+                    }
+                }
+                Err(e) => {
+                    println!("Gagal generate thumbnail untuk {}: {}", filename, e);
+                }
+            }
+        }
+
+        // D. Emit selesai
+        let _ = app.emit("thumbnail-progress", ProgressEvent {
+            current: total_files,
+            total: total_files,
+            filename: "Selesai!".to_string(),
+            status: "done".to_string(),
+        });
+    });
+
+    Ok(format!("Memulai proses background untuk {} thumbnail...", total_files))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -545,7 +611,8 @@ pub fn run() {
             clear_db,
             scan_and_import_folder,
             generate_missing_waveforms,
-            get_assets_paginated
+            get_assets_paginated,
+            generate_missing_thumbnails
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
