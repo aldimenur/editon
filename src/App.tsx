@@ -9,6 +9,7 @@ import VideoPage from "./pages/video";
 import { Progress } from "./components/ui/progress";
 import { useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import ImagePage from "./pages/image";
 
 const router = [
   {
@@ -19,6 +20,10 @@ const router = [
     path: "/video",
     element: <VideoPage />,
   },
+  {
+    path: "/image",
+    element: <ImagePage />,
+  }
 ];
 
 function App() {

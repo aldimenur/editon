@@ -16,6 +16,14 @@ use symphonia::core::audio::SampleBuffer;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use std::thread;
+use std::io::BufReader;
+use std::io::Cursor;
+use image::ImageReader;
+use image::codecs::webp::WebPEncoder;
+use image::ExtendedColorType;
+use image::ImageEncoder;
+use fast_image_resize::{images::Image, Resizer, ResizeOptions, ResizeAlg, PixelType};
+use std::num::NonZeroU32;
 // Enum Metadata
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)] // Biar otomatis deteksi varian berdasarkan isi field-nya
@@ -45,6 +53,7 @@ pub struct Asset {
     pub type_name: String, // 'audio', 'video', 'image'
     
     pub thumbnail_path: Option<String>,
+    pub thumbnail_blob: Vec<u8>,
     pub duration_sec: f64,
     pub file_size: i64,
     
@@ -113,8 +122,8 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
         // Gunakan INSERT OR IGNORE: Jika file dengan path yang sama sudah ada, skip (tidak error).
         let mut stmt = tx.prepare_cached(
             "INSERT OR IGNORE INTO assets 
-            (uuid, filename, extension, original_path, type, file_size, waveform_data, metadata, duration_sec) 
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+            (uuid, filename, extension, original_path, type, file_size, waveform_data, metadata, duration_sec, thumbnail_blob) 
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
         ).map_err(|e| e.to_string())?;
 
         // C. Loop Folder (Recursive)
@@ -146,7 +155,8 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
                             file_size as i64,   // ?6
                             "[]",               // ?7 Waveform JSON (kosong)
                             "{}",               // ?8 Metadata JSON (kosong)
-                            0.0                 // ?9 Duration (0 detik)
+                            0.0,                // ?9 Duration (0 detik)
+                            "".to_string()       // ?10 Thumbnail BLOB (kosong)
                         ]).map_err(|e| e.to_string())?;
 
                         count += 1;
@@ -211,7 +221,7 @@ fn get_assets_paginated(
     
     let sql_data = format!(
         "SELECT id, uuid, filename, extension, original_path, type, 
-                thumbnail_path, duration_sec, file_size, waveform_data, metadata 
+                thumbnail_path, duration_sec, file_size, waveform_data, metadata, thumbnail_blob
          {} 
          ORDER BY id ASC 
          LIMIT {} OFFSET {}", 
@@ -235,6 +245,7 @@ fn get_assets_paginated(
             type_name: row.get("type")?, // Kolom 'type' di DB, field 'type_name' di Rust
             thumbnail_path: row.get("thumbnail_path")?,
             duration_sec: row.get("duration_sec")?,
+            thumbnail_blob: row.get("thumbnail_blob")?,
             file_size: row.get("file_size")?,
             
             // Konversi JSON String -> Vec/Value
@@ -428,6 +439,57 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
     Ok(format!("Memulai proses background untuk {} file...", total_files))
 }
 
+// Hapus decorator #[command] karena ini akan dipanggil internal oleh thread, bukan frontend
+pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8>, String> {
+    // 1. Buka File (Gunakan BufReader untuk sedikit optimasi I/O)
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+
+    // 2. Decode ke RGBA8
+    let img = ImageReader::new(reader).with_guessed_format()
+        .map_err(|e| e.to_string())?
+        .decode()
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+
+    let width = NonZeroU32::new(img.width()).ok_or("Width 0")?;
+    let height = NonZeroU32::new(img.height()).ok_or("Height 0")?;
+
+    // 3. Setup Fast Image Resize
+    let src_view = fast_image_resize::images::ImageRef::new(
+        width.get(), height.get(), img.as_raw(), PixelType::U8x4
+    ).map_err(|e| e.to_string())?;
+
+    let aspect_ratio = width.get() as f32 / height.get() as f32;
+    let target_height = (target_width as f32 / aspect_ratio) as u32;
+    let dst_width = NonZeroU32::new(target_width).ok_or("Target width 0")?;
+    let dst_height = NonZeroU32::new(target_height).ok_or("Target height 0")?;
+
+    let mut dst_image = Image::new(dst_width.get(), dst_height.get(), PixelType::U8x4);
+
+    // 4. Resize (Nearest Neighbor untuk kecepatan maksimal)
+    let mut resizer = Resizer::new();
+    resizer.resize(
+        &src_view, 
+        &mut dst_image, 
+        &ResizeOptions::new().resize_alg(ResizeAlg::Nearest)
+    ).map_err(|e| e.to_string())?;
+
+    // 5. Encode ke WebP (Raw Bytes)
+    let mut buffer = Cursor::new(Vec::new());
+    let encoder = WebPEncoder::new_lossless(&mut buffer); // Lossy
+    
+    encoder.write_image(
+        dst_image.buffer(),
+        target_width,
+        target_height,
+        ExtendedColorType::Rgba8
+    ).map_err(|e| e.to_string())?;
+
+    // Return Vec<u8> (BLOB siap simpan ke SQLite)
+    Ok(buffer.into_inner())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -444,7 +506,6 @@ pub fn run() {
            // D. Aktifkan WAL Mode (Write-Ahead Logging) dan performa setting
             conn.pragma_update(None, "journal_mode", "WAL").unwrap();
             conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
-
             // E. Buat tabel baru jika belum ada
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS assets (
@@ -455,6 +516,7 @@ pub fn run() {
                     original_path   TEXT NOT NULL UNIQUE,
                     type            TEXT NOT NULL,
                     thumbnail_path  TEXT,
+                    thumbnail_blob  BLOB,
                     duration_sec    REAL DEFAULT 0,
                     file_size       INTEGER NOT NULL,
                     waveform_data   TEXT,

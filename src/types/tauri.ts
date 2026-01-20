@@ -22,6 +22,7 @@ export interface Asset {
   type_name: string; // 'audio', 'video', 'image'
   
   thumbnail_path?: string;
+  thumbnail_blob?: number[];
   duration_sec: number;
   file_size: number;
   

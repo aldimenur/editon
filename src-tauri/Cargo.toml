@@ -29,3 +29,5 @@ walkdir = "2"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 symphonia = { version = "0.5.5", features = ["all"] }
 uuid = { version = "1.19.0", features = ["v4"] }
+fast_image_resize = { version = "6.0", default-features = false, features = ["no_std"] }
+image = { version = "0.25.9" }
