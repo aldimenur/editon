@@ -2,36 +2,44 @@ import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Image, Music, Video } from "lucide-react";
+import { Image, Music, WifiSync, Video } from "lucide-react";
 import { ModeToggle } from "./mode-toggle";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Progress } from "./ui/progress";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
+import { faYoutube } from "@fortawesome/free-brands-svg-icons"
 
 const sidebarItems = [
   {
-    icon: Music,
+    icon: <Music size={14} />,
     label: "Sound",
     path: "/sound",
     type: "sfx",
   },
   {
-    icon: Video,
+    icon: <Video size={14} />,
     label: "Video",
     path: "/video",
     type: "video",
   },
   {
-    icon: Image,
+    icon: <Image size={14} />,
     label: "Image",
     path: "/image",
     type: "image",
   },
+  {
+    icon: <FontAwesomeIcon icon={faYoutube} style={{ color: "#ff0000", }} />,
+    label: "Download",
+    path: "/youtube-download",
+    type: "youtube",
+  }
 ];
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { setParentPath, sfx, video, image, setSfx, setVideo, setImage } = useAssetStore((state) => state);
+  const { setParentPath, setSfx, setVideo, setImage, sfx, video, image } = useAssetStore((state) => state);
 
   const handleSetPath = async () => {
     try {
@@ -40,17 +48,28 @@ const Navbar = () => {
       });
 
       if (path) {
-        const sfxCount = await invoke("get_count_assets", { assetType: "audio" });
-        const videoCount = await invoke("get_count_assets", { assetType: "video" });
-        const imageCount = await invoke("get_count_assets", { assetType: "image" });
-        setSfx(sfxCount as number);
-        setVideo(videoCount as number);
-        setImage(imageCount as number);
+        // 1. Clear database dan reset count di UI ke 0 (opsional agar user tahu data sedang diproses)
         await invoke('clear_db');
+        setSfx(0);
+        setVideo(0);
+        setImage(0);
+
         setParentPath(path);
+
+        // 2. Scan folder baru (ini akan mengisi database dengan data baru)
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
+
+        // 3. AMBIL COUNT SETELAH SCAN SELESAI
+        const sfx = await invoke("get_count_assets", { assetType: "audio" });
+        setSfx(sfx as number);
+        const video = await invoke("get_count_assets", { assetType: "video" });
+        setVideo(video as number);
+        const image = await invoke("get_count_assets", { assetType: "image" });
+        setImage(image as number);
+
+        // 4. Jalankan proses background lainnya
         await invoke("generate_missing_waveforms");
         await invoke("generate_missing_thumbnails");
       }
@@ -122,11 +141,11 @@ const Navbar = () => {
               }`}
             onClick={() => setActiveItem(item.path)}
           >
-            <item.icon size={14} />
+            {item.icon}
             <div className="flex justify-between w-full">
               <span className="text-sm">{item.label}</span>
               <span className="text-xs text-muted-foreground">
-                {item.type === "sfx" ? sfx : item.type === "video" ? video : image}
+                {item.type === "sfx" ? sfx : item.type === "video" ? video : item.type === "image" ? image : null}
               </span>
             </div>
           </div>
@@ -165,15 +184,15 @@ const Navbar = () => {
             </div>
           </div>
         )}
-        <button
-          className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent rounded-md p-2"
-          onClick={() => handleSetPath()}
-        >
-          Import Folder
-        </button>
 
-        <div className="mb-2">
+        <div className="p-2 flex gap-2">
           <ModeToggle />
+          <button
+            className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent min-w-24 rounded-md"
+            onClick={() => handleSetPath()}
+          >
+            Scan Folder
+          </button>
         </div>
       </div>
     </div>

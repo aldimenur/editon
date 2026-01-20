@@ -6,6 +6,7 @@ import useNavStore from "./stores/nav-store";
 import TitleBar from "./components/title-bar";
 import VideoPage from "./pages/video";
 import ImagePage from "./pages/image";
+import YoutubeDownloadPage from "./pages/youtube-download";
 
 const router = [
   {
@@ -19,6 +20,10 @@ const router = [
   {
     path: "/image",
     element: <ImagePage />,
+  },
+  {
+    path: "/youtube-download",
+    element: <YoutubeDownloadPage />,
   }
 ];
 
