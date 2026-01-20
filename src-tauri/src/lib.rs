@@ -3,6 +3,7 @@ use image::codecs::webp::WebPEncoder;
 use image::ExtendedColorType;
 use image::ImageEncoder;
 use image::ImageReader;
+use rayon::prelude::*;
 use rusqlite::{Connection, Result, ToSql};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -10,8 +11,8 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error;
@@ -192,6 +193,27 @@ fn scan_and_import_folder(
     tx.commit().map_err(|e| e.to_string())?;
 
     Ok(format!("Berhasil scan: {} file baru ditambahkan.", count))
+}
+
+#[tauri::command]
+// 1. Ubah return type agar mengembalikan angka (u64)
+fn get_count_assets(state: State<'_, DbState>, asset_type: String) -> Result<u64, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    // 2. Gunakan query_row untuk mengambil hasil SELECT COUNT
+    let count: i64 = if asset_type == "all" {
+        conn.query_row("SELECT COUNT(*) FROM assets", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+    } else {
+        conn.query_row(
+            "SELECT COUNT(*) FROM assets WHERE type = ?1",
+            [asset_type],
+            |row| row.get(0)
+        ).map_err(|e| e.to_string())?
+    };
+
+    // 3. Kembalikan hasilnya
+    Ok(count as u64)
 }
 
 #[tauri::command]
@@ -425,44 +447,50 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         return Ok("Semua waveform sudah lengkap.".to_string());
     }
 
+    let processed_count = std::sync::Arc::new(AtomicUsize::new(0));
+
     // 2. Jalankan Proses di Thread Terpisah (BACKGROUND)
-    thread::spawn(move || {
+    std::thread::spawn(move || {
         println!("Background process started for {} files", total_files);
 
-        for (i, (uuid, path, filename)) in to_process.iter().enumerate() {
-            // A. Emit Event: "Sedang memproses lagu X..."
-            let _ = app.emit(
-                "waveform-progress",
-                ProgressEvent {
-                    current: i + 1,
-                    total: total_files,
-                    filename: filename.clone(),
-                    status: "processing".to_string(),
-                },
-            );
+        to_process
+            .par_iter()
+            .enumerate()
+            .for_each(|(_, (uuid, path, filename))| {
+                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                // A. Emit Event: "Sedang memproses lagu X..."
+                let _ = app.emit(
+                    "waveform-progress",
+                    ProgressEvent {
+                        current,
+                        total: total_files,
+                        filename: filename.clone(),
+                        status: "processing".to_string(),
+                    },
+                );
 
-            // B. Proses Berat (Decode Audio) - Tidak mengunci DB
-            // Ingat: function get_audio_waveform kita sudah return Vec<f32> (-1 s/d 1)
-            let waveform_result = get_audio_waveform(path, 100);
+                // B. Proses Berat (Decode Audio) - Tidak mengunci DB
+                // Ingat: function get_audio_waveform kita sudah return Vec<f32> (-1 s/d 1)
+                let waveform_result = get_audio_waveform(path, 100);
 
-            match waveform_result {
-                Ok(data) => {
-                    let json_data = serde_json::to_string(&data).unwrap_or("[]".to_string());
+                match waveform_result {
+                    Ok(data) => {
+                        let json_data = serde_json::to_string(&data).unwrap_or("[]".to_string());
 
-                    // C. Update DB (Hanya lock sebentar saat update row ini saja)
-                    if let Ok(conn) = db_arc.lock() {
-                        let _ = conn.execute(
-                            "UPDATE assets SET waveform_data = ?1 WHERE uuid = ?2",
-                            [&json_data, uuid],
-                        );
+                        // C. Update DB (Hanya lock sebentar saat update row ini saja)
+                        if let Ok(conn) = db_arc.lock() {
+                            let _ = conn.execute(
+                                "UPDATE assets SET waveform_data = ?1 WHERE uuid = ?2",
+                                [&json_data, uuid],
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        println!("Gagal process {}: {}", filename, e);
+                        // Lanjut ke file berikutnya meski error
                     }
                 }
-                Err(e) => {
-                    println!("Gagal process {}: {}", filename, e);
-                    // Lanjut ke file berikutnya meski error
-                }
-            }
-        }
+            });
 
         // D. Emit Event Selesai
         let _ = app.emit(
@@ -553,7 +581,12 @@ fn generate_missing_thumbnails(
     // 1. Tentukan lokasi folder thumbnail di AppData
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let thumbnails_dir = app_data_dir.join("thumbnails");
-    // 1. Ambil daftar file (khusus image) yang thumbnail_blob-nya masih kosong/NULL
+
+    // Pastikan folder thumbnails sudah ada
+    if !thumbnails_dir.exists() {
+        std::fs::create_dir_all(&thumbnails_dir).map_err(|e| e.to_string())?;
+    }
+    // 2. Ambil daftar file (khusus image) yang thumbnail_blob-nya masih kosong/NULL
     let to_process: Vec<(String, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
@@ -581,39 +614,48 @@ fn generate_missing_thumbnails(
     if total_files == 0 {
         return Ok("Semua thumbnail sudah lengkap.".to_string());
     }
-
-    // 2. Jalankan proses di background thread
+    // 2. Buat counter atomic
+    let processed_count = std::sync::Arc::new(AtomicUsize::new(0));
+    // 3. Jalankan proses di background thread
     std::thread::spawn(move || {
-        for (i, (uuid, path, filename)) in to_process.iter().enumerate() {
-            // A. Emit progress ke frontend
-            let _ = app.emit(
-                "thumbnail-progress",
-                ProgressEvent {
-                    current: i + 1,
-                    total: total_files,
-                    filename: filename.clone(),
-                    status: "processing".to_string(),
-                },
-            );
+        to_process
+            .par_iter()
+            .enumerate()
+            .for_each(|(_, (uuid, path, filename))| {
+                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-            // B. Generate thumbnail menggunakan fungsi yang sudah Anda buat
-            // Kita set width misalnya 200px
-            match generate_thumbnail_buffer(path, 200) {
-                Ok(blob) => {
-                    // C. Update database
-                    if let Ok(conn) = db_arc.lock() {
-                        let _ = conn.execute(
-                            "UPDATE assets SET thumbnail_blob = ?1 WHERE uuid = ?2",
-                            rusqlite::params![blob, uuid],
-                        );
+                let _ = app.emit(
+                    "thumbnail-progress",
+                    ProgressEvent {
+                        current,
+                        total: total_files,
+                        filename: filename.clone(),
+                        status: "processing".to_string(),
+                    },
+                );
+
+                match generate_thumbnail_buffer(path, 200) {
+                    Ok(blob) => {
+                        // Simpan blob ke file system
+                        let thumb_filename = format!("{}.webp", uuid);
+                        let thumb_path = thumbnails_dir.join(&thumb_filename);
+                        let thumb_path_str = thumb_path.to_string_lossy().to_string();
+
+                        if let Ok(_) = std::fs::write(&thumb_path, &blob) {
+                            // Update database: simpan path-nya dan hapus blob untuk menghemat space DB
+                            if let Ok(conn) = db_arc.lock() {
+                                let _ = conn.execute(
+                                    "UPDATE assets SET thumbnail_path = ?1 WHERE uuid = ?2",
+                                    rusqlite::params![thumb_path_str, uuid],
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Gagal generate thumbnail untuk {}: {}", filename, e);
                     }
                 }
-                Err(e) => {
-                    println!("Gagal generate thumbnail untuk {}: {}", filename, e);
-                }
-            }
-        }
-
+            });
         // D. Emit selesai
         let _ = app.emit(
             "thumbnail-progress",
@@ -634,6 +676,20 @@ fn generate_missing_thumbnails(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let total_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let rayon_thread = (total_cores / 2).max(1);
+
+    println!(
+        "Cpu memiliki {} threads. Rayon menggunakan {} threads",
+        total_cores, rayon_thread
+    );
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(rayon_thread)
+        .build_global()
+        .unwrap();
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
@@ -688,7 +744,8 @@ pub fn run() {
             scan_and_import_folder,
             generate_missing_waveforms,
             get_assets_paginated,
-            generate_missing_thumbnails
+            generate_missing_thumbnails,
+            get_count_assets
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

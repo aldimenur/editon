@@ -31,19 +31,7 @@ const sidebarItems = [
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const {
-    sfx,
-    video,
-    image,
-    setParentPath
-  } = useAssetStore((state) => state);
-
-  const renderCount = (type: string) => {
-    if (type === "sfx") return sfx;
-    if (type === "video") return video;
-    if (type === "image") return image;
-    return null;
-  };
+  const { setParentPath, sfx, video, image, setSfx, setVideo, setImage } = useAssetStore((state) => state);
 
   const handleSetPath = async () => {
     try {
@@ -52,12 +40,18 @@ const Navbar = () => {
       });
 
       if (path) {
+        const sfxCount = await invoke("get_count_assets", { assetType: "audio" });
+        const videoCount = await invoke("get_count_assets", { assetType: "video" });
+        const imageCount = await invoke("get_count_assets", { assetType: "image" });
+        setSfx(sfxCount as number);
+        setVideo(videoCount as number);
+        setImage(imageCount as number);
         await invoke('clear_db');
         setParentPath(path);
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-        // await invoke("generate_missing_waveforms");
+        await invoke("generate_missing_waveforms");
         await invoke("generate_missing_thumbnails");
       }
     } catch (error) {
@@ -132,7 +126,7 @@ const Navbar = () => {
             <div className="flex justify-between w-full">
               <span className="text-sm">{item.label}</span>
               <span className="text-xs text-muted-foreground">
-                {renderCount(item.type)}
+                {item.type === "sfx" ? sfx : item.type === "video" ? video : image}
               </span>
             </div>
           </div>
