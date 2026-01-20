@@ -170,6 +170,7 @@ const ImagePage = () => {
                         alt={file.filename}
                         className={`w-full ${imageHeight} object-cover bg-muted`}
                         loading="lazy"
+                        decoding="async"
                     />
 
                     {/* Hover Overlay */}

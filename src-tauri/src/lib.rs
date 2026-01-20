@@ -1,36 +1,48 @@
-use rusqlite::{Connection, Result, ToSql};
-use serde::{Deserialize, Serialize};
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::probe::Hint;
-use tauri::{Manager, State};
-use walkdir::WalkDir;
-use symphonia::default::get_probe;
-use uuid::Uuid;
-use std::fs::File;
-use std::path::Path;
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::meta::MetadataOptions;
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::errors::Error;
-use symphonia::core::audio::SampleBuffer;
-use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
-use std::thread;
-use std::io::BufReader;
-use std::io::Cursor;
-use image::ImageReader;
+use fast_image_resize::{images::Image, PixelType, ResizeAlg, ResizeOptions, Resizer};
 use image::codecs::webp::WebPEncoder;
 use image::ExtendedColorType;
 use image::ImageEncoder;
-use fast_image_resize::{images::Image, Resizer, ResizeOptions, ResizeAlg, PixelType};
+use image::ImageReader;
+use rusqlite::{Connection, Result, ToSql};
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::num::NonZeroU32;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::errors::Error;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use symphonia::default::get_probe;
+use tauri::{AppHandle, Emitter};
+use tauri::{Manager, State};
+use uuid::Uuid;
+use walkdir::WalkDir;
 // Enum Metadata
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)] // Biar otomatis deteksi varian berdasarkan isi field-nya
 pub enum AssetMetadata {
-    Audio { sample_rate: u32, bitrate: u32, artist: Option<String> },
-    Video { width: u32, height: u32, fps: f32 },
-    Image { width: u32, height: u32, format: String },
+    Audio {
+        sample_rate: u32,
+        bitrate: u32,
+        artist: Option<String>,
+    },
+    Video {
+        width: u32,
+        height: u32,
+        fps: f32,
+    },
+    Image {
+        width: u32,
+        height: u32,
+        format: String,
+    },
     None,
 }
 
@@ -51,15 +63,15 @@ pub struct Asset {
     pub extension: String,
     pub original_path: String,
     pub type_name: String, // 'audio', 'video', 'image'
-    
+
     pub thumbnail_path: Option<String>,
     pub thumbnail_blob: Option<Vec<u8>>,
     pub duration_sec: f64,
     pub file_size: i64,
-    
+
     // Waveform disimpan sebagai bytes binary
-    pub waveform_data: Option<Vec<f32>>, 
-    
+    pub waveform_data: Option<Vec<f32>>,
+
     // Metadata fleksibel
     pub metadata: AssetMetadata,
 }
@@ -79,14 +91,18 @@ pub struct DbState {
 fn get_media_type(ext: &str) -> Option<String> {
     match ext.to_lowercase().as_str() {
         // Image
-        "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "svg" | "ico" => Some("image".to_string()),
-        
+        "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "svg" | "ico" => {
+            Some("image".to_string())
+        }
+
         // Video
         "mp4" | "mkv" | "mov" | "avi" | "webm" | "flv" | "wmv" => Some("video".to_string()),
-        
+
         // Audio (Semua jenis suara jadi satu)
-        "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" | "wma" | "aiff" => Some("audio".to_string()),
-        
+        "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" | "wma" | "aiff" => {
+            Some("audio".to_string())
+        }
+
         _ => None, // File lain diabaikan
     }
 }
@@ -97,7 +113,8 @@ fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    tx.execute("DELETE FROM assets", []).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM assets", [])
+        .map_err(|e| e.to_string())?;
 
     tx.execute("DELETE FROM sqlite_sequence WHERE name='assets'", [])
         .map_err(|e| e.to_string())?;
@@ -108,13 +125,16 @@ fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Result<String, String> {
+fn scan_and_import_folder(
+    state: State<'_, DbState>,
+    folder_path: String,
+) -> Result<String, String> {
     // Lock database
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
 
     // A. Mulai Transaksi (Wajib biar cepat)
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    
+
     let mut count = 0;
 
     {
@@ -127,7 +147,10 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
         ).map_err(|e| e.to_string())?;
 
         // C. Loop Folder (Recursive)
-        for entry in WalkDir::new(&folder_path).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&folder_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
 
             if path.is_file() {
@@ -137,7 +160,6 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
 
                     // Cek tipe (Image/Video/Audio)
                     if let Some(media_type) = get_media_type(&ext_str) {
-
                         // Siapkan data dasar
                         let filename = path.file_name().unwrap().to_string_lossy().to_string();
                         let path_str = path.to_string_lossy().to_string();
@@ -147,16 +169,17 @@ fn scan_and_import_folder(state: State<'_, DbState>, folder_path: String) -> Res
                         // Eksekusi Insert
                         // Data berat (waveform, duration) diisi default dulu (0 atau kosong)
                         stmt.execute(rusqlite::params![
-                            uuid,               // ?1
-                            filename,           // ?2
-                            ext_str,            // ?3
-                            path_str,           // ?4
-                            media_type,         // ?5 ('audio', 'video', 'image')
-                            file_size as i64,   // ?6
-                            "[]",               // ?7 Waveform JSON (kosong)
-                            "{}",               // ?8 Metadata JSON (kosong)
-                            0.0,                // ?9 Duration (0 detik)
-                        ]).map_err(|e| e.to_string())?;
+                            uuid,             // ?1
+                            filename,         // ?2
+                            ext_str,          // ?3
+                            path_str,         // ?4
+                            media_type,       // ?5 ('audio', 'video', 'image')
+                            file_size as i64, // ?6
+                            "[]",             // ?7 Waveform JSON (kosong)
+                            "{}",             // ?8 Metadata JSON (kosong)
+                            0.0,              // ?9 Duration (0 detik)
+                        ])
+                        .map_err(|e| e.to_string())?;
 
                         count += 1;
                     }
@@ -177,10 +200,9 @@ fn get_assets_paginated(
     page: u32,
     page_size: u32,
     query: String,      // Search keyword (kosong string jika tidak search)
-    asset_type: String  // Filter: 'all', 'audio', 'video', 'image', 'sfx'
+    asset_type: String, // Filter: 'all', 'audio', 'video', 'image', 'sfx'
 ) -> Result<PaginatedResponse, String> {
-    
-    let conn = state.conn.lock().map_err(|e| e.to_string())?; 
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
     // 1. Bangun Query Builder Dinamis (WHERE Clause)
     let mut sql_base = "FROM assets WHERE 1=1".to_string();
@@ -203,11 +225,14 @@ fn get_assets_paginated(
     // 2. Hitung Total Data (Untuk Pagination Info)
     // ---------------------------------------------------------
     let sql_count = format!("SELECT COUNT(*) {}", sql_base);
-    
+
     // Rusqlite butuh slice of references &[&dyn ToSql], kita convert dari Vec<Box>
     let params_refs: Vec<&dyn ToSql> = params_values.iter().map(|p| p.as_ref()).collect();
 
-    let total_items: u64 = conn.query_row(&sql_count, params_refs.as_slice(), |row| row.get::<_, i64>(0).map(|x| x as u64))
+    let total_items: u64 = conn
+        .query_row(&sql_count, params_refs.as_slice(), |row| {
+            row.get::<_, i64>(0).map(|x| x as u64)
+        })
         .map_err(|e| format!("Gagal hitung total: {}", e))?;
 
     let total_pages = (total_items as f64 / page_size as f64).ceil() as u64;
@@ -216,39 +241,42 @@ fn get_assets_paginated(
     // 3. Ambil Data (LIMIT & OFFSET)
     // ---------------------------------------------------------
     // Offset: (Halaman 1 -> 0), (Halaman 2 -> 20), dst.
-    let offset = (page.max(1) - 1) * page_size; 
-    
+    let offset = (page.max(1) - 1) * page_size;
+
     let sql_data = format!(
         "SELECT id, uuid, filename, extension, original_path, type, 
                 thumbnail_path, duration_sec, file_size, waveform_data, metadata, thumbnail_blob
          {} 
          ORDER BY id ASC 
-         LIMIT {} OFFSET {}", 
+         LIMIT {} OFFSET {}",
         sql_base, page_size, offset
     );
 
     let mut stmt = conn.prepare(&sql_data).map_err(|e| e.to_string())?;
-    
+
     // Query map
-    let asset_iter = stmt.query_map(params_refs.as_slice(), |row| {
-        // Parsing JSON manual dari String DB ke Struct Rust
-        let waveform_str: String = row.get("waveform_data").unwrap_or("[]".to_string());
-        let metadata_str: String = row.get("metadata").unwrap_or("{}".to_string());
-        
-        Ok(Asset {
-            id: row.get("id")?,
-            uuid: row.get("uuid")?,
-            filename: row.get("filename")?,
-            extension: row.get("extension")?,
-            original_path: row.get("original_path")?,
-            type_name: row.get("type")?,
-            thumbnail_path: row.get("thumbnail_path")?,
-            duration_sec: row.get("duration_sec")?,
-            thumbnail_blob: row.get("thumbnail_blob")?,            file_size: row.get("file_size")?,
-            waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
-            metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
+    let asset_iter = stmt
+        .query_map(params_refs.as_slice(), |row| {
+            // Parsing JSON manual dari String DB ke Struct Rust
+            let waveform_str: String = row.get("waveform_data").unwrap_or("[]".to_string());
+            let metadata_str: String = row.get("metadata").unwrap_or("{}".to_string());
+
+            Ok(Asset {
+                id: row.get("id")?,
+                uuid: row.get("uuid")?,
+                filename: row.get("filename")?,
+                extension: row.get("extension")?,
+                original_path: row.get("original_path")?,
+                type_name: row.get("type")?,
+                thumbnail_path: row.get("thumbnail_path")?,
+                duration_sec: row.get("duration_sec")?,
+                thumbnail_blob: row.get("thumbnail_blob")?,
+                file_size: row.get("file_size")?,
+                waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
+                metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     // Collect hasil
     let mut data = Vec::new();
@@ -270,11 +298,17 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
     let src = File::open(Path::new(path))?;
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
     let hint = Hint::new();
-    let probed = get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())?;
+    let probed = get_probe().format(
+        &hint,
+        mss,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    )?;
     let mut format = probed.format;
     let track = format.default_track().ok_or("No default track")?;
     let track_id = track.id;
-    let mut decoder = symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
+    let mut decoder =
+        symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
 
     let mut all_samples: Vec<f32> = Vec::new();
 
@@ -283,10 +317,12 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
         let packet = match format.next_packet() {
             Ok(packet) => packet,
             Err(Error::IoError(_)) => break,
-            Err(_) => break, 
+            Err(_) => break,
         };
 
-        if packet.track_id() != track_id { continue; }
+        if packet.track_id() != track_id {
+            continue;
+        }
 
         match decoder.decode(&packet) {
             Ok(decoded) => {
@@ -320,13 +356,13 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
     let total_samples = all_samples.len();
     // Hitung berapa sample per satu titik data
     let chunk_size = (total_samples as f32 / num_bars as f32).ceil() as usize;
-    
+
     let mut waveform: Vec<f32> = Vec::with_capacity(num_bars);
 
     for chunk in all_samples.chunks(chunk_size) {
         // Cari sample dengan AMPLITUDO TERBESAR (Absolut) di chunk ini
         // Kita ingin mempertahankan apakah dia positif atau negatif
-        
+
         let mut peak_sample = 0.0;
         let mut max_abs_val = 0.0;
 
@@ -337,7 +373,7 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
                 peak_sample = sample; // Simpan nilai aslinya (bisa negatif)
             }
         }
-        
+
         waveform.push(peak_sample);
     }
 
@@ -345,7 +381,7 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
     // Agar nilai tertinggi menyentuh tepat 1.0 atau -1.0
     // Ini membuat visualisasi terlihat penuh.
     let global_max = waveform.iter().fold(0.0f32, |max, &x| max.max(x.abs()));
-    
+
     if global_max > 0.0 {
         for val in &mut waveform {
             *val /= global_max;
@@ -359,22 +395,26 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
 fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Result<String, String> {
     // 1. Ambil koneksi DB sebentar untuk mencari "PR" (Pekerjaan Rumah)
     let db_arc = state.conn.clone(); // Clone Arc (murah, cuma copy pointer)
-    
+
     let to_process: Vec<(String, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            // Cari file audio yang waveform-nya masih default '[]' atau NULL
-            "SELECT uuid, original_path, filename FROM assets 
-             WHERE type = 'audio' AND (waveform_data = '[]' OR waveform_data IS NULL)"
-        ).map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                // Cari file audio yang waveform-nya masih default '[]' atau NULL
+                "SELECT uuid, original_path, filename FROM assets 
+             WHERE type = 'audio' AND (waveform_data = '[]' OR waveform_data IS NULL)",
+            )
+            .map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?, // uuid
-                row.get::<_, String>(1)?, // path
-                row.get::<_, String>(2)?  // filename
-            ))
-        }).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?, // uuid
+                    row.get::<_, String>(1)?, // path
+                    row.get::<_, String>(2)?, // filename
+                ))
+            })
+            .map_err(|e| e.to_string())?;
 
         // Ubah iterator jadi Vector agar lock DB bisa segera dilepas
         rows.filter_map(|r| r.ok()).collect()
@@ -390,18 +430,20 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         println!("Background process started for {} files", total_files);
 
         for (i, (uuid, path, filename)) in to_process.iter().enumerate() {
-            
             // A. Emit Event: "Sedang memproses lagu X..."
-            let _ = app.emit("waveform-progress", ProgressEvent {
-                current: i + 1,
-                total: total_files,
-                filename: filename.clone(),
-                status: "processing".to_string(),
-            });
+            let _ = app.emit(
+                "waveform-progress",
+                ProgressEvent {
+                    current: i + 1,
+                    total: total_files,
+                    filename: filename.clone(),
+                    status: "processing".to_string(),
+                },
+            );
 
             // B. Proses Berat (Decode Audio) - Tidak mengunci DB
             // Ingat: function get_audio_waveform kita sudah return Vec<f32> (-1 s/d 1)
-            let waveform_result = get_audio_waveform(path, 100); 
+            let waveform_result = get_audio_waveform(path, 100);
 
             match waveform_result {
                 Ok(data) => {
@@ -423,16 +465,22 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         }
 
         // D. Emit Event Selesai
-        let _ = app.emit("waveform-progress", ProgressEvent {
-            current: total_files,
-            total: total_files,
-            filename: "Selesai!".to_string(),
-            status: "done".to_string(),
-        });
+        let _ = app.emit(
+            "waveform-progress",
+            ProgressEvent {
+                current: total_files,
+                total: total_files,
+                filename: "Selesai!".to_string(),
+                status: "done".to_string(),
+            },
+        );
     });
 
     // Command utama langsung return, tidak menunggu thread selesai
-    Ok(format!("Memulai proses background untuk {} file...", total_files))
+    Ok(format!(
+        "Memulai proses background untuk {} file...",
+        total_files
+    ))
 }
 
 // Hapus decorator #[command] karena ini akan dipanggil internal oleh thread, bukan frontend
@@ -442,7 +490,8 @@ pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8
     let reader = BufReader::new(file);
 
     // 2. Decode ke RGBA8
-    let img = ImageReader::new(reader).with_guessed_format()
+    let img = ImageReader::new(reader)
+        .with_guessed_format()
         .map_err(|e| e.to_string())?
         .decode()
         .map_err(|e| e.to_string())?
@@ -453,8 +502,12 @@ pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8
 
     // 3. Setup Fast Image Resize
     let src_view = fast_image_resize::images::ImageRef::new(
-        width.get(), height.get(), img.as_raw(), PixelType::U8x4
-    ).map_err(|e| e.to_string())?;
+        width.get(),
+        height.get(),
+        img.as_raw(),
+        PixelType::U8x4,
+    )
+    .map_err(|e| e.to_string())?;
 
     let aspect_ratio = width.get() as f32 / height.get() as f32;
     let target_height = (target_width as f32 / aspect_ratio) as u32;
@@ -465,46 +518,61 @@ pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8
 
     // 4. Resize (Nearest Neighbor untuk kecepatan maksimal)
     let mut resizer = Resizer::new();
-    resizer.resize(
-        &src_view, 
-        &mut dst_image, 
-        &ResizeOptions::new().resize_alg(ResizeAlg::Nearest)
-    ).map_err(|e| e.to_string())?;
+    resizer
+        .resize(
+            &src_view,
+            &mut dst_image,
+            &ResizeOptions::new().resize_alg(ResizeAlg::Nearest),
+        )
+        .map_err(|e| e.to_string())?;
 
     // 5. Encode ke WebP (Raw Bytes)
     let mut buffer = Cursor::new(Vec::new());
     let encoder = WebPEncoder::new_lossless(&mut buffer); // Lossy
-    
-    encoder.write_image(
-        dst_image.buffer(),
-        target_width,
-        target_height,
-        ExtendedColorType::Rgba8
-    ).map_err(|e| e.to_string())?;
+
+    encoder
+        .write_image(
+            dst_image.buffer(),
+            target_width,
+            target_height,
+            ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| e.to_string())?;
 
     // Return Vec<u8> (BLOB siap simpan ke SQLite)
     Ok(buffer.into_inner())
 }
 
 #[tauri::command]
-fn generate_missing_thumbnails(app: tauri::AppHandle, state: tauri::State<'_, DbState>) -> Result<String, String> {
+fn generate_missing_thumbnails(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+) -> Result<String, String> {
     let db_arc = state.conn.clone();
+
+    // 1. Tentukan lokasi folder thumbnail di AppData
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let thumbnails_dir = app_data_dir.join("thumbnails");
     // 1. Ambil daftar file (khusus image) yang thumbnail_blob-nya masih kosong/NULL
     let to_process: Vec<(String, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT uuid, original_path, filename FROM assets 
+        let mut stmt = conn
+            .prepare(
+                "SELECT uuid, original_path, filename FROM assets 
              WHERE (thumbnail_blob IS NULL OR length(thumbnail_blob) = 0)
-             AND type = 'image'" // Untuk saat ini kita fokus ke image
-        ).map_err(|e| e.to_string())?;
+             AND type = 'image'", // Untuk saat ini kita fokus ke image
+            )
+            .map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?, // uuid
-                row.get::<_, String>(1)?, // path
-                row.get::<_, String>(2)?  // filename
-            ))
-        }).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?, // uuid
+                    row.get::<_, String>(1)?, // path
+                    row.get::<_, String>(2)?, // filename
+                ))
+            })
+            .map_err(|e| e.to_string())?;
 
         rows.filter_map(|r| r.ok()).collect()
     };
@@ -517,14 +585,16 @@ fn generate_missing_thumbnails(app: tauri::AppHandle, state: tauri::State<'_, Db
     // 2. Jalankan proses di background thread
     std::thread::spawn(move || {
         for (i, (uuid, path, filename)) in to_process.iter().enumerate() {
-            
             // A. Emit progress ke frontend
-            let _ = app.emit("thumbnail-progress", ProgressEvent {
-                current: i + 1,
-                total: total_files,
-                filename: filename.clone(),
-                status: "processing".to_string(),
-            });
+            let _ = app.emit(
+                "thumbnail-progress",
+                ProgressEvent {
+                    current: i + 1,
+                    total: total_files,
+                    filename: filename.clone(),
+                    status: "processing".to_string(),
+                },
+            );
 
             // B. Generate thumbnail menggunakan fungsi yang sudah Anda buat
             // Kita set width misalnya 200px
@@ -545,15 +615,21 @@ fn generate_missing_thumbnails(app: tauri::AppHandle, state: tauri::State<'_, Db
         }
 
         // D. Emit selesai
-        let _ = app.emit("thumbnail-progress", ProgressEvent {
-            current: total_files,
-            total: total_files,
-            filename: "Selesai!".to_string(),
-            status: "done".to_string(),
-        });
+        let _ = app.emit(
+            "thumbnail-progress",
+            ProgressEvent {
+                current: total_files,
+                total: total_files,
+                filename: "Selesai!".to_string(),
+                status: "done".to_string(),
+            },
+        );
     });
 
-    Ok(format!("Memulai proses background untuk {} thumbnail...", total_files))
+    Ok(format!(
+        "Memulai proses background untuk {} thumbnail...",
+        total_files
+    ))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -569,7 +645,7 @@ pub fn run() {
             // B. Buka Koneksi baru
             let conn = Connection::open(&db_path).unwrap();
 
-           // D. Aktifkan WAL Mode (Write-Ahead Logging) dan performa setting
+            // D. Aktifkan WAL Mode (Write-Ahead Logging) dan performa setting
             conn.pragma_update(None, "journal_mode", "WAL").unwrap();
             conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
             // E. Buat tabel baru jika belum ada
