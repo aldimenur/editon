@@ -15,7 +15,6 @@ export interface AssetMetadata {
 
 export interface Asset {
   id?: number; // Optional because it's auto-generated on insert
-  uuid: string;
   filename: string;
   extension: string;
   original_path: string;

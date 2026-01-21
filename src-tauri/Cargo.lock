@@ -1009,7 +1009,6 @@ dependencies = [
  "tauri-plugin-drag",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
- "uuid",
  "walkdir",
 ]
 

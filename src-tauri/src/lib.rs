@@ -23,7 +23,6 @@ use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use tauri::{AppHandle, Emitter};
 use tauri::{Manager, State};
-use uuid::Uuid;
 use walkdir::WalkDir;
 // Enum Metadata
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,14 +58,12 @@ struct ProgressEvent {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Asset {
     pub id: Option<i64>, // Option karena saat insert ID belum ada (auto increment)
-    pub uuid: String,
     pub filename: String,
     pub extension: String,
     pub original_path: String,
     pub type_name: String, // 'audio', 'video', 'image'
 
     pub thumbnail_path: Option<String>,
-    pub thumbnail_blob: Option<Vec<u8>>,
     pub duration_sec: f64,
     pub file_size: i64,
 
@@ -108,6 +105,33 @@ fn get_media_type(ext: &str) -> Option<String> {
     }
 }
 
+fn is_schema_valid(conn: &Connection) -> bool {
+    // Ambil info kolom dari tabel assets
+    let mut stmt = match conn.prepare("PRAGMA table_info(assets)") {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1)) // Index 1 adalah nama kolom
+        .unwrap()
+        .filter_map(|c| c.ok())
+        .collect();
+
+    if columns.is_empty() {
+        return true; // Tabel belum ada, biarkan 'CREATE TABLE IF NOT EXISTS' yang bekerja
+    }
+
+    // Daftar kolom yang wajib ada sesuai skema baru
+    let expected_columns = vec![
+        "id", "filename", "extension", "original_path", "type",
+        "thumbnail_path", "duration_sec", "file_size", "waveform_data", "metadata"
+    ];
+
+    // Cek apakah semua kolom yang diharapkan ada di database saat ini
+    expected_columns.iter().all(|&col| columns.contains(&col.to_string()))
+}
+
 #[tauri::command]
 fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -144,8 +168,8 @@ fn scan_and_import_folder(
         let mut stmt = tx
             .prepare_cached(
                 "INSERT OR IGNORE INTO assets 
-            (uuid, filename, extension, original_path, type, file_size, metadata, duration_sec) 
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            (filename, extension, original_path, type, file_size, metadata, duration_sec) 
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )
             .map_err(|e| e.to_string())?;
 
@@ -167,19 +191,17 @@ fn scan_and_import_folder(
                         let filename = path.file_name().unwrap().to_string_lossy().to_string();
                         let path_str = path.to_string_lossy().to_string();
                         let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                        let uuid = Uuid::new_v4().to_string();
 
                         // Eksekusi Insert
                         // Data berat (waveform, duration) diisi default dulu (0 atau kosong)
                         stmt.execute(rusqlite::params![
-                            uuid,             // ?1
-                            filename,         // ?2
-                            ext_str,          // ?3
-                            path_str,         // ?4
-                            media_type,       // ?5 ('audio', 'video', 'image')
-                            file_size as i64, // ?6
-                            "{}",             // ?7 Metadata JSON (kosong)
-                            0.0,              // ?8 Duration (0 detik)
+                            filename,         // ?1
+                            ext_str,          // ?2
+                            path_str,         // ?3
+                            media_type,       // ?4 ('audio', 'video', 'image')
+                            file_size as i64, // ?5
+                            "{}",             // ?6 Metadata JSON (kosong)
+                            0.0,              // ?7 Duration (0 detik)
                         ])
                         .map_err(|e| e.to_string())?;
 
@@ -268,8 +290,8 @@ fn get_assets_paginated(
     let offset = (page.max(1) - 1) * page_size;
 
     let sql_data = format!(
-        "SELECT id, uuid, filename, extension, original_path, type, 
-                thumbnail_path, duration_sec, file_size, waveform_data, metadata, thumbnail_blob
+        "SELECT id, filename, extension, original_path, type, 
+                thumbnail_path, duration_sec, file_size, waveform_data, metadata
          {} 
          ORDER BY id ASC 
          LIMIT {} OFFSET {}",
@@ -287,14 +309,12 @@ fn get_assets_paginated(
 
             Ok(Asset {
                 id: row.get("id")?,
-                uuid: row.get("uuid")?,
                 filename: row.get("filename")?,
                 extension: row.get("extension")?,
                 original_path: row.get("original_path")?,
                 type_name: row.get("type")?,
                 thumbnail_path: row.get("thumbnail_path")?,
                 duration_sec: row.get("duration_sec")?,
-                thumbnail_blob: row.get("thumbnail_blob")?,
                 file_size: row.get("file_size")?,
                 waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
                 metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
@@ -403,12 +423,12 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
     // 1. Ambil koneksi DB sebentar untuk mencari "PR" (Pekerjaan Rumah)
     let db_arc = state.conn.clone(); // Clone Arc (murah, cuma copy pointer)
 
-    let to_process: Vec<(String, String, String)> = {
+    let to_process: Vec<(i64, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
                 // Cari file audio yang waveform-nya masih default '[]' atau NULL
-                "SELECT uuid, original_path, filename FROM assets 
+                "SELECT id, original_path, filename FROM assets 
              WHERE type = 'audio' AND (waveform_data = '[]' OR waveform_data IS NULL)",
             )
             .map_err(|e| e.to_string())?;
@@ -416,7 +436,7 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?, // uuid
+                    row.get::<_, i64>(0)?, // id
                     row.get::<_, String>(1)?, // path
                     row.get::<_, String>(2)?, // filename
                 ))
@@ -441,7 +461,7 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         to_process
             .par_iter()
             .enumerate()
-            .for_each(|(_, (uuid, path, filename))| {
+            .for_each(|(_, (id, path, filename))| {
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                 // A. Emit Event: "Sedang memproses lagu X..."
                 let _ = app.emit(
@@ -465,8 +485,8 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
                         // C. Update DB (Hanya lock sebentar saat update row ini saja)
                         if let Ok(conn) = db_arc.lock() {
                             let _ = conn.execute(
-                                "UPDATE assets SET waveform_data = ?1 WHERE uuid = ?2",
-                                [&json_data, uuid],
+                                "UPDATE assets SET waveform_data = ?1 WHERE id = ?2",
+                                rusqlite::params![json_data, id],
                             );
                         }
                     }
@@ -571,13 +591,13 @@ fn generate_missing_thumbnails(
     if !thumbnails_dir.exists() {
         std::fs::create_dir_all(&thumbnails_dir).map_err(|e| e.to_string())?;
     }
-    // 2. Ambil daftar file (khusus image) yang thumbnail_blob-nya masih kosong/NULL
-    let to_process: Vec<(String, String, String)> = {
+    // 2. Ambil daftar file (khusus image) yang thumbnail_path-nya masih kosong/NULL
+    let to_process: Vec<(i64, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT uuid, original_path, filename FROM assets 
-             WHERE (thumbnail_blob IS NULL OR length(thumbnail_blob) = 0)
+                "SELECT id, original_path, filename FROM assets 
+             WHERE (thumbnail_path IS NULL)
              AND type = 'image'", // Untuk saat ini kita fokus ke image
             )
             .map_err(|e| e.to_string())?;
@@ -585,7 +605,7 @@ fn generate_missing_thumbnails(
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?, // uuid
+                    row.get::<_, i64>(0)?, // id
                     row.get::<_, String>(1)?, // path
                     row.get::<_, String>(2)?, // filename
                 ))
@@ -606,7 +626,7 @@ fn generate_missing_thumbnails(
         to_process
             .par_iter()
             .enumerate()
-            .for_each(|(_, (uuid, path, filename))| {
+            .for_each(|(_, (id, path, filename))| {
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
                 let _ = app.emit(
@@ -622,7 +642,7 @@ fn generate_missing_thumbnails(
                 match generate_thumbnail_buffer(path, 200) {
                     Ok(blob) => {
                         // Simpan blob ke file system
-                        let thumb_filename = format!("{}.webp", uuid);
+                        let thumb_filename = format!("{}.webp", id);
                         let thumb_path = thumbnails_dir.join(&thumb_filename);
                         let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
@@ -630,8 +650,8 @@ fn generate_missing_thumbnails(
                             // Update database: simpan path-nya dan hapus blob untuk menghemat space DB
                             if let Ok(conn) = db_arc.lock() {
                                 let _ = conn.execute(
-                                    "UPDATE assets SET thumbnail_path = ?1 WHERE uuid = ?2",
-                                    rusqlite::params![thumb_path_str, uuid],
+                                    "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
+                                    rusqlite::params![thumb_path_str, id],
                                 );
                             }
                         }
@@ -683,6 +703,17 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir).unwrap();
             let db_path = app_data_dir.join("editon.db");
 
+            {
+                let conn = Connection::open(&db_path).unwrap();
+                if !is_schema_valid(&conn) {
+                    println!("Schema mismatch detected. Recreating database...");
+                    drop(conn); // Tutup koneksi agar file bisa dihapus
+                    if let Err(e) = std::fs::remove_file(&db_path) {
+                        println!("Warning: Failed to delete old DB: {}", e);
+                    }
+                }
+            }
+
             // B. Buka Koneksi baru
             let conn = Connection::open(&db_path).unwrap();
 
@@ -693,13 +724,11 @@ pub fn run() {
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS assets (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    uuid            TEXT NOT NULL UNIQUE,
                     filename        TEXT NOT NULL,
                     extension       TEXT NOT NULL,
                     original_path   TEXT NOT NULL UNIQUE,
                     type            TEXT NOT NULL,
                     thumbnail_path  TEXT,
-                    thumbnail_blob  BLOB,
                     duration_sec    REAL DEFAULT 0,
                     file_size       INTEGER NOT NULL,
                     waveform_data   TEXT,
