@@ -3,13 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Search, Volume2, LayoutList, LayoutGrid, Maximize2 } from "lucide-react";
+import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, Download, MoreHorizontal } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-
-type ViewMode = "list" | "grid" | "large";
+import useViewStore from "@/stores/view-store";
 
 const ITEM_HEIGHTS = {
   list: 90,
@@ -24,7 +23,7 @@ const SfxPage = () => {
   const [pageSize] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
   const [sliderValue, setSliderValue] = useState(0.5);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = files.length < searchCount;
 
@@ -79,7 +78,7 @@ const SfxPage = () => {
 
   // Calculate row count based on view mode
   const getRowCount = () => {
-    if (viewMode === "grid") {
+    if (viewModeAudio === "grid") {
       return Math.ceil(files.length / 2);
     }
     return files.length;
@@ -88,7 +87,8 @@ const SfxPage = () => {
   const rowVirtualizer = useVirtualizer({
     count: getRowCount(),
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ITEM_HEIGHTS[viewMode],
+    estimateSize: () => ITEM_HEIGHTS[viewModeAudio],
+    getItemKey: (index) => `${viewModeAudio}-${index}`, // reset size cache when mode changes
     overscan: 10,
   });
 
@@ -102,7 +102,7 @@ const SfxPage = () => {
     const lastItem = virtualItems[virtualItems.length - 1];
 
     // Calculate actual file index based on view mode
-    const actualLastIndex = viewMode === "grid"
+    const actualLastIndex = viewModeAudio === "grid"
       ? (lastItem.index * 2) + 1  // In grid mode, each row has 2 items
       : lastItem.index;
 
@@ -112,37 +112,57 @@ const SfxPage = () => {
       console.log("Loading next page:", nextPage);
       readMediaFiles(nextPage);
     }
-  }, [rowVirtualizer.getVirtualItems(), files.length, hasMore, isLoading, pageSize, viewMode]);
+  }, [rowVirtualizer.getVirtualItems(), files.length, hasMore, isLoading, pageSize, viewModeAudio]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {
+    rowVirtualizer.measure(); // force recalculation with new item heights
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-  }, [viewMode]);
+  }, [viewModeAudio, rowVirtualizer]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalHeight = rowVirtualizer.getTotalSize();
 
   const showEmptyState = !isLoading && files.length === 0;
 
-  const renderAudioCard = (file: Asset, waveHeight: number, minHeight?: number) => {
+  const renderAudioCard = (file: Asset, waveHeight: number, minHeight: number) => {
     return (
       <div
         key={file.id}
-        className="border rounded-lg"
-        style={minHeight ? { minHeight } : undefined}
+        className="border-2 rounded-lg flex"
+        style={{ height: minHeight, width: "100%" }}
       >
-        <p className="text-xs font-medium mb-2 bg-accent p-1 text-ellipsis overflow-hidden whitespace-nowrap">
-          {file.filename}
-        </p>
-        <WavesurferRender
-          src={file.original_path}
-          waveform={file.waveform_data || []}
-          volume={sliderValue}
-          height={waveHeight}
-          width={"100%"}
-        />
+        <div className="h-full flex flex-col flex-1 bg-accent">
+          <div className="flex justify-between items-center">
+            <p className="text-xs font-medium p-1 w-32 truncate whitespace-nowrap pb-2">
+              {file.filename}
+            </p>
+            <Button variant="ghost" size="icon-sm">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex justify-center items-center h-full bg-background">
+            <WavesurferRender
+              src={file.original_path}
+              waveform={file.waveform_data || []}
+              volume={sliderValue}
+              height={waveHeight}
+              width={"100%"}
+            />
+          </div>
+        </div>
+        <div className="px-2 bg-accent/50 flex">
+          <div className="mt-2 flex flex-col justify-center gap-1">
+            <Button variant="ghost" size="icon-sm">
+              <FolderSearch className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon-sm">
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -153,25 +173,25 @@ const SfxPage = () => {
         {/* View Mode Switcher */}
         <div className="flex gap-1 mr-2">
           <Button
-            variant={viewMode === "list" ? "default" : "outline"}
+            variant={viewModeAudio === "list" ? "default" : "outline"}
             size="icon"
-            onClick={() => setViewMode("list")}
+            onClick={() => setViewModeAudio("list")}
             className="h-8 w-8"
           >
             <LayoutList className="h-4 w-4" />
           </Button>
           <Button
-            variant={viewMode === "grid" ? "default" : "outline"}
+            variant={viewModeAudio === "grid" ? "default" : "outline"}
             size="icon"
-            onClick={() => setViewMode("grid")}
+            onClick={() => setViewModeAudio("grid")}
             className="h-8 w-8"
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
           <Button
-            variant={viewMode === "large" ? "default" : "outline"}
+            variant={viewModeAudio === "large" ? "default" : "outline"}
             size="icon"
-            onClick={() => setViewMode("large")}
+            onClick={() => setViewModeAudio("large")}
             className="h-8 w-8"
           >
             <Maximize2 className="h-4 w-4" />
@@ -215,17 +235,17 @@ const SfxPage = () => {
         ) : (
           <div
             className="relative w-full"
-              style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewMode] : 0) }}
+              style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeAudio] : 0) }}
           >
             {!!virtualItems.length && (
               <div
                   className={`absolute left-0 right-0 space-y-2`}
-                style={{
-                  transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-                }}
+                  style={{
+                    transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+                  }}
               >
                 {virtualItems.map((virtualRow) => {
-                  if (viewMode === "grid") {
+                  if (viewModeAudio === "grid") {
                     // Grid mode: 2 columns
                     const file1 = files[virtualRow.index * 2];
                     const file2 = files[virtualRow.index * 2 + 1];
@@ -236,8 +256,8 @@ const SfxPage = () => {
                         className="grid grid-cols-2 gap-2"
                         style={{ minHeight: virtualRow.size }}
                       >
-                        {file1 && renderAudioCard(file1, 60)}
-                        {file2 && renderAudioCard(file2, 60)}
+                        {file1 && renderAudioCard(file1, 60, virtualRow.size)}
+                        {file2 && renderAudioCard(file2, 60, virtualRow.size)}
                       </div>
                     );
                   } else {
@@ -245,7 +265,7 @@ const SfxPage = () => {
                     const file = files[virtualRow.index];
                     if (!file) return null;
 
-                    const waveHeight = viewMode === "large" ? 90 : 50;
+                    const waveHeight = viewModeAudio === "large" ? 80 : 30;
                     return renderAudioCard(file, waveHeight, virtualRow.size);
                   }
                 })}

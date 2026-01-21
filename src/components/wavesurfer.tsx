@@ -6,7 +6,7 @@ import { startDrag } from "@crabnebula/tauri-plugin-drag";
 const WavesurferRender = (props: {
   src: string;
   width: number | string;
-  height: number;
+  height: number | "auto";
   waveform: number[];
   volume: number;
 }) => {
@@ -23,7 +23,6 @@ const WavesurferRender = (props: {
 
     // Generate 10 numbers between -1 and 1
     const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
-    const duration = 5;
 
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
@@ -33,7 +32,7 @@ const WavesurferRender = (props: {
       cursorColor: "#ffffff55",
       backend: "MediaElement",
       peaks: [placeholderPeaks],
-      duration: duration,
+      duration: 10,
     });
 
     wavesurferRef.current = wavesurfer;
@@ -51,7 +50,7 @@ const WavesurferRender = (props: {
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.stopPropagation();
+    isHoveringRef.current = false;
     wavesurferRef.current?.pause();
     try {
       startDrag({
@@ -119,21 +118,27 @@ const WavesurferRender = (props: {
 
   return (
     <div
-      className="cursor-pointer active:cursor-grabbing relative"
+      className="cursor-pointer active:cursor-grabbing w-full"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      style={{ height: height }}
     >
       <div
         ref={containerRef}
-        style={{ visibility: isLoading ? "hidden" : "visible" }}
+        className="w-full overflow-hidden h-fit"
+        style={{
+          visibility: isLoading ? "hidden" : "visible",
+          height: height,
+          minHeight: height
+        }}
       />
       {isLoading && (
         <div
-          className="absolute inset-0 flex items-center justify-center z-10"
-          style={{ width: width, height: height }}
+          className="absolute inset-0 flex items-center justify-center z-10 bg-background/50"
+          style={{ height: height }}
         >
           <div className="flex flex-col items-center gap-2">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#11ddaa]"></div>

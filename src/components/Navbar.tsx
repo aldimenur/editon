@@ -135,7 +135,7 @@ const Navbar = () => {
       <div className="flex items-center justify-between pt-3 px-3">
         <h3 className="text-sm font-medium select-none">Editon</h3>
       </div>
-      <div className="mt-4 gap-1 flex flex-col h-screen px-3">
+      <div className="mt-4 gap-1 flex flex-col h-screen px-3 select-none">
         {sidebarItems.map((item) => (
           <div
             key={item.path}
