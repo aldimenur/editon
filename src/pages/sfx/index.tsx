@@ -155,7 +155,7 @@ const SfxPage = () => {
         </div>
         <div className="px-2 bg-accent/50 flex">
           <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button variant="ghost" size="icon-sm">
+            <Button variant="ghost" size="icon-sm" onClick={() => invoke("show_in_folder", { path: file.original_path })}>
               <FolderSearch className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon-sm">

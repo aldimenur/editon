@@ -143,6 +143,26 @@ fn is_schema_valid(conn: &Connection) -> bool {
 }
 
 #[tauri::command]
+fn show_in_folder(path: String) {
+    use std::process::Command;
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .unwrap();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Fallback untuk OS lain (buka foldernya saja)
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let _ = open::that(parent); // Bisa pakai crate 'open' biar simpel
+        }
+    }
+}
+
+#[tauri::command]
 fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
 
@@ -796,7 +816,8 @@ pub fn run() {
             generate_missing_waveforms,
             get_assets_paginated,
             generate_missing_thumbnails,
-            get_count_assets
+            get_count_assets,
+            show_in_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
