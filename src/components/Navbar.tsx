@@ -1,14 +1,14 @@
 import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
+import { faYoutube } from "@fortawesome/free-brands-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { Image, Music, WifiSync, Video } from "lucide-react";
-import { ModeToggle } from "./mode-toggle";
-import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
+import { Image, Music, Video } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ModeToggle } from "./mode-toggle";
 import { Progress } from "./ui/progress";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
-import { faYoutube } from "@fortawesome/free-brands-svg-icons"
 
 const sidebarItems = [
   {
