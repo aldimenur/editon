@@ -98,6 +98,7 @@ const Navbar = () => {
 
         if (payload.status === "done") {
           setProgress(null);
+          window.location.reload();
         }
       });
 
@@ -113,6 +114,7 @@ const Navbar = () => {
 
         if (payload.status === "done") {
           setProgress(null);
+          window.location.reload();
         }
       });
     }

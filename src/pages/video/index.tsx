@@ -430,16 +430,8 @@ const VideoPage = () => {
             {file.filename}
           </p>
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>
-              {file.metadata?.width && file.metadata?.height
-                ? `${file.metadata.width}x${file.metadata.height}`
-                : "Unknown"}
-            </span>
-            <span>{formatDuration(file.duration_sec)}</span>
+            <span className="truncate max-w-[70%]">{file.original_path}</span>
             <span>{formatFileSize(file.file_size)}</span>
-            {file.metadata?.frame_rate && viewMode !== "grid" && (
-              <span>{file.metadata.frame_rate} fps</span>
-            )}
           </div>
         </div>
       </div>

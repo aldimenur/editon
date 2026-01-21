@@ -124,12 +124,22 @@ fn is_schema_valid(conn: &Connection) -> bool {
 
     // Daftar kolom yang wajib ada sesuai skema baru
     let expected_columns = vec![
-        "id", "filename", "extension", "original_path", "type",
-        "thumbnail_path", "duration_sec", "file_size", "waveform_data", "metadata"
+        "id",
+        "filename",
+        "extension",
+        "original_path",
+        "type",
+        "thumbnail_path",
+        "duration_sec",
+        "file_size",
+        "waveform_data",
+        "metadata",
     ];
 
     // Cek apakah semua kolom yang diharapkan ada di database saat ini
-    expected_columns.iter().all(|&col| columns.contains(&col.to_string()))
+    expected_columns
+        .iter()
+        .all(|&col| columns.contains(&col.to_string()))
 }
 
 #[tauri::command]
@@ -436,7 +446,7 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, i64>(0)?, // id
+                    row.get::<_, i64>(0)?,    // id
                     row.get::<_, String>(1)?, // path
                     row.get::<_, String>(2)?, // filename
                 ))
@@ -516,8 +526,22 @@ fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Resu
     ))
 }
 
-// Hapus decorator #[command] karena ini akan dipanggil internal oleh thread, bukan frontend
-pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8>, String> {
+fn get_image_metadata(path: &str, ext: &str) -> AssetMetadata {
+    if ext == "svg" {
+        return AssetMetadata::None;
+    }
+
+    match image::image_dimensions(path) {
+        Ok((w, h)) => AssetMetadata::Image {
+            width: w,
+            height: h,
+            format: ext.to_string(),
+        },
+        Err(_) => AssetMetadata::None,
+    }
+}
+
+fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8>, String> {
     // 1. Buka File (Gunakan BufReader untuk sedikit optimasi I/O)
     let file = File::open(path).map_err(|e| e.to_string())?;
     let reader = BufReader::new(file);
@@ -592,11 +616,11 @@ fn generate_missing_thumbnails(
         std::fs::create_dir_all(&thumbnails_dir).map_err(|e| e.to_string())?;
     }
     // 2. Ambil daftar file (khusus image) yang thumbnail_path-nya masih kosong/NULL
-    let to_process: Vec<(i64, String, String)> = {
+    let to_process: Vec<(i64, String, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, original_path, filename FROM assets 
+                "SELECT id, original_path, filename, extension FROM assets 
              WHERE (thumbnail_path IS NULL)
              AND type = 'image'", // Untuk saat ini kita fokus ke image
             )
@@ -605,9 +629,10 @@ fn generate_missing_thumbnails(
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, i64>(0)?, // id
+                    row.get::<_, i64>(0)?,    // id
                     row.get::<_, String>(1)?, // path
                     row.get::<_, String>(2)?, // filename
+                    row.get::<_, String>(3)?, // extension
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -626,7 +651,9 @@ fn generate_missing_thumbnails(
         to_process
             .par_iter()
             .enumerate()
-            .for_each(|(_, (id, path, filename))| {
+            .for_each(|(_, (id, path, filename, extension))| {
+                let metadata = get_image_metadata(path, extension);
+                let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
                 let _ = app.emit(
@@ -639,6 +666,16 @@ fn generate_missing_thumbnails(
                     },
                 );
 
+                if extension.to_lowercase() == "svg" {
+                    if let Ok(conn) = db_arc.lock() {
+                        let _ = conn.execute(
+                            "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
+                            rusqlite::params![path, id],
+                        );
+                    };
+                    return;
+                }
+
                 match generate_thumbnail_buffer(path, 200) {
                     Ok(blob) => {
                         // Simpan blob ke file system
@@ -650,8 +687,8 @@ fn generate_missing_thumbnails(
                             // Update database: simpan path-nya dan hapus blob untuk menghemat space DB
                             if let Ok(conn) = db_arc.lock() {
                                 let _ = conn.execute(
-                                    "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
-                                    rusqlite::params![thumb_path_str, id],
+                                    "UPDATE assets SET thumbnail_path = ?1, metadata = ?2 WHERE id = ?3",
+                                    rusqlite::params![thumb_path_str, metadata_json, id],
                                 );
                             }
                         }
