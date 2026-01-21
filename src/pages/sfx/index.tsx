@@ -205,7 +205,7 @@ const SfxPage = () => {
           </div>
         </div>
       </div>
-      <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
+      <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto pr-2">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
             {sfxSearch
@@ -219,7 +219,7 @@ const SfxPage = () => {
           >
             {!!virtualItems.length && (
               <div
-                className="absolute left-0 right-0 space-y-2"
+                  className={`absolute left-0 right-0 space-y-2`}
                 style={{
                   transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
                 }}

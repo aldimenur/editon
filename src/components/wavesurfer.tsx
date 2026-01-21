@@ -16,12 +16,13 @@ const WavesurferRender = (props: {
   const [isLoading, setIsLoading] = useState(false);
   const isLoadedRef = useRef(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isHoveringRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     // Generate 10 numbers between -1 and 1
-    const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6 , -1, -0.5, 0, -0.2, 1, 0.5 , 0];
+    const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
     const duration = 5;
 
     const wavesurfer = WaveSurfer.create({
@@ -68,30 +69,44 @@ const WavesurferRender = (props: {
     }
   }, [volume]);
 
-  const handleMouseEnter = async () => {
-    // Clear any existing timeout
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
 
-    // Wait 1 second before detecting the mouse
+  useEffect(() => {
+    isLoadedRef.current = false;
+    // Jika src berubah, pastikan audio yang sedang loading/playing berhenti
+    if (wavesurferRef.current) {
+      wavesurferRef.current.pause();
+    }
+  }, [src]);
+
+  const handleMouseEnter = async () => {
+    isHoveringRef.current = true;
+
     hoverTimeoutRef.current = setTimeout(async () => {
-      if (wavesurferRef.current) {
-        if (!isLoadedRef.current) {
-          setIsLoading(true);
+      // CEK 1: Jangan lanjut jika mouse sudah keburu pergi sebelum 300ms
+      if (!isHoveringRef.current || !wavesurferRef.current) return;
+
+      if (!isLoadedRef.current) {
+        setIsLoading(true);
+        try {
           await wavesurferRef.current.load(convertFileSrc(src));
           isLoadedRef.current = true;
+        } catch (error) {
+          console.error("Gagal memuat audio:", error);
+        } finally {
           setIsLoading(false);
-          wavesurferRef.current.play();
-        } else {
-          wavesurferRef.current.play();
         }
       }
-    }, 100);
+      // CEK 2: Penting! Cek lagi apakah mouse masih di sana setelah loading selesai
+      // (Terutama untuk file besar yang butuh waktu loading lama)
+      if (isHoveringRef.current && wavesurferRef.current) {
+        wavesurferRef.current.play();
+      }
+    }, 300);
   };
 
   const handleMouseLeave = async () => {
-    // Clear the timeout if mouse leaves before 1 second
+    isHoveringRef.current = false; // Set status hover tidak aktif
+
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
