@@ -141,11 +141,13 @@ fn scan_and_import_folder(
     {
         // B. Siapkan Query
         // Gunakan INSERT OR IGNORE: Jika file dengan path yang sama sudah ada, skip (tidak error).
-        let mut stmt = tx.prepare_cached(
-            "INSERT OR IGNORE INTO assets 
-            (uuid, filename, extension, original_path, type, file_size, waveform_data, metadata, duration_sec) 
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
-        ).map_err(|e| e.to_string())?;
+        let mut stmt = tx
+            .prepare_cached(
+                "INSERT OR IGNORE INTO assets 
+            (uuid, filename, extension, original_path, type, file_size, metadata, duration_sec) 
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )
+            .map_err(|e| e.to_string())?;
 
         // C. Loop Folder (Recursive)
         for entry in WalkDir::new(&folder_path)
@@ -176,9 +178,8 @@ fn scan_and_import_folder(
                             path_str,         // ?4
                             media_type,       // ?5 ('audio', 'video', 'image')
                             file_size as i64, // ?6
-                            "[]",             // ?7 Waveform JSON (kosong)
-                            "{}",             // ?8 Metadata JSON (kosong)
-                            0.0,              // ?9 Duration (0 detik)
+                            "{}",             // ?7 Metadata JSON (kosong)
+                            0.0,              // ?8 Duration (0 detik)
                         ])
                         .map_err(|e| e.to_string())?;
 
@@ -208,8 +209,9 @@ fn get_count_assets(state: State<'_, DbState>, asset_type: String) -> Result<u64
         conn.query_row(
             "SELECT COUNT(*) FROM assets WHERE type = ?1",
             [asset_type],
-            |row| row.get(0)
-        ).map_err(|e| e.to_string())?
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?
     };
 
     // 3. Kembalikan hasilnya
@@ -316,7 +318,6 @@ fn get_assets_paginated(
 }
 
 fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
-    // 1. Setup Symphonia (Sama seperti sebelumnya)
     let src = File::open(Path::new(path))?;
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
     let hint = Hint::new();
@@ -329,12 +330,14 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
     let mut format = probed.format;
     let track = format.default_track().ok_or("No default track")?;
     let track_id = track.id;
+
     let mut decoder =
         symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
 
-    let mut all_samples: Vec<f32> = Vec::new();
+    // Kita kumpulkan peak dari setiap paket audio (Streaming)
+    // Ini JAUH lebih hemat RAM daripada menyimpan semua sample
+    let mut packet_peaks: Vec<f32> = Vec::new();
 
-    // 2. Decoding Loop (Sama seperti sebelumnya)
     loop {
         let packet = match format.next_packet() {
             Ok(packet) => packet,
@@ -350,67 +353,49 @@ fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn s
             Ok(decoded) => {
                 let spec = *decoded.spec();
                 let duration = decoded.capacity() as u64;
+
+                // Gunakan buffer sementara untuk satu paket saja
                 let mut sample_buf = SampleBuffer::<f32>::new(duration, spec);
                 sample_buf.copy_interleaved_ref(decoded);
                 let samples = sample_buf.samples();
-                let channels = spec.channels.count();
 
-                // Mixdown Stereo ke Mono
-                if channels == 1 {
-                    all_samples.extend_from_slice(samples);
-                } else {
-                    for frame in samples.chunks(channels) {
-                        let sum: f32 = frame.iter().sum();
-                        all_samples.push(sum / channels as f32);
+                // Cari peak di paket ini saja
+                let mut p_max = 0.0f32;
+                for &s in samples {
+                    let abs_s = s.abs();
+                    if abs_s > p_max {
+                        p_max = abs_s;
                     }
                 }
+                packet_peaks.push(p_max);
             }
             Err(_) => break,
         }
     }
 
-    if all_samples.is_empty() {
-        return Ok(vec![]);
+    if packet_peaks.is_empty() {
+        return Ok(vec![0.0; num_bars]);
     }
 
-    // --- LOGIKA BARU DI SINI (-1 s/d 1) ---
+    // 2. Resample packet_peaks menjadi tepat num_bars (thumbnail size)
+    let chunk_size = (packet_peaks.len() as f32 / num_bars as f32).max(1.0);
+    let mut waveform = Vec::with_capacity(num_bars);
 
-    let total_samples = all_samples.len();
-    // Hitung berapa sample per satu titik data
-    let chunk_size = (total_samples as f32 / num_bars as f32).ceil() as usize;
+    for i in 0..num_bars {
+        let start = (i as f32 * chunk_size) as usize;
+        let end = ((i + 1) as f32 * chunk_size) as usize;
 
-    let mut waveform: Vec<f32> = Vec::with_capacity(num_bars);
-
-    for chunk in all_samples.chunks(chunk_size) {
-        // Cari sample dengan AMPLITUDO TERBESAR (Absolut) di chunk ini
-        // Kita ingin mempertahankan apakah dia positif atau negatif
-
-        let mut peak_sample = 0.0;
-        let mut max_abs_val = 0.0;
-
-        for &sample in chunk {
-            let abs_val = sample.abs();
-            if abs_val > max_abs_val {
-                max_abs_val = abs_val;
-                peak_sample = sample; // Simpan nilai aslinya (bisa negatif)
+        let mut peak = 0.0f32;
+        for j in start..end.min(packet_peaks.len()) {
+            if packet_peaks[j] > peak {
+                peak = packet_peaks[j];
             }
         }
-
-        waveform.push(peak_sample);
-    }
-
-    // 3. Normalisasi (Opsional tapi disarankan)
-    // Agar nilai tertinggi menyentuh tepat 1.0 atau -1.0
-    // Ini membuat visualisasi terlihat penuh.
-    let global_max = waveform.iter().fold(0.0f32, |max, &x| max.max(x.abs()));
-
-    if global_max > 0.0 {
-        for val in &mut waveform {
-            *val /= global_max;
-        }
+        waveform.push(peak);
     }
 
     Ok(waveform)
+    // Kecepatan Maksimal: Ini adalah jalur eksekusi paling pendek. Decoding -> Peak Paket -> Resample -> Selesai.
 }
 
 #[tauri::command]
