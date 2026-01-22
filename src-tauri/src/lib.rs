@@ -6,6 +6,7 @@ use image::ImageReader;
 use rayon::prelude::*;
 use rusqlite::{Connection, Result, ToSql};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -112,18 +113,18 @@ fn is_schema_valid(conn: &Connection) -> bool {
         Err(_) => return false,
     };
 
-    let columns: Vec<String> = stmt
+    let existing_columns: HashSet<String> = stmt
         .query_map([], |row| row.get::<_, String>(1)) // Index 1 adalah nama kolom
         .unwrap()
         .filter_map(|c| c.ok())
         .collect();
 
-    if columns.is_empty() {
+    if existing_columns.is_empty() {
         return true; // Tabel belum ada, biarkan 'CREATE TABLE IF NOT EXISTS' yang bekerja
     }
 
     // Daftar kolom yang wajib ada sesuai skema baru
-    let expected_columns = vec![
+    let expected_columns_vec = vec![
         "id",
         "filename",
         "extension",
@@ -135,11 +136,18 @@ fn is_schema_valid(conn: &Connection) -> bool {
         "waveform_data",
         "metadata",
     ];
+    let expected_columns: HashSet<String> = expected_columns_vec
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
 
-    // Cek apakah semua kolom yang diharapkan ada di database saat ini
-    expected_columns
-        .iter()
-        .all(|&col| columns.contains(&col.to_string()))
+    // Periksa apakah semua kolom yang diharapkan ada di database
+    let all_expected_cols_present = expected_columns.is_subset(&existing_columns);
+
+    // Periksa apakah tidak ada kolom tambahan di database yang tidak diharapkan
+    let no_extra_cols_present = existing_columns.is_subset(&expected_columns);
+
+    all_expected_cols_present && no_extra_cols_present
 }
 
 #[tauri::command]
