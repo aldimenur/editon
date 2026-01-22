@@ -118,7 +118,7 @@ const WavesurferRender = (props: {
 
   return (
     <div
-      className="cursor-pointer active:cursor-grabbing w-full"
+      className="cursor-pointer active:cursor-grabbing w-full relative"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

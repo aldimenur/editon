@@ -9,6 +9,9 @@ import { Image, Music, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Progress } from "./ui/progress";
+import { check } from "@tauri-apps/plugin-updater";
+import { Button } from "./ui/button";
+import { getVersion } from "@tauri-apps/api/app";
 
 const sidebarItems = [
   {
@@ -40,6 +43,26 @@ const sidebarItems = [
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
   const { setParentPath, setSfx, setVideo, setImage, sfx, video, image } = useAssetStore((state) => state);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [appVersion, setAppVersion] = useState("Unknown");
+
+  useEffect(() => {
+    const getAppVersion = async () => {
+      const version = await getVersion();
+      setAppVersion(version);
+    }
+    getAppVersion();
+  }, []);
+
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      const updates = await check();
+      if (updates) {
+        setUpdateAvailable(true);
+      }
+    };
+    checkForUpdates();
+  }, []);
 
   const handleSetPath = async () => {
     try {
@@ -129,6 +152,14 @@ const Navbar = () => {
 
   const progressPercentage = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
+  const handleUpdate = async () => {
+    const update = await check();
+    if (update) {
+      await update.download();
+      await update.install();
+      window.location.reload();
+    }
+  }
 
   return (
     <div className="flex flex-col w-[170px] bg-sidebar text-sidebar-foreground">
@@ -186,15 +217,28 @@ const Navbar = () => {
             </div>
           </div>
         )}
+        {updateAvailable &&
+          <div className="col-span-2 flex">
+            <span className="text-sm text-green-500 p-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
+              Update available
+            </span>
+            <Button variant="default" size="sm" onClick={handleUpdate}>Update</Button>
+          </div>
+        }
 
-        <div className="p-2 flex gap-2">
+        <div className="p-2 flex gap-2 col-span-2 justify-center">
           <ModeToggle />
-          <button
-            className="text-sm text-muted-foreground cursor-pointer justify-end hover:bg-sidebar-accent min-w-24 rounded-md"
+          <Button
             onClick={() => handleSetPath()}
+            variant="outline"
+            size="default"
           >
             Scan Folder
-          </button>
+          </Button>
+        </div>
+
+        <div className="col-span-2 flex justify-center">
+          <span className="text-xs text-accent">Version {appVersion}</span>
         </div>
       </div>
     </div>

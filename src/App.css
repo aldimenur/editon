@@ -62,10 +62,10 @@
   --secondary: oklch(0.96 0 0);     /* Abu-abu sangat muda */
   --secondary-foreground: oklch(0.2 0 0);
 
-  --muted: oklch(0.96 0 0);
+  --muted: oklch(1 0 0);
   --muted-foreground: oklch(0.55 0 0);
 
-  --accent: oklch(0.96 0 0);
+  --accent: oklch(0.7 0 0);
   --accent-foreground: oklch(0.2 0 0);
 
   --destructive: oklch(0.577 0.245 27.325);

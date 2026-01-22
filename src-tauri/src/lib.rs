@@ -805,7 +805,7 @@ pub fn run() {
 
             // F. Buat index baru (gunakan IF NOT EXISTS supaya tidak error)
             conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_path_type 
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_path_type
                  ON assets(original_path, type)",
                 [],
             )?;
