@@ -5,7 +5,23 @@ import { useEffect, useState } from "react";
 
 const YoutubeDownloadPage = () => {
   const [progress, setProgress] = useState(0);
-  const [videoProgress, setVideoProgress] = useState(null);
+  const [videoProgress, setVideoProgress] = useState(0);
+
+  const parseProgress = (line: string): number => {
+    // Pola utama: "[download]  45.2% of    9.89MiB at ..."
+    const progressMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
+    if (progressMatch) {
+      return parseFloat(progressMatch[1]);
+    }
+
+    // Pola alternatif untuk 100%: "[download] 100% of ..."
+    const fullMatch = line.match(/\[download\]\s+100%/);
+    if (fullMatch) {
+      return 100.0;
+    }
+
+    return 0;
+  }
 
   const checkDependencies = async () => {
     const response = await invoke("check_dependencies") as { yt_dlp_installed: boolean; bin_dir: string };
@@ -18,21 +34,22 @@ const YoutubeDownloadPage = () => {
   }
 
   const downloadVideo = async () => {
-    const args = ["https://www.youtube.com/watch?v=iW2FUY3N-n0", "-P", ""]
+    const args = ["https://www.youtube.com/watch?v=WlhuQhYIXFo", "--progress"]
 
     const res = await invoke("run_ytdlp", { args })
-    console.log(res)
+
+    if (res == "Success") {
+      return setVideoProgress(100)
+    }
   }
 
   useEffect(() => {
     let unlisten: any;
 
     async function listener() {
-      unlisten = await listen('ytdlp-output', (e) => {
-        console.log(e)
-        if (e.payload === 100) {
-          return false;
-        }
+      unlisten = await listen('ytdlp-output', (e: any) => {
+        const progressValue = parseProgress(e.payload.message)
+        setVideoProgress(progressValue)
       })
     }
 
@@ -76,7 +93,7 @@ const YoutubeDownloadPage = () => {
 
   return (
     <div>
-      Progress : {progress}
+      Progress : {videoProgress}
       <Button variant="default" onClick={checkDependencies}>Check</Button>
       <Button variant="default" onClick={downloadDependencies}>Dowwnload</Button>
       <Button variant="default" onClick={downloadVideo}>TEST</Button>
