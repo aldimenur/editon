@@ -29,7 +29,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/1024x1024.png", "icons/1024x1024.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/1024x1024.png",
+      "icons/1024x1024.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
