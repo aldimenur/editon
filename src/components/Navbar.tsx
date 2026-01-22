@@ -238,7 +238,7 @@ const Navbar = () => {
         </div>
 
         <div className="col-span-2 flex justify-center">
-          <span className="text-xs text-accent">Version {appVersion}</span>
+          <span className="text-xs text-accent-foreground">Version {appVersion}</span>
         </div>
       </div>
     </div>

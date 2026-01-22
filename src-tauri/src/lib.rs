@@ -1,13 +1,19 @@
 use rusqlite::{Connection, Result, ToSql};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+use tauri::{AppHandle, Manager, State};
 use walkdir::WalkDir;
 
-use crate::db_lib::is_schema_valid;
+use crate::{db_lib::is_schema_valid, ffmpeg::download_ffmpeg};
 mod db_lib;
-mod sound_lib;
+mod ffmpeg;
 mod image_lib;
+mod sound_lib;
+mod yt_dlp;
 // Enum Metadata
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)] // Biar otomatis deteksi varian berdasarkan isi field-nya
@@ -68,6 +74,23 @@ pub struct PaginatedResponse {
 
 pub struct DbState {
     pub conn: Arc<Mutex<Connection>>,
+}
+
+// Fungsi helper untuk mendapatkan app data directory (Tauri v2)
+pub fn get_app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    let bin_dir = app_data.join("bin");
+
+    if !bin_dir.exists() {
+        fs::create_dir_all(&bin_dir)
+            .map_err(|e| format!("Failed to create bin directory: {}", e))?;
+    }
+
+    Ok(bin_dir)
 }
 
 fn get_media_type(ext: &str) -> Option<String> {
@@ -296,6 +319,26 @@ fn get_assets_paginated(
     })
 }
 
+#[tauri::command]
+async fn download_dependencies(
+    app: AppHandle,
+    window: tauri::Window,
+) -> Result<String, String> {
+    // Download FFmpeg terlebih dahulu
+    match download_ffmpeg(app.clone(), window.clone()).await {
+        Ok(msg) => println!("FFmpeg: {}", msg),
+        Err(e) => return Err(format!("Gagal download FFmpeg: {}", e)),
+    }
+
+    // Download yt-dlp setelah FFmpeg selesai
+    match yt_dlp::download_ytdlp(app, window).await {
+        Ok(msg) => println!("yt-dlp: {}", msg),
+        Err(e) => return Err(format!("Gagal download yt-dlp: {}", e)),
+    }
+
+    Ok("Semua dependencies berhasil didownload".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let total_cores = std::thread::available_parallelism()
@@ -372,13 +415,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
+            yt_dlp::check_dependencies,
+            yt_dlp::get_ytdlp_version,
+            yt_dlp::update_ytdlp,
+            yt_dlp::run_ytdlp,
             db_lib::clear_db,
-            scan_and_import_folder,
             sound_lib::generate_missing_waveforms,
-            get_assets_paginated,
             image_lib::generate_missing_thumbnails,
+            download_dependencies,
+            scan_and_import_folder,
+            get_assets_paginated,
             get_count_assets,
-            show_in_folder
+            show_in_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

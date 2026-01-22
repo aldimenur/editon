@@ -265,7 +265,7 @@ const SfxPage = () => {
                     const file = files[virtualRow.index];
                     if (!file) return null;
 
-                    const waveHeight = viewModeAudio === "large" ? 80 : 30;
+                    const waveHeight = viewModeAudio === "large" ? 80 : 40;
                     return renderAudioCard(file, waveHeight, virtualRow.size);
                   }
                 })}
