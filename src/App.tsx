@@ -7,7 +7,7 @@ import TitleBar from "./components/title-bar";
 import VideoPage from "./pages/video";
 import ImagePage from "./pages/image";
 import YoutubeDownloadPage from "./pages/youtube-download";
-import { check, CheckOptions } from "@tauri-apps/plugin-updater";
+import { check } from "@tauri-apps/plugin-updater";
 import { useEffect } from "react";
 const router = [
   {
@@ -37,7 +37,7 @@ function App() {
 
   useEffect(() => {
     const checkForUpdates = async () => {
-      const updates = await check({ target: "current" });
+      const updates = await check();
       console.log(updates);
     };
     checkForUpdates();
