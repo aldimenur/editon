@@ -753,6 +753,7 @@ pub fn run() {
         .build_global()
         .unwrap();
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // A. Tentukan lokasi database (di folder AppData user)
