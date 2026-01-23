@@ -278,10 +278,15 @@ pub async fn run_ytdlp(
 
     let yt_dlp_path = status.yt_dlp_path.unwrap();
 
-    let mut child = Command::new(&yt_dlp_path)
-        .args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+    let mut cmd = Command::new(&yt_dlp_path);
+    cmd.args(args).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
 
