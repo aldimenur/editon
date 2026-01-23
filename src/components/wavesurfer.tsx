@@ -2,6 +2,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useRef, useEffect, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { useTheme } from "./theme-provider";
 
 const WavesurferRender = (props: {
   src: string;
@@ -17,16 +18,21 @@ const WavesurferRender = (props: {
   const isLoadedRef = useRef(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
+  const { theme } = useTheme();
+  const isDark = theme === "dark" ||
+    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  console.log(isDark)
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Generate 10 numbers between -1 and 1
     const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
 
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
-      waveColor: "#11ddaa",
+      waveColor: "#3b82f6",
+      progressColor: isDark ? "#374151" : "#d1d5db",
       width: width,
       height: height,
       cursorColor: "#ffffff55",
@@ -41,7 +47,8 @@ const WavesurferRender = (props: {
     return () => {
       wavesurfer.destroy();
     };
-  }, [width, height]);
+  }, [width, height, isDark]);
+
 
   const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
