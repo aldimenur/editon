@@ -22,8 +22,6 @@ const WavesurferRender = (props: {
   const isDark = theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-  console.log(isDark)
-
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -38,7 +36,7 @@ const WavesurferRender = (props: {
       cursorColor: "#ffffff55",
       backend: "MediaElement",
       peaks: [placeholderPeaks],
-      duration: 10,
+      duration: 1,
     });
 
     wavesurferRef.current = wavesurfer;

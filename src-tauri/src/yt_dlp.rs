@@ -1,6 +1,10 @@
 use reqwest::{self};
-use std::{fs};
+use std::fs;
 use tauri::{AppHandle, Emitter};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    process::Command,
+};
 
 use crate::get_app_data_dir;
 
@@ -8,8 +12,10 @@ use crate::get_app_data_dir;
 pub struct DependencyStatus {
     yt_dlp_installed: bool,
     ffmpeg_installed: bool,
+    ffprobe_installed: bool,
     yt_dlp_path: Option<String>,
     ffmpeg_path: Option<String>,
+    ffprobe_path: Option<String>,
 }
 
 // Cek status dependency
@@ -29,12 +35,20 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
         "ffmpeg"
     };
 
+    let ffprobe_name = if cfg!(target_os = "windows") {
+        "ffprobe.exe"
+    } else {
+        "ffprobe"
+    };
+
     let yt_dlp_path = bin_dir.join(yt_dlp_name);
     let ffmpeg_path = bin_dir.join(ffmpeg_name);
+    let ffprobe_path = bin_dir.join(ffprobe_name);
 
     Ok(DependencyStatus {
         yt_dlp_installed: yt_dlp_path.exists(),
         ffmpeg_installed: ffmpeg_path.exists(),
+        ffprobe_installed: ffprobe_path.exists(),
         yt_dlp_path: if yt_dlp_path.exists() {
             Some(yt_dlp_path.to_string_lossy().to_string())
         } else {
@@ -42,6 +56,11 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
         },
         ffmpeg_path: if ffmpeg_path.exists() {
             Some(ffmpeg_path.to_string_lossy().to_string())
+        } else {
+            None
+        },
+        ffprobe_path: if ffmpeg_path.exists() {
+            Some(ffprobe_path.to_string_lossy().to_string())
         } else {
             None
         },
@@ -104,7 +123,7 @@ pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<Str
         };
 
         let _ = window.emit(
-            "download-progress",
+            "yt-dlp-download-progress",
             serde_json::json!({
                 "tool": "yt-dlp",
                 "progress": progress,
@@ -259,41 +278,63 @@ pub async fn run_ytdlp(
 
     let yt_dlp_path = status.yt_dlp_path.unwrap();
 
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
-
-    let mut cmd = Command::new(&yt_dlp_path);
-    cmd.args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd
+    let mut child = Command::new(&yt_dlp_path)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+        .map_err(|e| format!("Failed to spawn yt-dlp: {}", e))?;
 
-    // Read stdout
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                let _ = window.emit(
-                    "ytdlp-output",
-                    serde_json::json!({
-                        "type": "stdout",
-                        "message": line
-                    }),
-                );
+    if let Some(mut stdout) = child.stdout.take() {
+        let window = window.clone();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 1024];
+            let mut acc = String::new();
+
+            loop {
+                let n = match stdout.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+
+                let chunk = String::from_utf8_lossy(&buf[..n]);
+                acc.push_str(&chunk);
+
+                while let Some(pos) = acc.find('\r') {
+                    let line = acc[..pos].to_string();
+                    acc = acc[pos + 1..].to_string();
+
+                    window.emit("ytdlp-output", line).ok();
+                }
             }
-        }
+        });
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for yt-dlp: {}", e))?;
+    if let Some(stderr) = child.stderr.take() {
+        let window = window.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                // yt-dlp outputs progress to stderr, so emit it as ytdlp-output
+                // Check if it's a progress line (contains [download])
+                if line.contains("[download]") {
+                    window.emit("ytdlp-output", line.clone()).ok();
+                } else {
+                    // Other stderr messages go to error channel
+                    window.emit("ytdlp-error", line).ok();
+                }
+            }
+        });
+    }
 
-    if output.status.success() {
-        Ok("Success".to_string())
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed to wait yt-dlp: {}", e))?;
+
+    if status.success() {
+        Ok("Success".into())
     } else {
-        Err(format!("yt-dlp failed with status: {}", output.status))
+        Err(format!("yt-dlp exited with status: {}", status))
     }
 }

@@ -1,11 +1,11 @@
 {
-    "version": "0.1.1",
-    "notes": "fix update check",
+    "version": "0.1.2",
+    "notes": "New Feature: Youtube Downloader",
     "pub_date": "2026-01-22T12:01:00Z",
     "platforms": {
       "windows-x86_64": {
-        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWg1dFBGZFZHSHBTa0p5bVdISWRIeXNabkZGRmxycDNMS1hYQkZudGpEQkJITWNLeW1HZTFJTUlZZC9tOEpxWi9iYjNpQXJ2eW5qK1RpcVpMQk9WNndVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5MDUwOTk3CWZpbGU6ZWRpdG9uXzAuMS4xX3g2NC1zZXR1cC5leGUKdy9mTlR6RjVmSm1zSzBVc1JYcWF5N20zVTdxempXTVlGWXB2eVpzUWxoS1puNWJoMTBPMldCRFMwVmF4OTVZeXVEZTdmcEhJUkFrVWdNanZvaEE4QXc9PQo=",
-        "url": "https://github.com/aldimenur/editon/releases/download/v0.1.1/editon_0.1.1_x64-setup.exe"
+        "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWlMT3FlaDJPS3ZSZUJ3cVhucjFleHBCSWlkNWEzcWpoN00xOVYzU2tVWWJTNUVnbG4vaUx4V1l0bHpOUmNhM1JTNFU3WVE0REtOMmxTWHZLZVU1c1F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5MTg4NzE1CWZpbGU6ZWRpdG9uXzAuMS4yX3g2NC1zZXR1cC5leGUKZkdtTUhDNlFETm1HYldnWlNxOXFWejN3QlFkaXVrdytGTGhaSisvOFFzNStrZmJ6Y2JHVWY3akU0SzhzZkE3ZUZJTFVveHNuUzd1N2o2VGsvbmpsQ0E9PQo=",
+        "url": "https://github.com/aldimenur/editon/releases/download/v0.1.2/editon_0.1.2_x64-setup.exe"
       }
     }
   }
