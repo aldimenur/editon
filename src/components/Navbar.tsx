@@ -64,7 +64,23 @@ const Navbar = () => {
     checkForUpdates();
   }, []);
 
+  useEffect(() => {
+    setSfx(0);
+    setVideo(0);
+    setImage(0);
+    const getCount = async () => {
+      const sfx = await invoke("get_count_assets", { assetType: "audio" });
+      setSfx(sfx as number);
+      const video = await invoke("get_count_assets", { assetType: "video" });
+      setVideo(video as number);
+      const image = await invoke("get_count_assets", { assetType: "image" });
+      setImage(image as number);
+    }
+    getCount()
+  }, [])
+
   const handleSetPath = async () => {
+    await invoke("cancel_scan");
     try {
       const path = await open({
         directory: true,
@@ -73,9 +89,6 @@ const Navbar = () => {
       if (path) {
         // 1. Clear database dan reset count di UI ke 0 (opsional agar user tahu data sedang diproses)
         await invoke('clear_db');
-        setSfx(0);
-        setVideo(0);
-        setImage(0);
 
         setParentPath(path);
 
@@ -83,14 +96,6 @@ const Navbar = () => {
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-
-        // 3. AMBIL COUNT SETELAH SCAN SELESAI
-        const sfx = await invoke("get_count_assets", { assetType: "audio" });
-        setSfx(sfx as number);
-        const video = await invoke("get_count_assets", { assetType: "video" });
-        setVideo(video as number);
-        const image = await invoke("get_count_assets", { assetType: "image" });
-        setImage(image as number);
 
         // 4. Jalankan proses background lainnya
         await invoke("generate_missing_waveforms");

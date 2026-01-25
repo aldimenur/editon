@@ -99,6 +99,9 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
     // 1. Ambil koneksi DB sebentar untuk mencari "PR" (Pekerjaan Rumah)
     let db_arc = state.conn.clone(); // Clone Arc (murah, cuma copy pointer)
 
+    state.cancel_scan.store(false, Ordering::SeqCst);
+    let cancel_flag = state.cancel_scan.clone();
+
     let to_process: Vec<(i64, String, String)> = {
         let conn = db_arc.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
@@ -140,6 +143,10 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
             .for_each(|(_, (id, path, filename))| {
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                 // A. Emit Event: "Sedang memproses lagu X..."
+                if cancel_flag.load(Ordering::SeqCst) {
+                    return
+                };
+                
                 let _ = app.emit(
                     "waveform-progress",
                     ProgressEvent {

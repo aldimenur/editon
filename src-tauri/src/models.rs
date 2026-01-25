@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -62,4 +62,5 @@ pub struct PaginatedResponse {
 
 pub struct DbState {
     pub conn: Arc<Mutex<Connection>>,
+    pub cancel_scan: Arc<AtomicBool>
 }

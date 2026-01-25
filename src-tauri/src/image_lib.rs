@@ -16,6 +16,10 @@ use crate::AssetMetadata;
 use crate::DbState;
 use crate::models::ProgressEvent;
 
+#[tauri::command]
+pub fn cancel_scan(state: tauri::State<'_, DbState>){
+    state.cancel_scan.store(true, Ordering::SeqCst)
+}
 
 pub fn get_image_metadata(path: &str, ext: &str) -> AssetMetadata {
     if ext == "svg" {
@@ -98,6 +102,9 @@ pub fn generate_missing_thumbnails(
 ) -> Result<String, String> {
     let db_arc = state.conn.clone();
 
+    state.cancel_scan.store(false, Ordering::SeqCst);
+    let cancel_flag = state.cancel_scan.clone();
+
     // 1. Tentukan lokasi folder thumbnail di AppData
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let thumbnails_dir = app_data_dir.join("thumbnails");
@@ -146,6 +153,10 @@ pub fn generate_missing_thumbnails(
                 let metadata = get_image_metadata(path, extension);
                 let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+
+                if cancel_flag.load(Ordering::SeqCst) {
+                    return;
+                };
 
                 let _ = app.emit(
                     "thumbnail-progress",

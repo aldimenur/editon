@@ -197,6 +197,9 @@ pub fn run() {
 
             app.manage(DbState {
                 conn: Arc::new(Mutex::new(conn)),
+                cancel_scan: Arc::new(
+                    std::sync::atomic::AtomicBool::new(false),
+                ),
             });
 
             Ok(())
@@ -211,6 +214,7 @@ pub fn run() {
             db_lib::clear_db,
             sound_lib::generate_missing_waveforms,
             image_lib::generate_missing_thumbnails,
+            image_lib::cancel_scan,
             folder_lib::scan_and_import_folder,
             folder_lib::show_in_folder,
             download_dependencies,
