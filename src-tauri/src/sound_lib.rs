@@ -11,7 +11,7 @@ use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::{DbState, ProgressEvent};
+use crate::{DbState, models::ProgressEvent};
 
 pub fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     let src = File::open(Path::new(path))?;

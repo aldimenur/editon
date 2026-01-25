@@ -3,7 +3,7 @@ use std::{fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Window};
 use zip::ZipArchive;
 
-use crate::get_app_data_dir;
+use crate::utils::get_app_data_dir;
 
 pub async fn download_ffmpeg(app: AppHandle, window: Window) -> Result<String, String> {
     let bin_dir = get_app_data_dir(&app)?;

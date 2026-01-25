@@ -2,7 +2,7 @@ use rusqlite::{Connection};
 use tauri::State;
 use std::collections::HashSet;
 
-use crate::DbState;
+use crate::models::DbState;
 
 pub fn is_schema_valid(conn: &Connection) -> bool {
     // Ambil info kolom dari tabel assets

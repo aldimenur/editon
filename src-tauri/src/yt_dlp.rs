@@ -6,7 +6,8 @@ use tokio::{
     process::Command,
 };
 
-use crate::get_app_data_dir;
+use crate::utils::get_app_data_dir;
+
 
 #[derive(serde::Serialize)]
 pub struct DependencyStatus {

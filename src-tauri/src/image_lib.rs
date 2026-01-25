@@ -14,7 +14,7 @@ use tauri::{ Emitter};
 
 use crate::AssetMetadata;
 use crate::DbState;
-use crate::ProgressEvent;
+use crate::models::ProgressEvent;
 
 
 pub fn get_image_metadata(path: &str, ext: &str) -> AssetMetadata {
