@@ -46,6 +46,9 @@ const Navbar = () => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [appVersion, setAppVersion] = useState("Unknown");
   const [countingTotal, setCountingTotal] = useState<boolean>(false)
+  const [progressSound, setProgressSound] = useState<any>(null);
+  const [progressVideo, setProgressVideo] = useState<any>(null);
+  const [progressImage, setProgressImage] = useState<any>(null);
 
   useEffect(() => {
     const getAppVersion = async () => {
@@ -75,13 +78,13 @@ const Navbar = () => {
   }
 
   const handleSetPath = async () => {
-    await invoke("cancel_scan");
     try {
       const path = await open({
         directory: true,
       });
 
       if (path) {
+        await invoke("cancel_scan");
         setCountingTotal(true);
         await invoke('clear_db');
 
@@ -96,9 +99,6 @@ const Navbar = () => {
     }
   };
 
-
-  const [progress, setProgress] = useState<any>(null); // { current, total, filename }
-
   useEffect(() => {
     let unlistenFunction: any
 
@@ -109,11 +109,14 @@ const Navbar = () => {
           last_files: string;
           status: string;
         }
+
+        console.log(event_response)
         if (event_response.status == "finished") {
+          console.log('yes')
+          invoke("generate_missing_thumbnails");
+          invoke("generate_missing_waveforms");
           setCountingTotal(false);
           getCount();
-          invoke("generate_missing_waveforms");
-          invoke("generate_missing_thumbnails");
         }
       })
 
@@ -121,14 +124,13 @@ const Navbar = () => {
         const payload = event.payload as {
           current: number;
           total: number;
-          filename: string;
           status: string;
         }
 
-        setProgress(payload)
+        setProgressSound(payload)
 
         if (payload.status === "done") {
-          setProgress(null);
+          setProgressSound(null);
         }
       });
 
@@ -136,14 +138,13 @@ const Navbar = () => {
         const payload = event.payload as {
           current: number;
           total: number;
-          filename: string;
           status: string;
         }
 
-        setProgress(payload)
+        setProgressImage(payload)
 
         if (payload.status === "done") {
-          setProgress(null);
+          setProgressImage(null);
         }
       });
     }
@@ -155,8 +156,6 @@ const Navbar = () => {
       if (unlistenFunction) unlistenFunction();
     };
   }, [])
-
-  const progressPercentage = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   const handleUpdate = async () => {
     const update = await check();
@@ -191,34 +190,33 @@ const Navbar = () => {
         ))}
       </div>
       <div className="grid grid-cols-2 mb-2">
-        {progress && (
+        {progressSound && (
           <div className="col-span-2 animate-in slide-in-from-bottom-2 fade-in duration-300 p-2">
             <div className="bg-card border rounded-lg shadow-lg p-3 space-y-2">
-              {/* Header */}
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-semibold">Optimizing...</h4>
-                  <p className="text-xs text-muted-foreground truncate" title={progress.filename}>
-                    {progress.filename}
-                  </p>
                 </div>
-                <span className="text-xs font-medium text-primary shrink-0">
-                  {Math.round(progressPercentage)}%
-                </span>
               </div>
 
-              {/* Progress Bar */}
-              <Progress value={progressPercentage} className="h-1.5" />
-
               {/* Stats */}
-              <div className="flex items-center justify-between text-xs text-muted-foreground truncate">
-                <span>{progress.current} / {progress.total}</span>
-                {progress.status && progress.status !== "done" && (
-                  <span className="flex items-center gap-1">
-                    <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
-                    {progress.status}
-                  </span>
-                )}
+              <div className="flex flex-col  justify-between text-xs text-muted-foreground truncate">
+                {progressSound &&
+                  <div className="flex justify-between">
+                    {progressSound?.name.toString()}
+                    <span>{progressSound?.current} / {progressSound?.total}</span>
+                  </div>}
+                {progressVideo &&
+                  <div className="flex justify-between">
+                    {progressVideo?.name.toString()}
+                    <span>{progressVideo?.current} / {progressVideo?.total}</span>
+                  </div>}
+                {progressImage &&
+                  <div className="flex justify-between">
+                    {progressImage?.name.toString()}
+                    <span>{progressImage?.current} / {progressImage?.total}</span>
+                  </div>
+                }
               </div>
             </div>
           </div>

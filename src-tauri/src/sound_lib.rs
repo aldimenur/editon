@@ -150,6 +150,7 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
                 let _ = app.emit(
                     "waveform-progress",
                     ProgressEvent {
+                        name: "Sound".to_string(),
                         current,
                         total: total_files,
                         filename: filename.clone(),
@@ -184,6 +185,7 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
         let _ = app.emit(
             "waveform-progress",
             ProgressEvent {
+                name: "Sound".to_string(),
                 current: total_files,
                 total: total_files,
                 filename: "Selesai!".to_string(),

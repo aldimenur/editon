@@ -26,6 +26,7 @@ pub enum AssetMetadata {
 
 #[derive(Clone, Serialize)]
 pub struct ProgressEvent {
+    pub name: String,
     pub current: usize,
     pub total: usize,
     pub filename: String,

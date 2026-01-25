@@ -165,6 +165,7 @@ pub fn generate_missing_thumbnails(
                 let _ = app.emit(
                     "thumbnail-progress",
                     ProgressEvent {
+                        name: "Image".to_string(),
                         current,
                         total: total_files,
                         filename: filename.clone(),
@@ -208,6 +209,7 @@ pub fn generate_missing_thumbnails(
         let _ = app.emit(
             "thumbnail-progress",
             ProgressEvent {
+                name: "Image".to_string(),
                 current: total_files,
                 total: total_files,
                 filename: "Selesai!".to_string(),
