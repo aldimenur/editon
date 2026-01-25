@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Image, Music, Video } from "lucide-react";
+import { Image, Loader2, Music, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Progress } from "./ui/progress";
@@ -45,6 +45,7 @@ const Navbar = () => {
   const { setParentPath, setSfx, setVideo, setImage, sfx, video, image } = useAssetStore((state) => state);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [appVersion, setAppVersion] = useState("Unknown");
+  const [countingTotal, setCountingTotal] = useState<boolean>(false)
 
   useEffect(() => {
     const getAppVersion = async () => {
@@ -64,20 +65,14 @@ const Navbar = () => {
     checkForUpdates();
   }, []);
 
-  useEffect(() => {
-    setSfx(0);
-    setVideo(0);
-    setImage(0);
-    const getCount = async () => {
-      const sfx = await invoke("get_count_assets", { assetType: "audio" });
-      setSfx(sfx as number);
-      const video = await invoke("get_count_assets", { assetType: "video" });
-      setVideo(video as number);
-      const image = await invoke("get_count_assets", { assetType: "image" });
-      setImage(image as number);
-    }
-    getCount()
-  }, [])
+  const getCount = async () => {
+    const sfx = await invoke("get_count_assets", { assetType: "audio" });
+    setSfx(sfx as number);
+    const video = await invoke("get_count_assets", { assetType: "video" });
+    setVideo(video as number);
+    const image = await invoke("get_count_assets", { assetType: "image" });
+    setImage(image as number);
+  }
 
   const handleSetPath = async () => {
     await invoke("cancel_scan");
@@ -87,19 +82,14 @@ const Navbar = () => {
       });
 
       if (path) {
-        // 1. Clear database dan reset count di UI ke 0 (opsional agar user tahu data sedang diproses)
+        setCountingTotal(true);
         await invoke('clear_db');
 
         setParentPath(path);
 
-        // 2. Scan folder baru (ini akan mengisi database dengan data baru)
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-
-        // 4. Jalankan proses background lainnya
-        await invoke("generate_missing_waveforms");
-        await invoke("generate_missing_thumbnails");
       }
     } catch (error) {
       console.error(error);
@@ -113,7 +103,20 @@ const Navbar = () => {
     let unlistenFunction: any
 
     async function setupListener() {
-      // Mendengarkan event 'waveform-progress' dari Rust
+      unlistenFunction = await listen("scan-progress", (event) => {
+        const event_response = event.payload as {
+          count: number;
+          last_files: string;
+          status: string;
+        }
+        if (event_response.status == "finished") {
+          setCountingTotal(false);
+          getCount();
+          invoke("generate_missing_waveforms");
+          invoke("generate_missing_thumbnails");
+        }
+      })
+
       unlistenFunction = await listen("waveform-progress", (event) => {
         const payload = event.payload as {
           current: number;
@@ -126,7 +129,6 @@ const Navbar = () => {
 
         if (payload.status === "done") {
           setProgress(null);
-          window.location.reload();
         }
       });
 
@@ -142,7 +144,6 @@ const Navbar = () => {
 
         if (payload.status === "done") {
           setProgress(null);
-          window.location.reload();
         }
       });
     }
@@ -182,8 +183,8 @@ const Navbar = () => {
             {item.icon}
             <div className="flex justify-between w-full">
               <span className="text-sm">{item.label}</span>
-              <span className="text-xs text-muted-foreground">
-                {item.type === "sfx" ? sfx : item.type === "video" ? video : item.type === "image" ? image : null}
+              <span className="text-xs text-muted-foreground flex items-center">
+                {!countingTotal ? item.type === "sfx" ? sfx : item.type === "video" ? video : item.type === "image" ? image : null : <Loader2 className="animate-spin" size={12} />}
               </span>
             </div>
           </div>

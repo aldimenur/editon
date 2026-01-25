@@ -14,11 +14,15 @@ use tauri::{ Emitter};
 
 use crate::AssetMetadata;
 use crate::DbState;
+use crate::models::ApiResponse;
 use crate::models::ProgressEvent;
 
+
 #[tauri::command]
-pub fn cancel_scan(state: tauri::State<'_, DbState>){
-    state.cancel_scan.store(true, Ordering::SeqCst)
+pub fn cancel_scan(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    state.cancel_scan.store(true, Ordering::SeqCst);
+
+    Ok("Cancel scan success!".to_string())
 }
 
 pub fn get_image_metadata(path: &str, ext: &str) -> AssetMetadata {
@@ -99,7 +103,7 @@ pub fn generate_thumbnail_buffer(path: &str, target_width: u32) -> Result<Vec<u8
 pub fn generate_missing_thumbnails(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
-) -> Result<String, String> {
+) -> Result<ApiResponse, String> {
     let db_arc = state.conn.clone();
 
     state.cancel_scan.store(false, Ordering::SeqCst);
@@ -140,7 +144,7 @@ pub fn generate_missing_thumbnails(
 
     let total_files = to_process.len();
     if total_files == 0 {
-        return Ok("Semua thumbnail sudah lengkap.".to_string());
+        return Ok(ApiResponse { message: format!("Semua thumbnail sudah di generate!"), status: format!("Success") });
     }
     // 2. Buat counter atomic
     let processed_count = std::sync::Arc::new(AtomicUsize::new(0));
@@ -212,8 +216,5 @@ pub fn generate_missing_thumbnails(
         );
     });
 
-    Ok(format!(
-        "Memulai proses background untuk {} thumbnail...",
-        total_files
-    ))
+    Ok(ApiResponse { message: format!("Memulai prosess generate thumbnail untuk {} gambar", total_files), status: "Processing".to_string() })
 }

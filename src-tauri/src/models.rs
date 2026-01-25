@@ -64,3 +64,9 @@ pub struct DbState {
     pub conn: Arc<Mutex<Connection>>,
     pub cancel_scan: Arc<AtomicBool>
 }
+
+#[derive(Serialize)]
+pub struct ApiResponse {
+    pub message: String,
+    pub status: String,
+}
