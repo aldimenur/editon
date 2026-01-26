@@ -1,6 +1,6 @@
 use std::{fs::File, path::Path, sync::atomic::{AtomicUsize, Ordering}};
 
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error;
@@ -139,14 +139,15 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
 
         to_process
             .par_iter()
-            .enumerate()
-            .for_each(|(_, (id, path, filename))| {
-                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                // A. Emit Event: "Sedang memproses lagu X..."
+            .for_each(|(id, path, filename)| {
+                // Check cancel flag FIRST before processing
                 if cancel_flag.load(Ordering::SeqCst) {
                     return
-                };
+                }
                 
+                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                
+                // A. Emit Event: "Sedang memproses lagu X..."
                 let _ = app.emit(
                     "waveform-progress",
                     ProgressEvent {

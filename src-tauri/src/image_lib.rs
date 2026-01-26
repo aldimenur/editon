@@ -152,15 +152,15 @@ pub fn generate_missing_thumbnails(
     std::thread::spawn(move || {
         to_process
             .par_iter()
-            .enumerate()
-            .for_each(|(_, (id, path, filename, extension))| {
-                let metadata = get_image_metadata(path, extension);
-                let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
-                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-
+            .for_each(|(id, path, filename, extension)| {
+                // Check cancel flag FIRST before processing
                 if cancel_flag.load(Ordering::SeqCst) {
                     return;
                 };
+
+                let metadata = get_image_metadata(path, extension);
+                let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
+                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
                 let _ = app.emit(
                     "thumbnail-progress",

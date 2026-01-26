@@ -136,9 +136,15 @@ const useAssetStore = create<AssetStore>()(
         set({ parentPath: path })
         await invoke("cancel_scan");
         await invoke('clear_db');
+        
+        // Start the scan (runs in background)
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
+        
+        // Note: generate_missing_thumbnails and generate_missing_waveforms
+        // will be called when scan completes (via scan-progress event listener)
+        // This ensures all files are in the database before processing
       },
 
       // Fetch SFX assets with pagination

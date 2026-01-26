@@ -1,11 +1,11 @@
 {
-  "version": "0.1.4",
-  "notes": "Fixing: better efficiency",
-  "pub_date": "2026-01-26T12:01:00Z",
+  "version": "0.1.5",
+  "notes": "Fixing: Generate waveform and thumbnail bug",
+  "pub_date": "2026-01-26T15:59:40.553Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWp0OCtLQ2FEYVRzUXNMRlpIUVRRRW1DazVqWTRDYmV1Vi9obFcrMkxpbC8veEZOUzBwenRWS3I0L0Q5blVYSkJYQWxtWXFmZ3ZSUG9VQWdZTkpwcndVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NDQxMjk2CWZpbGU6RWRpdG9uXzAuMS40X3g2NC1zZXR1cC5leGUKaGZ0M0VSeC9YbXlOejY3OC9NKzVxYVFZcnVGMHRlbkdSTlZaWkVjZEljbzA1U2M4andCYVllNHdzdzNhaW9mSWpVWnFFRjF2OHRQbDJ3WnBHYitTQkE9PQo=",
-      "url": "https://github.com/aldimenur/editon/releases/download/v0.1.4/Editon_0.1.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdXNWbmhzRHJuYklrdFF4czJVbFJiNmI5bC9aNklwMkQ1cVRMcUYrV0wwS0tmVTA2V0JJZ0RlUWtVVHYzWFc0anBTZG81a2JJbXI2VnVoZG9jTjllUVFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NDQzMjIzCWZpbGU6RWRpdG9uXzAuMS41X3g2NC1zZXR1cC5leGUKcDNRYy84Z3ZNM1RGdHBWTEZoazZ6MUFibzZZb0hyd3Jrcm1Xb0x1Z3gvR3ZWUFVIWHhHT2tIaTFtOUNTRnMzRHhMbGZ4ekdBN0JMMXZGTTNCWjNDREE9PQo=",
+      "url": "https://github.com/aldimenur/editon/releases/download/v0.1.5/Editon_0.1.5_x64-setup.exe"
     }
   }
 }

@@ -77,12 +77,26 @@ const Navbar = () => {
     setCountingTotal(counting);
   }, [])
 
+  const handleScanProgressDone = useCallback(async () => {
+    // Update asset counts first
+    await updateAssetsCount();
+    
+    // Then start thumbnail and waveform generation
+    // These run in background threads in Rust
+    try {
+      await invoke("generate_missing_thumbnails");
+      await invoke("generate_missing_waveforms");
+    } catch (error) {
+      console.error("Error generating thumbnails/waveforms:", error);
+    }
+  }, [updateAssetsCount])
+
   useEventListeners({
     onProgressSound: handleProgressSound,
     onProgressImage: handleProgressImage,
     onCountingTotalChange: handleCountingTotalChange,
     onUpdateAssetsCount: updateAssetsCount,
-    onScanProgressDone: updateAssetsCount
+    onScanProgressDone: handleScanProgressDone
   });
 
   const handleUpdate = async () => {
@@ -103,8 +117,6 @@ const Navbar = () => {
       if (path) {
         setCountingTotal(true);
         setParentPath(path);
-        invoke("generate_missing_thumbnails");
-        invoke("generate_missing_waveforms");
       }
     } catch (error) {
       console.error(error);
