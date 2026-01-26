@@ -2,17 +2,15 @@ import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Image, Loader2, Music, Video } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ModeToggle } from "./mode-toggle";
-import { Progress } from "./ui/progress";
 import { check } from "@tauri-apps/plugin-updater";
 import { Button } from "./ui/button";
 import { getVersion } from "@tauri-apps/api/app";
-import { countAssets } from "@/lib/utils";
+import { useEventListeners } from "@/hooks/useEventListeners";
+import { invoke } from "@tauri-apps/api/core";
 
 const sidebarItems = [
   {
@@ -43,12 +41,12 @@ const sidebarItems = [
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { setParentPath, setSfx, setVideo, setImage, sfx, video, image } = useAssetStore((state) => state);
+  const { setParentPath, sfx, video, image, updateAssetsCount } = useAssetStore((state) => state);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [appVersion, setAppVersion] = useState("Unknown");
   const [countingTotal, setCountingTotal] = useState<boolean>(false)
   const [progressSound, setProgressSound] = useState<any>(null);
-  const [progressVideo, setProgressVideo] = useState<any>(null);
+  const [progressVideo] = useState<any>(null);
   const [progressImage, setProgressImage] = useState<any>(null);
 
   useEffect(() => {
@@ -56,123 +54,36 @@ const Navbar = () => {
       const version = await getVersion();
       setAppVersion(version);
     }
-    getAppVersion();
-  }, []);
-
-  useEffect(() => {
     const checkForUpdates = async () => {
       const updates = await check();
       if (updates) {
         setUpdateAvailable(true);
       }
     };
+
     checkForUpdates();
+    getAppVersion();
   }, []);
 
-  const handleSetPath = async () => {
-    try {
-      const path = await open({
-        directory: true,
-      });
+  const handleProgressSound = useCallback((payload: any) => {
+    setProgressSound(payload);
+  }, [])
 
-      if (path) {
-        await invoke("cancel_scan");
-        setCountingTotal(true);
-        await invoke('clear_db');
+  const handleProgressImage = useCallback((payload: any) => {
+    setProgressImage(payload);
+  }, [])
 
-        setParentPath(path);
+  const handleCountingTotalChange = useCallback((counting: boolean) => {
+    setCountingTotal(counting);
+  }, [])
 
-        await invoke("scan_and_import_folder", {
-          folderPath: path,
-        });
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  useEffect(() => {
-    const unlisteners: Array<() => void> = [];
-
-    const setupListeners = async () => {
-      try {
-        // File change listeners
-        unlisteners.push(
-          await listen("file-added", async (event) => {
-            console.log("File added:", event.payload);
-            const audio = await countAssets.audio() as number
-            setSfx(audio)
-          })
-        );
-
-        unlisteners.push(
-          await listen("file-removed", (event) => {
-            console.log("File removed:", event.payload);
-          })
-        );
-
-        // Scan progress listener
-        unlisteners.push(
-          await listen("scan-progress", (event) => {
-            const payload = event.payload as {
-              count: number;
-              last_files: string;
-              status: string;
-            };
-
-            console.log(payload);
-            if (payload.status === "finished") {
-              invoke("generate_missing_thumbnails");
-              invoke("generate_missing_waveforms");
-              setCountingTotal(false);
-            }
-          })
-        );
-
-        // Waveform progress listener
-        unlisteners.push(
-          await listen("waveform-progress", (event) => {
-            const payload = event.payload as {
-              current: number;
-              total: number;
-              status: string;
-            };
-
-            setProgressSound(payload);
-
-            if (payload.status === "done") {
-              setProgressSound(null);
-            }
-          })
-        );
-
-        // Thumbnail progress listener
-        unlisteners.push(
-          await listen("thumbnail-progress", (event) => {
-            const payload = event.payload as {
-              current: number;
-              total: number;
-              status: string;
-            };
-
-            setProgressImage(payload);
-
-            if (payload.status === "done") {
-              setProgressImage(null);
-            }
-          })
-        );
-      } catch (error) {
-        console.error("Failed to setup event listeners:", error);
-      }
-    };
-
-    setupListeners();
-
-    return () => {
-      unlisteners.forEach((unlisten) => unlisten());
-    };
-  }, []);
+  useEventListeners({
+    onProgressSound: handleProgressSound,
+    onProgressImage: handleProgressImage,
+    onCountingTotalChange: handleCountingTotalChange,
+    onUpdateAssetsCount: updateAssetsCount,
+    onScanProgressDone: updateAssetsCount
+  });
 
   const handleUpdate = async () => {
     const update = await check();
@@ -182,6 +93,24 @@ const Navbar = () => {
       window.location.reload();
     }
   }
+
+  const handleSetPath = async () => {
+    try {
+      const path = await open({
+        directory: true,
+      });
+
+      if (path) {
+        setCountingTotal(true);
+        setParentPath(path);
+        invoke("generate_missing_thumbnails");
+        invoke("generate_missing_waveforms");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
 
   return (
     <div className="flex flex-col w-[170px] bg-sidebar text-sidebar-foreground">
@@ -207,7 +136,7 @@ const Navbar = () => {
         ))}
       </div>
       <div className="grid grid-cols-2 mb-2">
-        {progressSound && (
+        {(progressSound || progressVideo || progressImage) && (
           <div className="col-span-2 animate-in slide-in-from-bottom-2 fade-in duration-300 p-2">
             <div className="bg-card border rounded-lg shadow-lg p-3 space-y-2">
               <div className="flex items-center gap-2">

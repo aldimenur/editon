@@ -1,15 +1,12 @@
 import useAssetStore from "@/stores/asset-store";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Search, LayoutList, LayoutGrid, Maximize2, ZoomIn } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
-import { startDrag } from "@crabnebula/tauri-plugin-drag";
-
-type ViewMode = "list" | "grid" | "large";
+import useViewStore from "@/stores/view-store";
 
 const ITEM_HEIGHTS = {
     list: 240,
@@ -18,82 +15,62 @@ const ITEM_HEIGHTS = {
 };
 
 const ImagePage = () => {
-    const { imageSearch, setImageSearch, parentPath } = useAssetStore((state) => state);
-    const [files, setFiles] = useState<Asset[]>([]);
-    const [searchCount, setSearchCount] = useState(0);
+    const {
+        imageSearch,
+        setImageSearch,
+        parentPath,
+        imageFiles,
+        imageSearchCount,
+        isLoading,
+        fetchImageAssets,
+        image
+    } = useAssetStore((state) => state);
+
     const [pageSize] = useState(30);
-    const [isLoading, setIsLoading] = useState(false);
-    const [viewMode, setViewMode] = useState<ViewMode>("grid");
+    const { viewModeImage, setViewModeImage } = useViewStore((state) => state);
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const [hoveredId, setHoveredId] = useState<number | null>(null);
     const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const hasMore = files.length < searchCount;
-
-    const readMediaFiles = async (pageParam: number, reset: boolean = false) => {
-        if (!parentPath) return;
-        try {
-            setIsLoading(true);
-            const result = await invoke<any>("get_assets_paginated", {
-                page: pageParam,
-                pageSize: pageSize,
-                query: imageSearch || "",
-                assetType: "image",
-            });
-
-            const assets = result.data || [];
-            setFiles((prev) => (reset ? assets : [...prev, ...assets]));
-            setSearchCount(result.total_items ?? 0);
-
-            console.log("Loaded page", pageParam, "Total:", result.total_items, "Assets:", assets.length);
-
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const hasMore = imageFiles.length < imageSearchCount;
 
     // initial load / path change
     useEffect(() => {
         if (!parentPath) {
-            setFiles([]);
-            setSearchCount(0);
             return;
         }
-        readMediaFiles(1, true);
-    }, [parentPath]);
+        fetchImageAssets(1, pageSize, true);
+    }, [parentPath, pageSize, fetchImageAssets]);
 
-    // search
+    // search with debounce
     useEffect(() => {
         if (!parentPath) return;
-        setFiles([]);
-        setSearchCount(0);
 
         const timeout = setTimeout(() => {
-            readMediaFiles(1, true);
+            fetchImageAssets(1, pageSize, true);
         }, 500);
 
         return () => clearTimeout(timeout);
-    }, [imageSearch, parentPath]);
+    }, [imageSearch, parentPath, pageSize, fetchImageAssets, image]);
 
     // Calculate row count based on view mode
     const getRowCount = () => {
-        if (viewMode === "grid") {
-            return Math.ceil(files.length / 3); // 3 columns for grid
+        if (viewModeImage === "grid") {
+            return Math.ceil(imageFiles.length / 3); // 3 columns for grid
         }
-        return files.length;
+        return imageFiles.length;
     };
 
     const rowVirtualizer = useVirtualizer({
         count: getRowCount(),
         getScrollElement: () => containerRef.current,
-        estimateSize: () => ITEM_HEIGHTS[viewMode],
-        overscan: 5,
+        estimateSize: () => ITEM_HEIGHTS[viewModeImage],
+        getItemKey: (index) => `${viewModeImage}-${index}`, // reset size cache when mode changes
+        overscan: 10,
     });
 
     // infinite scroll with virtualizer
     useEffect(() => {
-        if (!hasMore || isLoading || files.length === 0) return;
+        if (!hasMore || isLoading || imageFiles.length === 0) return;
 
         const virtualItems = rowVirtualizer.getVirtualItems();
         if (!virtualItems.length) return;
@@ -101,24 +78,24 @@ const ImagePage = () => {
         const lastItem = virtualItems[virtualItems.length - 1];
 
         // Calculate actual file index based on view mode
-        const actualLastIndex = viewMode === "grid"
+        const actualLastIndex = viewModeImage === "grid"
             ? (lastItem.index * 3) + 2  // In grid mode, each row has 3 items
             : lastItem.index;
 
         // when we scroll within a few items of the end, load next page
-        if (actualLastIndex >= files.length - 5) {
-            const nextPage = Math.floor(files.length / pageSize) + 1;
-            console.log("Loading next page:", nextPage);
-            readMediaFiles(nextPage);
+        if (actualLastIndex >= imageFiles.length - 5) {
+            const nextPage = Math.floor(imageFiles.length / pageSize) + 1;
+            fetchImageAssets(nextPage, pageSize);
         }
-    }, [rowVirtualizer.getVirtualItems(), files.length, hasMore, isLoading, pageSize, viewMode]);
+    }, [rowVirtualizer.getVirtualItems(), imageFiles.length, hasMore, isLoading, pageSize, viewModeImage, fetchImageAssets]);
 
     // Reset scroll position when view mode changes
     useEffect(() => {
+        rowVirtualizer.measure(); // force recalculation with new item heights
         if (containerRef.current) {
             containerRef.current.scrollTop = 0;
         }
-    }, [viewMode]);
+    }, [viewModeImage, rowVirtualizer]);
 
     const formatFileSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
@@ -127,26 +104,11 @@ const ImagePage = () => {
         return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
     };
 
-    const handleImageClick = (file: Asset) => {
-        setSelectedImage(file);
-    };
-
-    const handleDragStart = (file: Asset) => {
-        try {
-            startDrag({
-                item: [file.original_path],
-                icon: "",
-            });
-        } catch (error) {
-            console.error(error);
-        }
-    };
-
     const closeModal = () => {
         setSelectedImage(null);
     };
 
-    const renderImageCard = (file: Asset, imageHeight: string, minHeight?: number) => {
+    const renderImageCard = (file: Asset, imageHeight: string, minHeight: number) => {
         const isHovered = hoveredId === file.id;
         const imageSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
 
@@ -154,13 +116,10 @@ const ImagePage = () => {
             <div
                 key={file.id}
                 className="border rounded-lg overflow-hidden bg-card cursor-pointer transition-all hover:shadow-lg"
-                style={minHeight ? { minHeight } : undefined}
+                style={{ minHeight }}
                 onMouseEnter={() => setHoveredId(file.id ?? null)}
                 onMouseLeave={() => setHoveredId(null)}
-                onClick={() => handleImageClick(file)}
-                onDragStart={(e) => { e.preventDefault(); handleDragStart(file) }}
-                onDragEnd={(e) => e.preventDefault()}
-                draggable
+                onClick={() => setSelectedImage(file)}
             >
                 <div className="relative group">
                     {/* Image */}
@@ -196,7 +155,7 @@ const ImagePage = () => {
                                 : "Unknown"}
                         </span>
                         <span>{formatFileSize(file.file_size)}</span>
-                        {file.metadata?.color_space && viewMode !== "grid" && (
+                        {file.metadata?.color_space && viewModeImage !== "grid" && (
                             <span>{file.metadata.color_space}</span>
                         )}
                     </div>
@@ -208,33 +167,33 @@ const ImagePage = () => {
     const virtualItems = rowVirtualizer.getVirtualItems();
     const totalHeight = rowVirtualizer.getTotalSize();
 
-    const showEmptyState = !isLoading && files.length === 0;
+    const showEmptyState = !isLoading && imageFiles.length === 0;
 
     return (
-        <div className="px-4 relative">
+        <div className="px-6 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
                 {/* View Mode Switcher */}
                 <div className="flex gap-1 mr-2">
                     <Button
-                        variant={viewMode === "list" ? "default" : "outline"}
+                        variant={viewModeImage === "list" ? "default" : "outline"}
                         size="icon"
-                        onClick={() => setViewMode("list")}
+                        onClick={() => setViewModeImage("list")}
                         className="h-8 w-8"
                     >
                         <LayoutList className="h-4 w-4" />
                     </Button>
                     <Button
-                        variant={viewMode === "grid" ? "default" : "outline"}
+                        variant={viewModeImage === "grid" ? "default" : "outline"}
                         size="icon"
-                        onClick={() => setViewMode("grid")}
+                        onClick={() => setViewModeImage("grid")}
                         className="h-8 w-8"
                     >
                         <LayoutGrid className="h-4 w-4" />
                     </Button>
                     <Button
-                        variant={viewMode === "large" ? "default" : "outline"}
+                        variant={viewModeImage === "large" ? "default" : "outline"}
                         size="icon"
-                        onClick={() => setViewMode("large")}
+                        onClick={() => setViewModeImage("large")}
                         className="h-8 w-8"
                     >
                         <Maximize2 className="h-4 w-4" />
@@ -251,12 +210,11 @@ const ImagePage = () => {
                         className="pl-10 pr-10 text-sm"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-md px-2 text-xs">
-                        {searchCount} Items
+                        {imageSearchCount} Items
                     </div>
                 </div>
             </div>
-
-            <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
+            <div ref={containerRef} className="h-[calc(100vh-90px)] overflow-y-auto pr-2">
                 {showEmptyState ? (
                     <div className="text-center text-muted-foreground py-8 text-sm">
                         {imageSearch
@@ -266,21 +224,21 @@ const ImagePage = () => {
                 ) : (
                     <div
                         className="relative w-full"
-                        style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewMode] : 0) }}
+                        style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeImage] : 0) }}
                     >
                         {!!virtualItems.length && (
                             <div
-                                className="absolute left-0 right-0 space-y-2"
+                                className={`absolute left-0 right-0 space-y-2`}
                                 style={{
                                     transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
                                 }}
                             >
                                 {virtualItems.map((virtualRow) => {
-                                    if (viewMode === "grid") {
+                                    if (viewModeImage === "grid") {
                                         // Grid mode: 3 columns
-                                        const file1 = files[virtualRow.index * 3];
-                                        const file2 = files[virtualRow.index * 3 + 1];
-                                        const file3 = files[virtualRow.index * 3 + 2];
+                                        const file1 = imageFiles[virtualRow.index * 3];
+                                        const file2 = imageFiles[virtualRow.index * 3 + 1];
+                                        const file3 = imageFiles[virtualRow.index * 3 + 2];
 
                                         return (
                                             <div
@@ -288,17 +246,17 @@ const ImagePage = () => {
                                                 className="grid grid-cols-3 gap-2"
                                                 style={{ minHeight: virtualRow.size }}
                                             >
-                                                {file1 && renderImageCard(file1, "h-52")}
-                                                {file2 && renderImageCard(file2, "h-52")}
-                                                {file3 && renderImageCard(file3, "h-52")}
+                                                {file1 && renderImageCard(file1, "h-52", virtualRow.size)}
+                                                {file2 && renderImageCard(file2, "h-52", virtualRow.size)}
+                                                {file3 && renderImageCard(file3, "h-52", virtualRow.size)}
                                             </div>
                                         );
                                     } else {
                                         // List or Large mode: single column
-                                        const file = files[virtualRow.index];
+                                        const file = imageFiles[virtualRow.index];
                                         if (!file) return null;
 
-                                        const imageHeight = viewMode === "large" ? "h-80" : "h-48";
+                                        const imageHeight = viewModeImage === "large" ? "h-80" : "h-48";
                                         return renderImageCard(file, imageHeight, virtualRow.size);
                                     }
                                 })}

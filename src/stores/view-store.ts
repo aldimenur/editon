@@ -1,5 +1,4 @@
-import {create} from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { create } from 'zustand'
 
 interface ViewStore {
   viewModeAudio: "list" | "grid" | "large";
@@ -11,20 +10,14 @@ interface ViewStore {
 }
 
 const useViewStore = create<ViewStore>()(
-  persist(
-    (set) => ({
-      viewModeAudio: "list",
-      viewModeVideo: "list",
-      viewModeImage: "list",
-      setViewModeAudio: (mode: "list" | "grid" | "large") => set({ viewModeAudio: mode }),
-      setViewModeVideo: (mode: "list" | "grid" | "large") => set({ viewModeVideo: mode }),
-      setViewModeImage: (mode: "list" | "grid" | "large") => set({ viewModeImage: mode }),
-    }),
-    {
-      name: "view-store",
-      storage: createJSONStorage(() => localStorage),
-    },
-  ),
+  (set) => ({
+    viewModeAudio: "list",
+    viewModeVideo: "grid",
+    viewModeImage: "grid",
+    setViewModeAudio: (mode: "list" | "grid" | "large") => set({ viewModeAudio: mode }),
+    setViewModeVideo: (mode: "list" | "grid" | "large") => set({ viewModeVideo: mode }),
+    setViewModeImage: (mode: "list" | "grid" | "large") => set({ viewModeImage: mode }),
+  }),
 );
 
 export default useViewStore;

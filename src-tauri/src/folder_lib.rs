@@ -1,8 +1,8 @@
+use notify::{Event, EventKind, RecursiveMode, Result as NotifyResult, Watcher};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
-use notify::{Watcher, RecursiveMode, Result as NotifyResult, Event, EventKind};
-use std::sync::{Arc, Mutex};
-use std::path::{Path};
 
 use crate::{models::DbState, utils::get_media_type};
 
@@ -116,7 +116,11 @@ pub fn scan_and_import_folder(
 }
 
 // Start watching folder for file changes
-fn start_folder_watcher(folder_path: String, db_conn: Arc<Mutex<rusqlite::Connection>>, app: AppHandle) {
+fn start_folder_watcher(
+    folder_path: String,
+    db_conn: Arc<Mutex<rusqlite::Connection>>,
+    app: AppHandle,
+) {
     std::thread::spawn(move || {
         if let Err(e) = watch_folder_changes(&folder_path, &db_conn, &app) {
             eprintln!("Folder watcher error: {}", e);
@@ -132,12 +136,12 @@ fn watch_folder_changes(
 ) -> NotifyResult<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = notify::recommended_watcher(tx)?;
-    
+
     watcher.watch(Path::new(folder_path), RecursiveMode::Recursive)?;
-    
+
     let db_conn = db_conn.clone();
     let app = app.clone();
-    
+
     // Process events in a loop
     for event in rx {
         match event {
@@ -147,16 +151,12 @@ fn watch_folder_changes(
             Err(e) => eprintln!("Watch error: {}", e),
         }
     }
-    
+
     Ok(())
 }
 
 // Handle individual file events
-fn handle_file_change(
-    event: &Event,
-    db_conn: &Arc<Mutex<rusqlite::Connection>>,
-    app: &AppHandle,
-) {
+fn handle_file_change(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
     match &event.kind {
         // File created or modified
         EventKind::Create(_) | EventKind::Modify(_) => {
@@ -164,17 +164,18 @@ fn handle_file_change(
                 if path.is_file() {
                     if let Some(ext) = path.extension() {
                         let ext_str = ext.to_string_lossy().to_string();
-                        
+
                         // Only process files that match media types
                         if let Some(media_type) = get_media_type(&ext_str) {
                             if let Ok(metadata) = path.metadata() {
-                                let filename = path.file_name()
+                                let filename = path
+                                    .file_name()
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .to_string();
                                 let path_str = path.to_string_lossy().to_string();
                                 let file_size = metadata.len();
-                                
+
                                 // Add or update file in database
                                 if let Err(e) = add_or_update_file_in_db(
                                     db_conn,
@@ -195,7 +196,7 @@ fn handle_file_change(
                 }
             }
         }
-        
+
         // File deleted
         EventKind::Remove(_) => {
             for path in &event.paths {
@@ -207,7 +208,7 @@ fn handle_file_change(
                 }
             }
         }
-        
+
         _ => {} // Ignore other event types (rename, chmod, etc.)
     }
 }
@@ -236,7 +237,9 @@ fn add_or_update_file_in_db(
             tx.commit().map_err(|e| e.to_string())?;
             Ok(())
         }
-        Err(rusqlite::Error::SqliteFailure(_, Some(msg))) if msg.contains("UNIQUE constraint failed") => {
+        Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
+            if msg.contains("UNIQUE constraint failed") =>
+        {
             // File already exists, update it
             tx.execute(
                 "UPDATE assets SET file_size = ?1 WHERE original_path = ?2",
@@ -251,10 +254,7 @@ fn add_or_update_file_in_db(
 }
 
 // Remove file from database (used by watcher)
-fn remove_file_from_db(
-    conn: &Arc<Mutex<rusqlite::Connection>>,
-    path: &str,
-) -> Result<(), String> {
+fn remove_file_from_db(conn: &Arc<Mutex<rusqlite::Connection>>, path: &str) -> Result<(), String> {
     let conn = conn.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM assets WHERE original_path = ?1",

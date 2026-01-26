@@ -5,7 +5,6 @@ import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, Download, MoreHorizontal } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { Asset } from "@/types/tauri";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
@@ -17,71 +16,49 @@ const ITEM_HEIGHTS = {
 };
 
 const SfxPage = () => {
-  const { sfxSearch, setSfxSearch, parentPath } = useAssetStore((state) => state);
-  const [files, setFiles] = useState<Asset[]>([]);
-  const [searchCount, setSearchCount] = useState(0);
+  const {
+    sfxSearch,
+    setSfxSearch,
+    parentPath,
+    sfxFiles,
+    sfxSearchCount,
+    isLoading,
+    fetchSfxAssets,
+    sfx
+  } = useAssetStore((state) => state);
+
   const [pageSize] = useState(40);
-  const [isLoading, setIsLoading] = useState(false);
   const [sliderValue, setSliderValue] = useState(0.5);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const hasMore = files.length < searchCount;
-
-  const readMediaFiles = async (pageParam: number, reset: boolean = false) => {
-    if (!parentPath) return;
-    try {
-      setIsLoading(true);
-      const result = await invoke<any>("get_assets_paginated", {
-        page: pageParam,
-
-
-        pageSize: pageSize,
-        query: sfxSearch || "",
-        assetType: "audio",
-      });
-
-      const assets = result.data || [];
-      setFiles((prev) => (reset ? assets : [...prev, ...assets]));
-      setSearchCount(result.total_items ?? 0);
-
-      console.log("Loaded page", pageParam, "Total:", result.total_items, "Assets:", assets.length);
-
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const hasMore = sfxFiles.length < sfxSearchCount;
 
   // initial load / path change
   useEffect(() => {
     if (!parentPath) {
-      setFiles([]);
-      setSearchCount(0);
       return;
     }
-    readMediaFiles(1, true);
-  }, [parentPath]);
+    fetchSfxAssets(1, pageSize, true);
+  }, [parentPath, pageSize, fetchSfxAssets, sfx]);
 
-  // search
+  // search with debounce
   useEffect(() => {
     if (!parentPath) return;
-    setFiles([]);
-    setSearchCount(0);
 
     const timeout = setTimeout(() => {
-      readMediaFiles(1, true);
+      fetchSfxAssets(1, pageSize, true);
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [sfxSearch, parentPath]);
+  }, [sfxSearch, parentPath, pageSize, fetchSfxAssets]);
+
 
   // Calculate row count based on view mode
   const getRowCount = () => {
     if (viewModeAudio === "grid") {
-      return Math.ceil(files.length / 2);
+      return Math.ceil(sfxFiles.length / 2);
     }
-    return files.length;
+    return sfxFiles.length;
   };
 
   const rowVirtualizer = useVirtualizer({
@@ -94,7 +71,7 @@ const SfxPage = () => {
 
   // infinite scroll with virtualizer
   useEffect(() => {
-    if (!hasMore || isLoading || files.length === 0) return;
+    if (!hasMore || isLoading || sfxFiles.length === 0) return;
 
     const virtualItems = rowVirtualizer.getVirtualItems();
     if (!virtualItems.length) return;
@@ -107,12 +84,12 @@ const SfxPage = () => {
       : lastItem.index;
 
     // when we scroll within a few items of the end, load next page
-    if (actualLastIndex >= files.length - 5) {
-      const nextPage = Math.floor(files.length / pageSize) + 1;
+    if (actualLastIndex >= sfxFiles.length - 5) {
+      const nextPage = Math.floor(sfxFiles.length / pageSize) + 1;
       console.log("Loading next page:", nextPage);
-      readMediaFiles(nextPage);
+      fetchSfxAssets(nextPage, pageSize);
     }
-  }, [rowVirtualizer.getVirtualItems(), files.length, hasMore, isLoading, pageSize, viewModeAudio]);
+  }, [rowVirtualizer.getVirtualItems(), sfxFiles.length, hasMore, isLoading, pageSize, viewModeAudio, fetchSfxAssets]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {
@@ -125,9 +102,9 @@ const SfxPage = () => {
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalHeight = rowVirtualizer.getTotalSize();
 
-  const showEmptyState = !isLoading && files.length === 0;
+  const showEmptyState = !isLoading && sfxFiles.length === 0;
 
-  const renderAudioCard = (file: Asset, waveHeight: number, minHeight: number) => {
+  const renderAudioCard = (file: any, waveHeight: number, minHeight: number) => {
     return (
       <div
         key={file.id}
@@ -221,7 +198,7 @@ const SfxPage = () => {
             className="pl-10 pr-10 text-sm"
           />
           <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-md px-2 text-xs">
-            {searchCount} Items
+            {sfxSearchCount} Items
           </div>
         </div>
       </div>
@@ -235,20 +212,20 @@ const SfxPage = () => {
         ) : (
           <div
             className="relative w-full"
-              style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeAudio] : 0) }}
+            style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeAudio] : 0) }}
           >
             {!!virtualItems.length && (
               <div
-                  className={`absolute left-0 right-0 space-y-2`}
-                  style={{
-                    transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-                  }}
+                className={`absolute left-0 right-0 space-y-2`}
+                style={{
+                  transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+                }}
               >
                 {virtualItems.map((virtualRow) => {
                   if (viewModeAudio === "grid") {
                     // Grid mode: 2 columns
-                    const file1 = files[virtualRow.index * 2];
-                    const file2 = files[virtualRow.index * 2 + 1];
+                    const file1 = sfxFiles[virtualRow.index * 2];
+                    const file2 = sfxFiles[virtualRow.index * 2 + 1];
 
                     return (
                       <div
@@ -262,7 +239,7 @@ const SfxPage = () => {
                     );
                   } else {
                     // List or Large mode: single column
-                    const file = files[virtualRow.index];
+                    const file = sfxFiles[virtualRow.index];
                     if (!file) return null;
 
                     const waveHeight = viewModeAudio === "large" ? 80 : 40;
