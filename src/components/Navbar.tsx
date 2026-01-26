@@ -12,6 +12,7 @@ import { Progress } from "./ui/progress";
 import { check } from "@tauri-apps/plugin-updater";
 import { Button } from "./ui/button";
 import { getVersion } from "@tauri-apps/api/app";
+import { countAssets } from "@/lib/utils";
 
 const sidebarItems = [
   {
@@ -68,15 +69,6 @@ const Navbar = () => {
     checkForUpdates();
   }, []);
 
-  const getCount = async () => {
-    const sfx = await invoke("get_count_assets", { assetType: "audio" });
-    setSfx(sfx as number);
-    const video = await invoke("get_count_assets", { assetType: "video" });
-    setVideo(video as number);
-    const image = await invoke("get_count_assets", { assetType: "image" });
-    setImage(image as number);
-  }
-
   const handleSetPath = async () => {
     try {
       const path = await open({
@@ -100,62 +92,87 @@ const Navbar = () => {
   };
 
   useEffect(() => {
-    let unlistenFunction: any
+    const unlisteners: Array<() => void> = [];
 
-    async function setupListener() {
-      unlistenFunction = await listen("scan-progress", (event) => {
-        const event_response = event.payload as {
-          count: number;
-          last_files: string;
-          status: string;
-        }
+    const setupListeners = async () => {
+      try {
+        // File change listeners
+        unlisteners.push(
+          await listen("file-added", async (event) => {
+            console.log("File added:", event.payload);
+            const audio = await countAssets.audio() as number
+            setSfx(audio)
+          })
+        );
 
-        console.log(event_response)
-        if (event_response.status == "finished") {
-          console.log('yes')
-          invoke("generate_missing_thumbnails");
-          invoke("generate_missing_waveforms");
-          setCountingTotal(false);
-          getCount();
-        }
-      })
+        unlisteners.push(
+          await listen("file-removed", (event) => {
+            console.log("File removed:", event.payload);
+          })
+        );
 
-      unlistenFunction = await listen("waveform-progress", (event) => {
-        const payload = event.payload as {
-          current: number;
-          total: number;
-          status: string;
-        }
+        // Scan progress listener
+        unlisteners.push(
+          await listen("scan-progress", (event) => {
+            const payload = event.payload as {
+              count: number;
+              last_files: string;
+              status: string;
+            };
 
-        setProgressSound(payload)
+            console.log(payload);
+            if (payload.status === "finished") {
+              invoke("generate_missing_thumbnails");
+              invoke("generate_missing_waveforms");
+              setCountingTotal(false);
+            }
+          })
+        );
 
-        if (payload.status === "done") {
-          setProgressSound(null);
-        }
-      });
+        // Waveform progress listener
+        unlisteners.push(
+          await listen("waveform-progress", (event) => {
+            const payload = event.payload as {
+              current: number;
+              total: number;
+              status: string;
+            };
 
-      unlistenFunction = await listen("thumbnail-progress", (event) => {
-        const payload = event.payload as {
-          current: number;
-          total: number;
-          status: string;
-        }
+            setProgressSound(payload);
 
-        setProgressImage(payload)
+            if (payload.status === "done") {
+              setProgressSound(null);
+            }
+          })
+        );
 
-        if (payload.status === "done") {
-          setProgressImage(null);
-        }
-      });
-    }
+        // Thumbnail progress listener
+        unlisteners.push(
+          await listen("thumbnail-progress", (event) => {
+            const payload = event.payload as {
+              current: number;
+              total: number;
+              status: string;
+            };
 
-    setupListener();
+            setProgressImage(payload);
 
-    // Cleanup saat komponen didestroy
-    return () => {
-      if (unlistenFunction) unlistenFunction();
+            if (payload.status === "done") {
+              setProgressImage(null);
+            }
+          })
+        );
+      } catch (error) {
+        console.error("Failed to setup event listeners:", error);
+      }
     };
-  }, [])
+
+    setupListeners();
+
+    return () => {
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, []);
 
   const handleUpdate = async () => {
     const update = await check();
