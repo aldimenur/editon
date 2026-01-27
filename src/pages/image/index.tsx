@@ -7,6 +7,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 const ITEM_HEIGHTS = {
     list: 240,
@@ -115,11 +116,8 @@ const ImagePage = () => {
         return (
             <div
                 key={file.id}
-                className="border rounded-lg overflow-hidden bg-card cursor-pointer transition-all hover:shadow-lg"
+                className="border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
                 style={{ minHeight }}
-                onMouseEnter={() => setHoveredId(file.id ?? null)}
-                onMouseLeave={() => setHoveredId(null)}
-                onClick={() => setSelectedImage(file)}
             >
                 <div className="relative group">
                     {/* Image */}
@@ -133,6 +131,9 @@ const ImagePage = () => {
 
                     {/* Hover Overlay */}
                     <div
+                        onMouseEnter={() => setHoveredId(file.id ?? null)}
+                        onMouseLeave={() => setHoveredId(null)}
+                        onClick={() => setSelectedImage(file)}
                         className={`absolute inset-0 bg-black/60 transition-opacity duration-300 flex items-center justify-center ${isHovered ? 'opacity-100' : 'opacity-0'
                             }`}
                     >
@@ -148,16 +149,21 @@ const ImagePage = () => {
                     <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
                         {file.filename}
                     </p>
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>
-                            {file.metadata?.width && file.metadata?.height
-                                ? `${file.metadata.width}x${file.metadata.height}`
-                                : "Unknown"}
+                    <div className="flex flex-col">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>
+                                {file.metadata?.width && file.metadata?.height
+                                    ? `${file.metadata.width}x${file.metadata.height}`
+                                    : "Unknown"}
+                            </span>
+                            <span>{formatFileSize(file.file_size)}</span>
+                            {file.metadata?.color_space && viewModeImage !== "grid" && (
+                                <span>{file.metadata.color_space}</span>
+                            )}
+                        </div>
+                        <span className="text-xs cursor-pointer truncate w-3/4 text-primary" onClick={() => revealItemInDir(file.original_path)}>
+                            {file.original_path}
                         </span>
-                        <span>{formatFileSize(file.file_size)}</span>
-                        {file.metadata?.color_space && viewModeImage !== "grid" && (
-                            <span>{file.metadata.color_space}</span>
-                        )}
                     </div>
                 </div>
             </div>

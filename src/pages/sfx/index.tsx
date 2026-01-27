@@ -135,9 +135,9 @@ const SfxPage = () => {
             <Button variant="ghost" size="icon-sm" onClick={() => revealItemInDir(file.original_path)}>
               <FolderSearch className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon-sm">
+            {/* <Button variant="ghost" size="icon-sm">
               <Download className="h-4 w-4" />
-            </Button>
+            </Button> */}
           </div>
         </div>
       </div>

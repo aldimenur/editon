@@ -2,11 +2,12 @@ import useAssetStore from "@/stores/asset-store";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2 } from "lucide-react";
+import { Search, LayoutList, LayoutGrid, Maximize2, FolderSearch } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 const ITEM_HEIGHTS = {
   list: 240,
@@ -109,7 +110,7 @@ const VideoPage = () => {
     return (
       <div
         key={file.id}
-        className="border rounded-lg overflow-hidden bg-card cursor-pointer transition-all hover:shadow-lg"
+        className="flex flex-col justify-between border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
         style={{ minHeight }}
       >
         <video
@@ -118,20 +119,15 @@ const VideoPage = () => {
           controls
         />
         {/* Video Info */}
-        <div className="p-2 bg-accent">
+        <div className="p-2 bg-accent flex-1">
           <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
             {file.filename}
           </p>
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>
-              {file.metadata?.width && file.metadata?.height
-                ? `${file.metadata.width}x${file.metadata.height}`
-                : "Unknown"}
+            <span className="cursor-pointer truncate w-1/2 text-primary" onClick={() => revealItemInDir(file.original_path)}>
+              {file.original_path}
             </span>
             <span>{formatFileSize(file.file_size)}</span>
-            {file.metadata?.duration && viewModeVideo !== "grid" && (
-              <span>{Math.floor(file.metadata.duration)}s</span>
-            )}
           </div>
         </div>
       </div>
