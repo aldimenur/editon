@@ -3,7 +3,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, Download, MoreHorizontal } from "lucide-react";
+import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, MoreHorizontal } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";

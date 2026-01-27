@@ -2,7 +2,7 @@ import useAssetStore from "@/stores/asset-store";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2, FolderSearch } from "lucide-react";
+import { Search, LayoutList, LayoutGrid, Maximize2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
