@@ -1,4 +1,8 @@
-use std::{fs::File, path::Path, sync::atomic::{AtomicUsize, Ordering}};
+use std::{
+    fs::File,
+    path::Path,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use symphonia::core::audio::SampleBuffer;
@@ -11,9 +15,12 @@ use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::{DbState, models::ProgressEvent};
+use crate::{models::ProgressEvent, DbState};
 
-pub fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+pub fn get_audio_waveform(
+    path: &str,
+    num_bars: usize,
+) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     let src = File::open(Path::new(path))?;
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
     let hint = Hint::new();
@@ -95,7 +102,10 @@ pub fn get_audio_waveform(path: &str, num_bars: usize) -> Result<Vec<f32>, Box<d
 }
 
 #[tauri::command]
-pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> Result<String, String> {
+pub fn generate_missing_waveforms(
+    app: AppHandle,
+    state: State<'_, DbState>,
+) -> Result<String, String> {
     // 1. Ambil koneksi DB sebentar untuk mencari "PR" (Pekerjaan Rumah)
     let db_arc = state.conn.clone(); // Clone Arc (murah, cuma copy pointer)
 
@@ -137,50 +147,48 @@ pub fn generate_missing_waveforms(app: AppHandle, state: State<'_, DbState>) -> 
     std::thread::spawn(move || {
         println!("Background process started for {} files", total_files);
 
-        to_process
-            .par_iter()
-            .for_each(|(id, path, filename)| {
-                // Check cancel flag FIRST before processing
-                if cancel_flag.load(Ordering::SeqCst) {
-                    return
-                }
-                
-                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                
-                // A. Emit Event: "Sedang memproses lagu X..."
-                let _ = app.emit(
-                    "waveform-progress",
-                    ProgressEvent {
-                        name: "Sound".to_string(),
-                        current,
-                        total: total_files,
-                        filename: filename.clone(),
-                        status: "processing".to_string(),
-                    },
-                );
+        to_process.par_iter().for_each(|(id, path, filename)| {
+            // Check cancel flag FIRST before processing
+            if cancel_flag.load(Ordering::SeqCst) {
+                return;
+            }
 
-                // B. Proses Berat (Decode Audio) - Tidak mengunci DB
-                // Ingat: function get_audio_waveform kita sudah return Vec<f32> (-1 s/d 1)
-                let waveform_result = get_audio_waveform(path, 100);
+            let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-                match waveform_result {
-                    Ok(data) => {
-                        let json_data = serde_json::to_string(&data).unwrap_or("[]".to_string());
+            // A. Emit Event: "Sedang memproses lagu X..."
+            let _ = app.emit(
+                "waveform-progress",
+                ProgressEvent {
+                    name: "Sound".to_string(),
+                    current,
+                    total: total_files,
+                    filename: filename.clone(),
+                    status: "processing".to_string(),
+                },
+            );
 
-                        // C. Update DB (Hanya lock sebentar saat update row ini saja)
-                        if let Ok(conn) = db_arc.lock() {
-                            let _ = conn.execute(
-                                "UPDATE assets SET waveform_data = ?1 WHERE id = ?2",
-                                rusqlite::params![json_data, id],
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        println!("Gagal process {}: {}", filename, e);
-                        // Lanjut ke file berikutnya meski error
+            // B. Proses Berat (Decode Audio) - Tidak mengunci DB
+            // Ingat: function get_audio_waveform kita sudah return Vec<f32> (-1 s/d 1)
+            let waveform_result = get_audio_waveform(path, 100);
+
+            match waveform_result {
+                Ok(data) => {
+                    let json_data = serde_json::to_string(&data).unwrap_or("[]".to_string());
+
+                    // C. Update DB (Hanya lock sebentar saat update row ini saja)
+                    if let Ok(conn) = db_arc.lock() {
+                        let _ = conn.execute(
+                            "UPDATE assets SET waveform_data = ?1 WHERE id = ?2",
+                            rusqlite::params![json_data, id],
+                        );
                     }
                 }
-            });
+                Err(e) => {
+                    println!("Gagal process {}: {}", filename, e);
+                    // Lanjut ke file berikutnya meski error
+                }
+            }
+        });
 
         // D. Emit Event Selesai
         let _ = app.emit(

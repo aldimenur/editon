@@ -41,7 +41,7 @@ const sidebarItems = [
 
 const Navbar = () => {
   const { activeItem, setActiveItem } = useNavStore((state) => state);
-  const { setParentPath, sfx, video, image, updateAssetsCount } = useAssetStore((state) => state);
+  const { parentPath, setParentPath, sfx, video, image, updateAssetsCount } = useAssetStore((state) => state);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [appVersion, setAppVersion] = useState("Unknown");
   const [countingTotal, setCountingTotal] = useState<boolean>(false)
@@ -60,6 +60,7 @@ const Navbar = () => {
         setUpdateAvailable(true);
       }
     };
+    invoke('trigger_folder_watcher', { folderPath: parentPath })
 
     checkForUpdates();
     getAppVersion();
@@ -80,7 +81,7 @@ const Navbar = () => {
   const handleScanProgressDone = useCallback(async () => {
     // Update asset counts first
     await updateAssetsCount();
-    
+
     // Then start thumbnail and waveform generation
     // These run in background threads in Rust
     try {

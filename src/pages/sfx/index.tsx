@@ -1,5 +1,5 @@
 import useAssetStore from "@/stores/asset-store";
-import { invoke } from "@tauri-apps/api/core";
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
@@ -132,7 +132,7 @@ const SfxPage = () => {
         </div>
         <div className="px-2 bg-accent/50 flex">
           <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button variant="ghost" size="icon-sm" onClick={() => invoke("show_in_folder", { path: file.original_path })}>
+            <Button variant="ghost" size="icon-sm" onClick={() => revealItemInDir(file.original_path)}>
               <FolderSearch className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon-sm">

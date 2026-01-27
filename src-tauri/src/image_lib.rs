@@ -1,22 +1,21 @@
-use std::fs::File;
-use std::io::BufReader;
-use std::io::Cursor;
-use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use fast_image_resize::{images::Image, PixelType, ResizeAlg, ResizeOptions, Resizer};
 use image::codecs::webp::WebPEncoder;
 use image::ExtendedColorType;
 use image::ImageEncoder;
 use image::ImageReader;
 use rayon::prelude::*;
+use std::fs::File;
+use std::io::BufReader;
+use std::io::Cursor;
+use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tauri::Emitter;
 use tauri::Manager;
-use tauri::{ Emitter};
 
-use crate::AssetMetadata;
-use crate::DbState;
 use crate::models::ApiResponse;
 use crate::models::ProgressEvent;
-
+use crate::AssetMetadata;
+use crate::DbState;
 
 #[tauri::command]
 pub fn cancel_scan(state: tauri::State<'_, DbState>) -> Result<String, String> {
@@ -144,7 +143,10 @@ pub fn generate_missing_thumbnails(
 
     let total_files = to_process.len();
     if total_files == 0 {
-        return Ok(ApiResponse { message: format!("Semua thumbnail sudah di generate!"), status: format!("Success") });
+        return Ok(ApiResponse {
+            message: format!("Semua thumbnail sudah di generate!"),
+            status: format!("Success"),
+        });
     }
     // 2. Buat counter atomic
     let processed_count = std::sync::Arc::new(AtomicUsize::new(0));
@@ -218,5 +220,11 @@ pub fn generate_missing_thumbnails(
         );
     });
 
-    Ok(ApiResponse { message: format!("Memulai prosess generate thumbnail untuk {} gambar", total_files), status: "Processing".to_string() })
+    Ok(ApiResponse {
+        message: format!(
+            "Memulai prosess generate thumbnail untuk {} gambar",
+            total_files
+        ),
+        status: "Processing".to_string(),
+    })
 }

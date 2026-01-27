@@ -1,6 +1,6 @@
-use rusqlite::{Connection};
-use tauri::State;
+use rusqlite::Connection;
 use std::collections::HashSet;
+use tauri::State;
 
 use crate::models::DbState;
 

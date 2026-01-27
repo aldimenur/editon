@@ -6,25 +6,6 @@ use walkdir::WalkDir;
 
 use crate::{models::DbState, utils::get_media_type};
 
-#[tauri::command]
-pub fn show_in_folder(path: String) {
-    use std::process::Command;
-
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer")
-            .args(["/select,", &path])
-            .spawn()
-            .unwrap();
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Some(parent) = std::path::Path::new(&path).parent() {
-            let _ = open::that(parent);
-        }
-    }
-}
-
 #[derive(Clone, serde::Serialize)]
 struct ScanProgress {
     count: usize,
@@ -112,6 +93,19 @@ pub fn scan_and_import_folder(
     });
 
     // Return langsung agar UI tidak menunggu
+    Ok("Scan berjalan di background".to_string())
+}
+
+#[tauri::command]
+pub fn trigger_folder_watcher(
+    app: AppHandle, // Tambahkan AppHandle untuk emit event
+    state: State<'_, DbState>,
+    folder_path: String,
+) -> Result<String, String> {
+    let db_conn = state.conn.clone();
+
+    println!("Trigger folder watcher for: {}", folder_path);
+    start_folder_watcher(folder_path, db_conn, app);
     Ok("Scan berjalan di background".to_string())
 }
 

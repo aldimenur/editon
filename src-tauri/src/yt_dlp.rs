@@ -8,7 +8,6 @@ use tokio::{
 
 use crate::utils::get_app_data_dir;
 
-
 #[derive(serde::Serialize)]
 pub struct DependencyStatus {
     yt_dlp_installed: bool,
@@ -280,7 +279,9 @@ pub async fn run_ytdlp(
     let yt_dlp_path = status.yt_dlp_path.unwrap();
 
     let mut cmd = Command::new(&yt_dlp_path);
-    cmd.args(args).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    cmd.args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
 
     #[cfg(target_os = "windows")]
     {

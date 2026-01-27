@@ -149,6 +149,7 @@ pub fn run() {
         .build_global()
         .unwrap();
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
@@ -197,9 +198,7 @@ pub fn run() {
 
             app.manage(DbState {
                 conn: Arc::new(Mutex::new(conn)),
-                cancel_scan: Arc::new(
-                    std::sync::atomic::AtomicBool::new(false),
-                ),
+                cancel_scan: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             });
 
             Ok(())
@@ -216,7 +215,7 @@ pub fn run() {
             image_lib::generate_missing_thumbnails,
             image_lib::cancel_scan,
             folder_lib::scan_and_import_folder,
-            folder_lib::show_in_folder,
+            folder_lib::trigger_folder_watcher,
             download_dependencies,
             get_assets_paginated,
             get_count_assets,
