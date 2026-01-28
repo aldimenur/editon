@@ -16,7 +16,6 @@ const WavesurferRender = (props: {
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const isLoadedRef = useRef(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const { theme } = useTheme();
   const isDark = theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -55,7 +54,6 @@ const WavesurferRender = (props: {
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     wavesurferRef.current?.pause();
-    setIsPlaying(false);
     try {
       startDrag({
         item: [src],
@@ -75,7 +73,6 @@ const WavesurferRender = (props: {
 
   useEffect(() => {
     isLoadedRef.current = false;
-    setIsPlaying(false);
     // If src changes, ensure audio that is loading/playing is stopped
     if (wavesurferRef.current) {
       wavesurferRef.current.pause();
@@ -87,7 +84,6 @@ const WavesurferRender = (props: {
     if (!wavesurfer) return;
 
     const handleFinish = () => {
-      setIsPlaying(false);
     };
 
     wavesurfer.on('finish', handleFinish);
@@ -126,7 +122,6 @@ const WavesurferRender = (props: {
 
     wavesurferRef.current.seekTo(clickPosition);
     wavesurferRef.current.play();
-    setIsPlaying(true);
   };
 
   return (
