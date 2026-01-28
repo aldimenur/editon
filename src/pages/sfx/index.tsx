@@ -29,9 +29,37 @@ const SfxPage = () => {
 
   const [pageSize] = useState(40);
   const [sliderValue, setSliderValue] = useState(0.5);
+  const [gridColumns, setGridColumns] = useState(2);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
+
+  // Track container width and update columns responsively
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateColumns = () => {
+      if (!containerRef.current) return;
+      const width = containerRef.current.clientWidth;
+
+      // Define breakpoints for responsive columns
+      if (width >= 1600) {
+        setGridColumns(5); // Extra large screens
+      } else if (width >= 1200) {
+        setGridColumns(4); // Large screens
+      } else if (width >= 768) {
+        setGridColumns(3); // Medium screens
+      } else {
+        setGridColumns(2); // Small screens
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(updateColumns);
+    resizeObserver.observe(containerRef.current);
+    updateColumns(); // Initial calculation
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // initial load / path change
   useEffect(() => {
@@ -56,7 +84,7 @@ const SfxPage = () => {
   // Calculate row count based on view mode
   const getRowCount = () => {
     if (viewModeAudio === "grid") {
-      return Math.ceil(sfxFiles.length / 2);
+      return Math.ceil(sfxFiles.length / gridColumns);
     }
     return sfxFiles.length;
   };
@@ -65,7 +93,7 @@ const SfxPage = () => {
     count: getRowCount(),
     getScrollElement: () => containerRef.current,
     estimateSize: () => ITEM_HEIGHTS[viewModeAudio],
-    getItemKey: (index) => `${viewModeAudio}-${index}`, // reset size cache when mode changes
+    getItemKey: (index) => `${viewModeAudio}-${gridColumns}-${index}`, // reset size cache when mode or columns change
     overscan: 10,
   });
 
@@ -80,7 +108,7 @@ const SfxPage = () => {
 
     // Calculate actual file index based on view mode
     const actualLastIndex = viewModeAudio === "grid"
-      ? (lastItem.index * 2) + 1  // In grid mode, each row has 2 items
+      ? (lastItem.index * gridColumns) + (gridColumns - 1)  // In grid mode, each row has gridColumns items
       : lastItem.index;
 
     // when we scroll within a few items of the end, load next page
@@ -91,13 +119,13 @@ const SfxPage = () => {
     }
   }, [rowVirtualizer.getVirtualItems(), sfxFiles.length, hasMore, isLoading, pageSize, viewModeAudio, fetchSfxAssets]);
 
-  // Reset scroll position when view mode changes
+  // Reset scroll position when view mode or columns change
   useEffect(() => {
     rowVirtualizer.measure(); // force recalculation with new item heights
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-  }, [viewModeAudio, rowVirtualizer]);
+  }, [viewModeAudio, gridColumns, rowVirtualizer]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalHeight = rowVirtualizer.getTotalSize();
@@ -258,18 +286,25 @@ const SfxPage = () => {
               >
                 {virtualItems.map((virtualRow) => {
                   if (viewModeAudio === "grid") {
-                    // Grid mode: 2 columns
-                    const file1 = sfxFiles[virtualRow.index * 2];
-                    const file2 = sfxFiles[virtualRow.index * 2 + 1];
+                    // Grid mode: dynamic columns based on screen width
+                    const startIndex = virtualRow.index * gridColumns;
+                    const files = Array.from({ length: gridColumns }, (_, i) =>
+                      sfxFiles[startIndex + i]
+                    ).filter(Boolean);
+
+                    const gridColsClass =
+                      gridColumns === 5 ? "grid-cols-5" :
+                        gridColumns === 4 ? "grid-cols-4" :
+                          gridColumns === 3 ? "grid-cols-3" :
+                            "grid-cols-2";
 
                     return (
                       <div
                         key={virtualRow.index}
-                        className="grid grid-cols-2 gap-2"
+                        className={`grid ${gridColsClass} gap-2`}
                         style={{ minHeight: virtualRow.size }}
                       >
-                        {file1 && renderAudioCard(file1, 60, virtualRow.size)}
-                        {file2 && renderAudioCard(file2, 60, virtualRow.size)}
+                        {files.map(file => renderAudioCard(file, 60, virtualRow.size))}
                       </div>
                     );
                   } else {
