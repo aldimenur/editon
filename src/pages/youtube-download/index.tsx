@@ -155,7 +155,7 @@ const YoutubeDownloadPage = () => {
     ];
 
   return (
-    <div className="px-6 max-w-2xl mx-auto space-y-6 max-h-[calc(100vh-40px)] overflow-auto">
+    <div className="px-3 max-w-2xl mx-auto space-y-6 max-h-[calc(100vh-40px)] overflow-auto">
       <div className="space-y-2">
         <label className="text-sm font-medium">YouTube URL</label>
         <Input
@@ -255,7 +255,7 @@ const YoutubeDownloadPage = () => {
         </div>
       )}
 
-      <div className="flex gap-2 pt-4">
+      <div className="grid sm:grid-cols-3 gap-2 pt-4">
         <Button
           variant="default"
           onClick={downloadVideo}

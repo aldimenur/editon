@@ -205,7 +205,7 @@ const ImagePage = () => {
     const showEmptyState = !isLoading && imageFiles.length === 0;
 
     return (
-        <div className="px-6 flex flex-col gap-2">
+        <div className="px-2 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
                 {/* View Mode Switcher */}
                 <div className="flex gap-1 mr-2">
@@ -249,7 +249,7 @@ const ImagePage = () => {
                     </div>
                 </div>
             </div>
-            <div ref={containerRef} className="h-[calc(100vh-90px)] overflow-y-auto pr-2">
+            <div ref={containerRef} className="h-[calc(100vh-90px)] overflow-y-auto">
                 {showEmptyState ? (
                     <div className="text-center text-muted-foreground py-8 text-sm">
                         {imageSearch
