@@ -1,15 +1,17 @@
 import { cn } from "@/lib/utils";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, SquaresExclude, X } from "lucide-react";
+import { Minus, Pin, PinOff, Square, SquaresExclude, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const TitleBar = ({ className }: { className?: string }) => {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
 
   const appWindow = getCurrentWindow();
 
   useEffect(() => {
     appWindow.isMaximized().then(setIsMaximized);
+    appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
   }, [appWindow]);
 
   return (
@@ -19,6 +21,20 @@ const TitleBar = ({ className }: { className?: string }) => {
     >
       <div className="flex-1 pointer-events-none"></div>
       <div className="flex items-center gap-1 p-1 pointer-events-auto">
+        <button
+          onClick={async () => {
+            const newState = !isAlwaysOnTop;
+            await appWindow.setAlwaysOnTop(newState);
+            setIsAlwaysOnTop(newState);
+          }}
+          className={cn(
+            "hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer transition-colors",
+            isAlwaysOnTop && "bg-sidebar-accent/70"
+          )}
+          title={isAlwaysOnTop ? "Disable Always on Top" : "Enable Always on Top"}
+        >
+          {isAlwaysOnTop ? <Pin size={14} /> : <PinOff size={14} />}
+        </button>
         <button
           onClick={() => appWindow.minimize()}
           className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"

@@ -24,6 +24,7 @@
     "core:window:allow-start-resize-dragging",
     "dialog:allow-message",
     "dialog:default",
+    "core:window:allow-set-always-on-top",
     {
       "identifier": "opener:allow-open-path",
       "allow": [
