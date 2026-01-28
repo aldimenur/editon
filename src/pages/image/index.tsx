@@ -250,7 +250,7 @@ const ImagePage = () => {
                                 <Settings2 className="h-4 w-4" />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-64">
+                        <DropdownMenuContent align="start">
                             <DropdownMenuLabel>View Settings</DropdownMenuLabel>
                             <DropdownMenuSeparator />
 
@@ -305,7 +305,7 @@ const ImagePage = () => {
                     </div>
                 </div>
             </div>
-            <div ref={containerRef} className="h-[calc(100vh-90px)] overflow-y-auto">
+            <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
                 {showEmptyState ? (
                     <div className="text-center text-muted-foreground py-8 text-sm">
                         {imageSearch

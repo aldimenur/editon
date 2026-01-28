@@ -2,7 +2,7 @@
 name = "Editon"
 version = "0.1.6"
 description = "Editor Asset Management App"
-authors = ["you"]
+authors = ["aldimenur"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
