@@ -3,7 +3,7 @@ import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Image, Loader2, Music, Video, ChevronLeft, ChevronRight } from "lucide-react";
+import { Image, Loader2, Music, Video, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { check } from "@tauri-apps/plugin-updater";
@@ -48,6 +48,7 @@ const Navbar = () => {
   const [progressSound, setProgressSound] = useState<any>(null);
   const [progressVideo] = useState<any>(null);
   const [progressImage, setProgressImage] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>();
 
   useEffect(() => {
     const getAppVersion = async () => {
@@ -101,12 +102,14 @@ const Navbar = () => {
   });
 
   const handleUpdate = async () => {
+    setIsLoading(true);
     const update = await check();
     if (update) {
       await update.download();
       await update.install();
       window.location.reload();
     }
+    setIsLoading(false);
   }
 
   const handleSetPath = async () => {
@@ -141,7 +144,7 @@ const Navbar = () => {
         {sidebarItems.map((item) => (
           <div
             key={item.path}
-            className={`flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-sidebar-accent/50 ${activeItem === item.path ? "bg-sidebar-accent" : ""
+            className={`flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-sidebar-accent/50 ${activeItem === item.path ? "bg-sidebar-accent" : ""
               } ${isMinimized ? 'justify-center' : ''}`}
             onClick={() => setActiveItem(item.path)}
             title={isMinimized ? item.label : undefined}
@@ -191,15 +194,20 @@ const Navbar = () => {
           </div>
         )}
         {!isMinimized && updateAvailable &&
-          <div className="col-span-2 flex">
-            <span className="text-sm text-green-500 p-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
+          <div className="flex items-center col-span-2 justify-center m-2 p-2 animate-in slide-in-from-bottom-2 fade-in duration-300 border rounded-xl">
+            <span className="text-xs font-bold text-green-500">
               Update available
             </span>
-            <Button variant="default" size="sm" onClick={handleUpdate}>Update</Button>
+            <Button variant="default" size="sm" onClick={handleUpdate} loading={isLoading}>Update</Button>
+          </div>
+        }
+        {isMinimized && updateAvailable &&
+          <div className="col-span-2 flex justify-center">
+            <Button variant="default" size="sm" onClick={handleUpdate} loading={isLoading}><Download className="animate-caret-blink" /></Button>
           </div>
         }
 
-        <div className={`p-2 flex gap-2 col-span-2 ${isMinimized ? 'flex-col' : 'justify-center'}`}>
+        <div className={`p-2 flex gap-2 col-span-2 ${isMinimized ? 'flex-col items-center' : 'justify-center'}`}>
           <ModeToggle />
           {!isMinimized && (
             <Button
