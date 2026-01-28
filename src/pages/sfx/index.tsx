@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 
 const ITEM_HEIGHTS = {
-  list: 90,
+  list: 110,
   grid: 110,
   large: 140,
 };
@@ -104,6 +104,41 @@ const SfxPage = () => {
 
   const showEmptyState = !isLoading && sfxFiles.length === 0;
 
+  const highlightText = (text: string, search: string) => {
+    if (!search.trim()) return text;
+
+    // Tokenize search query: split by whitespace
+    const tokens = search
+      .split(/\s+/)
+      .filter(token => token.trim().length > 0)
+      .map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); // Escape regex special chars
+
+    if (tokens.length === 0) return text;
+
+    // Create regex pattern that matches any token
+    const pattern = new RegExp(`(${tokens.join('|')})`, 'gi');
+    const parts = text.split(pattern);
+
+    return (
+      <>
+        {parts.map((part, index) => {
+          // Check if this part matches any of the search tokens
+          const isMatch = tokens.some(
+            token => part.toLowerCase() === token.toLowerCase()
+          );
+
+          return isMatch ? (
+            <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 text-foreground">
+              {part}
+            </mark>
+          ) : (
+            part
+          );
+        })}
+      </>
+    );
+  };
+
   const renderAudioCard = (file: any, waveHeight: number, minHeight: number) => {
     return (
       <div
@@ -112,11 +147,11 @@ const SfxPage = () => {
         style={{ height: minHeight, width: "100%" }}
       >
         <div className="h-full flex flex-col flex-1 bg-accent">
-          <div className="flex justify-between items-center">
-            <p className="text-xs font-medium p-1 w-32 truncate whitespace-nowrap pb-2">
-              {file.filename}
+          <div className="grid grid-cols-3">
+            <p className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 col-span-2 my-auto">
+              {highlightText(file.filename, sfxSearch)}
             </p>
-            <Button variant="ghost" size="icon-sm">
+            <Button variant="ghost" size="icon-sm" className="justify-self-end">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </div>

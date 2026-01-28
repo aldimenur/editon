@@ -8,6 +8,7 @@ import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { formatFileSize } from "@/lib/utils";
 
 const ITEM_HEIGHTS = {
     list: 240,
@@ -98,15 +99,43 @@ const ImagePage = () => {
         }
     }, [viewModeImage, rowVirtualizer]);
 
-    const formatFileSize = (bytes: number) => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    };
-
     const closeModal = () => {
         setSelectedImage(null);
+    };
+
+    const highlightText = (text: string, search: string) => {
+        if (!search.trim()) return text;
+
+        // Tokenize search query: split by whitespace
+        const tokens = search
+            .split(/\s+/)
+            .filter(token => token.trim().length > 0)
+            .map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); // Escape regex special chars
+
+        if (tokens.length === 0) return text;
+
+        // Create regex pattern that matches any token
+        const pattern = new RegExp(`(${tokens.join('|')})`, 'gi');
+        const parts = text.split(pattern);
+
+        return (
+            <>
+                {parts.map((part, index) => {
+                    // Check if this part matches any of the search tokens
+                    const isMatch = tokens.some(
+                        token => part.toLowerCase() === token.toLowerCase()
+                    );
+
+                    return isMatch ? (
+                        <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 text-foreground">
+                            {part}
+                        </mark>
+                    ) : (
+                        part
+                    );
+                })}
+            </>
+        );
     };
 
     const renderImageCard = (file: Asset, imageHeight: string, minHeight: number) => {
@@ -147,7 +176,7 @@ const ImagePage = () => {
                 {/* Image Info */}
                 <div className="p-2 bg-accent">
                     <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
-                        {file.filename}
+                        {highlightText(file.filename, imageSearch)}
                     </p>
                     <div className="flex flex-col">
                         <div className="flex justify-between text-xs text-muted-foreground">

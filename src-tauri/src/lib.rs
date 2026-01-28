@@ -48,10 +48,27 @@ fn get_assets_paginated(
     let mut sql_base = "FROM assets WHERE 1=1".to_string();
     let mut params_values: Vec<Box<dyn ToSql>> = Vec::new(); // Penampung parameter
 
+    // Tokenized search: split query into words and match all of them
     if !query.trim().is_empty() {
-        sql_base.push_str(" AND filename LIKE ?");
-        let wildcard = format!("%{}%", query);
-        params_values.push(Box::new(wildcard));
+        let tokens: Vec<&str> = query.split_whitespace().filter(|s| !s.is_empty()).collect();
+
+        if !tokens.is_empty() {
+            // Build search condition for each token across filename and original_path
+            let mut token_conditions = Vec::new();
+            for _ in &tokens {
+                token_conditions.push("(filename LIKE ? OR original_path LIKE ?)");
+            }
+
+            // Combine all token conditions with AND (all tokens must match)
+            sql_base.push_str(&format!(" AND ({})", token_conditions.join(" AND ")));
+
+            // Add wildcard parameters for each token (2 params per token: filename and original_path)
+            for token in tokens {
+                let wildcard = format!("%{}%", token);
+                params_values.push(Box::new(wildcard.clone()));
+                params_values.push(Box::new(wildcard));
+            }
+        }
     }
 
     if asset_type != "all" {

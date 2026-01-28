@@ -16,8 +16,7 @@ const WavesurferRender = (props: {
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const isLoadedRef = useRef(false);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isHoveringRef = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const { theme } = useTheme();
   const isDark = theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -55,8 +54,8 @@ const WavesurferRender = (props: {
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    isHoveringRef.current = false;
     wavesurferRef.current?.pause();
+    setIsPlaying(false);
     try {
       startDrag({
         item: [src],
@@ -76,49 +75,58 @@ const WavesurferRender = (props: {
 
   useEffect(() => {
     isLoadedRef.current = false;
-    // Jika src berubah, pastikan audio yang sedang loading/playing berhenti
+    setIsPlaying(false);
+    // If src changes, ensure audio that is loading/playing is stopped
     if (wavesurferRef.current) {
       wavesurferRef.current.pause();
     }
   }, [src]);
 
-  const handleMouseEnter = async () => {
-    isHoveringRef.current = true;
+  useEffect(() => {
+    const wavesurfer = wavesurferRef.current;
+    if (!wavesurfer) return;
 
-    hoverTimeoutRef.current = setTimeout(async () => {
-      // CEK 1: Jangan lanjut jika mouse sudah keburu pergi sebelum 300ms
-      if (!isHoveringRef.current || !wavesurferRef.current) return;
+    const handleFinish = () => {
+      setIsPlaying(false);
+    };
 
-      if (!isLoadedRef.current) {
-        setIsLoading(true);
-        try {
-          await wavesurferRef.current.load(convertFileSrc(src));
-          isLoadedRef.current = true;
-        } catch (error) {
-          console.error("Gagal memuat audio:", error);
-        } finally {
-          setIsLoading(false);
-        }
+    wavesurfer.on('finish', handleFinish);
+
+    return () => {
+      wavesurfer.un('finish', handleFinish);
+    };
+  }, []);
+
+  const handleClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    // Don't interfere with drag events
+    if (e.defaultPrevented) return;
+
+    if (!wavesurferRef.current || !containerRef.current) return;
+
+    // Calculate click position relative to waveform
+    const rect = containerRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickPosition = clickX / rect.width;
+
+
+    // Load audio if not loaded
+    if (!isLoadedRef.current) {
+      setIsLoading(true);
+      try {
+        await wavesurferRef.current.load(convertFileSrc(src));
+        isLoadedRef.current = true;
+      } catch (error) {
+        console.error("Failed to load audio:", error);
+        setIsLoading(false);
+        return;
+      } finally {
+        setIsLoading(false);
       }
-      // CEK 2: Penting! Cek lagi apakah mouse masih di sana setelah loading selesai
-      // (Terutama untuk file besar yang butuh waktu loading lama)
-      if (isHoveringRef.current && wavesurferRef.current) {
-        wavesurferRef.current.play();
-      }
-    }, 300);
-  };
-
-  const handleMouseLeave = async () => {
-    isHoveringRef.current = false; // Set status hover tidak aktif
-
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
     }
 
-    if (wavesurferRef.current) {
-      wavesurferRef.current.pause();
-    }
+    wavesurferRef.current.seekTo(clickPosition);
+    wavesurferRef.current.play();
+    setIsPlaying(true);
   };
 
   return (
@@ -127,8 +135,8 @@ const WavesurferRender = (props: {
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+      onMouseLeave={() => wavesurferRef.current?.pause()}
       style={{ height: height }}
     >
       <div
@@ -146,7 +154,7 @@ const WavesurferRender = (props: {
           style={{ height: height }}
         >
           <div className="flex flex-col items-center gap-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#11ddaa]"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </div>
       )}
