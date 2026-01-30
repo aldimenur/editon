@@ -41,6 +41,10 @@ const SfxPage = () => {
   const [gridColumns, setGridColumns] = useState(2);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [fileToRename, setFileToRename] = useState<string | null>(null);
+  const [newFileName, setNewFileName] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -156,6 +160,58 @@ const SfxPage = () => {
     }
   };
 
+  const handleRenameClick = (path: string, currentName: string) => {
+    setFileToRename(path);
+    // Extract name without extension
+    const lastDotIndex = currentName.lastIndexOf('.');
+    const nameWithoutExt = lastDotIndex > 0 ? currentName.substring(0, lastDotIndex) : currentName;
+    setNewFileName(nameWithoutExt);
+    setRenameDialogOpen(true);
+  };
+
+  // Auto-focus and select text in rename input
+  useEffect(() => {
+    if (renameDialogOpen && renameInputRef.current) {
+      // Use setTimeout to ensure the dialog is fully rendered
+      setTimeout(() => {
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+      }, 0);
+    }
+  }, [renameDialogOpen]);
+
+  const handleRenameConfirm = async () => {
+    if (fileToRename && newFileName.trim()) {
+      try {
+        // Get the original filename to extract the extension
+        const originalFilename = fileToRename.split(/[\\/]/).pop() || "";
+        const lastDotIndex = originalFilename.lastIndexOf('.');
+        const extension = lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : "";
+
+        // Append the extension to the new name
+        const newFullName = newFileName.trim() + extension;
+
+        await invoke("rename_file", {
+          oldPath: fileToRename,
+          newName: newFullName
+        });
+        setRenameDialogOpen(false);
+        setFileToRename(null);
+        setNewFileName("");
+        // Refresh the file list
+        fetchSfxAssets(1, pageSize, true);
+      } catch (error) {
+        console.error("Failed to rename file:", error);
+      }
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setRenameDialogOpen(false);
+    setFileToRename(null);
+    setNewFileName("");
+  };
+
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
 
@@ -219,7 +275,7 @@ const SfxPage = () => {
         </div>
         <div className="px-2 bg-accent/50 flex">
           <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button variant="ghost" size="icon-xs" disabled>
+            <Button variant="ghost" size="icon-xs" onClick={() => handleRenameClick(file.original_path, file.filename)}>
               <PencilLine className="h-2 w-2" />
             </Button>
             <Button variant="ghost" size="icon-xs" onClick={() => revealItemInDir(file.original_path)}>
@@ -432,6 +488,41 @@ const SfxPage = () => {
             </Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>
               Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rename File</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter a new name for the file.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            ref={renameInputRef}
+            type="text"
+            value={newFileName}
+            onChange={(e) => setNewFileName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleRenameConfirm();
+              } else if (e.key === 'Escape') {
+                handleRenameCancel();
+              }
+            }}
+            placeholder="New file name"
+            className="mt-2"
+            autoFocus
+          />
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={handleRenameCancel}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameConfirm} disabled={!newFileName.trim()}>
+              Rename
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

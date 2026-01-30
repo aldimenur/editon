@@ -234,6 +234,7 @@ pub fn run() {
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
             folder_lib::delete_file,
+            folder_lib::rename_file,
             download_dependencies,
             get_assets_paginated,
             get_count_assets,

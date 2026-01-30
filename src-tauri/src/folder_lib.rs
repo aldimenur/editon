@@ -133,6 +133,26 @@ pub async fn delete_file(path: String) -> Result<String, String> {
     Ok(format!("Sukses menghapus: {}", path))
 }
 
+#[tauri::command]
+pub async fn rename_file(old_path: String, new_name: String) -> Result<String, String> {
+    let old_path_buf = Path::new(&old_path);
+
+    // 1. Dapatkan folder induk agar file baru tetap di folder yang sama
+    let parent = old_path_buf
+        .parent()
+        .ok_or("Gagal mendapatkan folder induk")?;
+
+    let new_path = parent.join(new_name);
+
+    // 2. Eksekusi Rename secara Async
+    fs::rename(&old_path, &new_path)
+        .await
+        .map_err(|e| format!("Gagal mengubah nama file: {}", e))?;
+
+    // 3. Kembalikan path baru ke frontend (opsional)
+    Ok(new_path.to_string_lossy().into_owned())
+}
+
 fn start_folder_watcher(
     folder_path: String,
     db_conn: Arc<Mutex<rusqlite::Connection>>,
