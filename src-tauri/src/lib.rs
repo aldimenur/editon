@@ -233,6 +233,7 @@ pub fn run() {
             image_lib::cancel_scan,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
+            folder_lib::delete_file,
             download_dependencies,
             get_assets_paginated,
             get_count_assets,

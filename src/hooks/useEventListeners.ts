@@ -1,3 +1,4 @@
+import useAssetStore from "@/stores/asset-store";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 
@@ -25,6 +26,8 @@ export const useEventListeners = ({
   onUpdateAssetsCount,
   onScanProgressDone
 }: UseEventListenersProps) => {
+  const { fetchSfxAssets, fetchImageAssets, fetchVideoAssets } = useAssetStore((state) => state)
+
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
 
@@ -38,8 +41,18 @@ export const useEventListeners = ({
         );
 
         unlisteners.push(
-          await listen("file-removed", () => {
+          await listen("file-removed", (e) => {
+            console.log(e)
             onUpdateAssetsCount();
+          })
+        );
+
+        unlisteners.push(
+          await listen("file-renamed", (e) => {
+            console.log(e)
+            fetchSfxAssets(30, 1, true)
+            fetchImageAssets(20, 1, true)
+            fetchVideoAssets(10, 1, true)
           })
         );
 

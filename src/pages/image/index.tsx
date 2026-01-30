@@ -48,7 +48,7 @@ const ImagePage = () => {
             return;
         }
         fetchImageAssets(1, pageSize, true);
-    }, [parentPath, pageSize, fetchImageAssets]);
+    }, [parentPath, pageSize]);
 
     // search with debounce
     useEffect(() => {
@@ -59,7 +59,7 @@ const ImagePage = () => {
         }, 500);
 
         return () => clearTimeout(timeout);
-    }, [imageSearch, parentPath, pageSize, fetchImageAssets, image]);
+    }, [imageSearch, parentPath, pageSize, image]);
 
     // Calculate row count based on view mode
     const getRowCount = () => {
@@ -96,7 +96,7 @@ const ImagePage = () => {
             const nextPage = Math.floor(imageFiles.length / pageSize) + 1;
             fetchImageAssets(nextPage, pageSize);
         }
-    }, [rowVirtualizer.getVirtualItems(), imageFiles.length, hasMore, isLoading, pageSize, viewModeImage, fetchImageAssets]);
+    }, [rowVirtualizer.getVirtualItems(), imageFiles.length, hasMore, isLoading, pageSize, viewModeImage]);
 
     // Reset scroll position when view mode changes
     useEffect(() => {

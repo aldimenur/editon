@@ -46,7 +46,7 @@ const VideoPage = () => {
       return;
     }
     fetchVideoAssets(1, pageSize, true);
-  }, [parentPath, pageSize, fetchVideoAssets, video]);
+  }, [parentPath, pageSize, video]);
 
   // search with debounce
   useEffect(() => {
@@ -57,7 +57,7 @@ const VideoPage = () => {
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [videoSearch, parentPath, pageSize, fetchVideoAssets]);
+  }, [videoSearch, parentPath, pageSize]);
 
   // Calculate row count based on view mode
   const getRowCount = () => {
@@ -95,7 +95,7 @@ const VideoPage = () => {
       console.log("Loading next page:", nextPage);
       fetchVideoAssets(nextPage, pageSize);
     }
-  }, [rowVirtualizer.getVirtualItems(), videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo, fetchVideoAssets]);
+  }, [rowVirtualizer.getVirtualItems(), videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {

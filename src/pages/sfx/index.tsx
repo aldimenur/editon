@@ -3,7 +3,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, MoreHorizontal, Settings2 } from "lucide-react";
+import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, MoreHorizontal, Settings2, PencilLine, Trash } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { invoke } from "@tauri-apps/api/core";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const ITEM_HEIGHTS = {
   list: 110,
@@ -37,6 +39,8 @@ const SfxPage = () => {
   const [pageSize] = useState(40);
   const [sliderValue, setSliderValue] = useState(0.5);
   const [gridColumns, setGridColumns] = useState(2);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -74,7 +78,7 @@ const SfxPage = () => {
       return;
     }
     fetchSfxAssets(1, pageSize, true);
-  }, [parentPath, pageSize, fetchSfxAssets, sfx]);
+  }, [parentPath, pageSize, sfx]);
 
   // search with debounce
   useEffect(() => {
@@ -85,7 +89,7 @@ const SfxPage = () => {
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [sfxSearch, parentPath, pageSize, fetchSfxAssets]);
+  }, [sfxSearch, parentPath, pageSize]);
 
 
   // Calculate row count based on view mode
@@ -138,6 +142,19 @@ const SfxPage = () => {
   const totalHeight = rowVirtualizer.getTotalSize();
 
   const showEmptyState = !isLoading && sfxFiles.length === 0;
+
+  const handleDeleteClick = (path: string) => {
+    setFileToDelete(path);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (fileToDelete) {
+      await invoke("delete_file", { path: fileToDelete });
+      setDeleteDialogOpen(false);
+      setFileToDelete(null);
+    }
+  };
 
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
@@ -202,12 +219,15 @@ const SfxPage = () => {
         </div>
         <div className="px-2 bg-accent/50 flex">
           <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button variant="ghost" size="icon-sm" onClick={() => revealItemInDir(file.original_path)}>
-              <FolderSearch className="h-4 w-4" />
+            <Button variant="ghost" size="icon-xs" disabled>
+              <PencilLine className="h-2 w-2" />
             </Button>
-            {/* <Button variant="ghost" size="icon-sm">
-              <Download className="h-4 w-4" />
-            </Button> */}
+            <Button variant="ghost" size="icon-xs" onClick={() => revealItemInDir(file.original_path)}>
+              <FolderSearch className="h-2 w-2" />
+            </Button>
+            <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteClick(file.original_path)}>
+              <Trash className="h-2 w-2 text-red-500" />
+            </Button>
           </div>
         </div>
       </div>
@@ -397,6 +417,25 @@ const SfxPage = () => {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the file from your system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div >
   );
 };
