@@ -3,6 +3,7 @@ import { useRef, useEffect, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { useTheme } from "./theme-provider";
+import { globalAudioPlayer } from "@/lib/global-audio-player";
 
 const WavesurferRender = (props: {
   src: string;
@@ -121,6 +122,7 @@ const WavesurferRender = (props: {
     }
 
     wavesurferRef.current.seekTo(clickPosition);
+    globalAudioPlayer.play(wavesurferRef.current);
     wavesurferRef.current.play();
   };
 
