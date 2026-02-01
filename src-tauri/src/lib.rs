@@ -135,7 +135,25 @@ fn get_assets_paginated(
 }
 
 #[tauri::command]
-async fn download_dependencies(app: AppHandle, window: tauri::Window) -> Result<String, String> {
+async fn download_dependencies(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, DbState>,
+) -> Result<String, String> {
+    // 1. Try to set busy to true
+    if state
+        .is_busy
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("Another process is already running".into());
+    }
+
+    // 2. Ensure we reset the flag when done
+    let is_busy = state.is_busy.clone();
+    let _busy_guard = scopeguard::guard(is_busy, |busy| {
+        busy.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
     match download_ffmpeg(app.clone(), window.clone()).await {
         Ok(msg) => println!("FFmpeg: {}", msg),
         Err(e) => return Err(format!("Gagal download FFmpeg: {}", e)),
@@ -166,6 +184,11 @@ pub fn run() {
         .build_global()
         .unwrap();
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(tauri_plugin_log::log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
@@ -216,6 +239,7 @@ pub fn run() {
             app.manage(DbState {
                 conn: Arc::new(Mutex::new(conn)),
                 cancel_scan: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                is_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             });
 
             Ok(())

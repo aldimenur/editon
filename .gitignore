@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 
 .env
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+RULES.md
+SOUL.md
+TOOLS.md
+USER.md

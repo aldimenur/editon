@@ -64,6 +64,7 @@ pub struct PaginatedResponse {
 pub struct DbState {
     pub conn: Arc<Mutex<Connection>>,
     pub cancel_scan: Arc<AtomicBool>,
+    pub is_busy: Arc<AtomicBool>,
 }
 
 #[derive(Serialize)]

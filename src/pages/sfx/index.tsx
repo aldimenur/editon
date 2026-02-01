@@ -44,7 +44,6 @@ const SfxPage = () => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
-  const renameInputRef = useRef<HTMLInputElement>(null);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -169,16 +168,6 @@ const SfxPage = () => {
     setRenameDialogOpen(true);
   };
 
-  // Auto-focus and select text in rename input
-  useEffect(() => {
-    if (renameDialogOpen && renameInputRef.current) {
-      // Use setTimeout to ensure the dialog is fully rendered
-      setTimeout(() => {
-        renameInputRef.current?.focus();
-        renameInputRef.current?.select();
-      }, 0);
-    }
-  }, [renameDialogOpen]);
 
   const handleRenameConfirm = async () => {
     if (fileToRename && newFileName.trim()) {
@@ -502,7 +491,6 @@ const SfxPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Input
-            ref={renameInputRef}
             type="text"
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}

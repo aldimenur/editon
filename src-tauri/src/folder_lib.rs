@@ -26,11 +26,25 @@ pub fn scan_and_import_folder(
     state: State<'_, DbState>,
     folder_path: String,
 ) -> Result<String, String> {
+    // 1. Try to set busy to true, if it was already true, return error
+    if state
+        .is_busy
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("Another process is already running".into());
+    }
+
     // Clone Arc agar bisa dipindah ke thread lain
     let db_conn = state.conn.clone();
+    let is_busy = state.is_busy.clone();
 
     // Jalankan di thread terpisah agar tidak memblokir main thread/UI
     std::thread::spawn(move || {
+        // Ensure we reset the flag when done
+        let _busy_guard = scopeguard::guard(is_busy, |busy| {
+            busy.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+
         let batch_size = 50; // Simpan ke DB setiap 50 file
         let mut batch = Vec::new();
         let mut total_count = 0;
@@ -54,7 +68,7 @@ pub fn scan_and_import_folder(
                         // Jika batch penuh, simpan ke DB
                         if batch.len() >= batch_size {
                             if let Err(e) = save_batch(&db_conn, &batch) {
-                                println!("Error saving batch: {}", e);
+                                eprintln!("Error saving batch: {}", e);
                             }
                             total_count += batch.len();
 
@@ -79,7 +93,7 @@ pub fn scan_and_import_folder(
         // Simpan sisa batch terakhir
         if !batch.is_empty() {
             if let Err(e) = save_batch(&db_conn, &batch) {
-                println!("Error saving last batch: {}", e);
+                eprintln!("Error saving last batch: {}", e);
             }
             total_count += batch.len();
         }
@@ -93,13 +107,8 @@ pub fn scan_and_import_folder(
                 status: "finished".into(),
             },
         );
-
-        // Start folder watcher after initial scan completes
-        println!("Starting folder watcher for: {}", folder_path);
-        start_folder_watcher(folder_path, db_conn, app);
     });
 
-    // Return langsung agar UI tidak menunggu
     Ok("Scan berjalan di background".to_string())
 }
 
@@ -110,8 +119,6 @@ pub fn trigger_folder_watcher(
     folder_path: String,
 ) -> Result<String, String> {
     let db_conn = state.conn.clone();
-
-    println!("Trigger folder watcher for: {}", folder_path);
     start_folder_watcher(folder_path, db_conn, app);
     Ok("Scan berjalan di background".to_string())
 }
@@ -200,21 +207,12 @@ fn handle_file_change(
     app: &AppHandle,
     rename_from: &mut Option<PathBuf>,
 ) {
-    // Debug: Log all events to see what's actually being fired
-    println!(
-        "Event kind: {:?}, path count: {}",
-        event.kind,
-        event.paths.len()
-    );
-    for (i, path) in event.paths.iter().enumerate() {
-        println!("  Path[{}]: {}", i, path.display());
-    }
+    // Debug: (verbose event logging removed)
 
     match &event.kind {
         // Handle rename "From" event - store the old path
         EventKind::Modify(notify::event::ModifyKind::Name(notify::event::RenameMode::From)) => {
             if let Some(path) = event.paths.first() {
-                println!("==> Rename FROM detected: {}", path.display());
                 *rename_from = Some(path.clone());
             }
             return;
@@ -223,8 +221,6 @@ fn handle_file_change(
         // Handle rename "To" event - update database with new path
         EventKind::Modify(notify::event::ModifyKind::Name(notify::event::RenameMode::To)) => {
             if let Some(new_path) = event.paths.first() {
-                println!("==> Rename TO detected: {}", new_path.display());
-
                 // Get the old path if available
                 let old_path = rename_from.take();
 
@@ -295,7 +291,6 @@ fn handle_file_change(
 
         // File created or modified (non-rename modifications)
         EventKind::Create(_) | EventKind::Modify(_) => {
-            println!("==> Create/Modify event handler (fallback)");
             for path in &event.paths {
                 if path.is_file() {
                     if let Some(ext) = path.extension() {
@@ -335,7 +330,6 @@ fn handle_file_change(
 
         // File deleted
         EventKind::Remove(_) => {
-            println!("==> Remove event handler");
             for path in &event.paths {
                 let path_str = path.to_string_lossy().to_string();
                 if let Err(e) = remove_file_from_db(db_conn, &path_str) {
@@ -426,7 +420,6 @@ fn replace_file_in_db(
             rusqlite::params![filename, ext, media_type, size as i64, path],
         )
         .map_err(|e| e.to_string())?;
-        println!("✓ File replaced in DB: {}", path);
     } else {
         // File doesn't exist, insert as new
         conn.execute(
@@ -435,7 +428,6 @@ fn replace_file_in_db(
             rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0],
         )
         .map_err(|e| e.to_string())?;
-        println!("✓ File inserted in DB: {}", path);
     }
 
     Ok(())
@@ -469,7 +461,6 @@ fn handle_rename_in_db(
             rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, old_path],
         )
         .map_err(|e| e.to_string())?;
-        println!("✓ File renamed in DB: {} -> {}", old_path, new_path);
     } else {
         // Old path not in database, insert as new file
         conn.execute(
@@ -478,7 +469,6 @@ fn handle_rename_in_db(
             rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", 0.0],
         )
         .map_err(|e| e.to_string())?;
-        println!("✓ File inserted in DB (old path not found): {}", new_path);
     }
 
     Ok(())

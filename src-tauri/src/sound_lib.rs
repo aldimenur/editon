@@ -106,6 +106,14 @@ pub fn generate_missing_waveforms(
     app: AppHandle,
     state: State<'_, DbState>,
 ) -> Result<String, String> {
+    // 1. Try to set busy to true
+    if state
+        .is_busy
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("Another process is already running".into());
+    }
+
     // 1. Ambil koneksi DB sebentar untuk mencari "PR" (Pekerjaan Rumah)
     let db_arc = state.conn.clone(); // Clone Arc (murah, cuma copy pointer)
 

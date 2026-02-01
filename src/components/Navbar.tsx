@@ -4,7 +4,7 @@ import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Image, Loader2, Music, Video, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { check } from "@tauri-apps/plugin-updater";
 import { Button } from "./ui/button";
@@ -49,8 +49,12 @@ const Navbar = () => {
   const [progressVideo] = useState<any>(null);
   const [progressImage, setProgressImage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>();
+  const initialized = useRef(false)
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     const getAppVersion = async () => {
       const version = await getVersion();
       setAppVersion(version);
@@ -61,11 +65,12 @@ const Navbar = () => {
         setUpdateAvailable(true);
       }
     };
-    invoke('trigger_folder_watcher', { folderPath: parentPath })
 
     checkForUpdates();
     getAppVersion();
+    invoke('trigger_folder_watcher', { folderPath: parentPath })
   }, []);
+
 
   const handleProgressSound = useCallback((payload: any) => {
     setProgressSound(payload);
