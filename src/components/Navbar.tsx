@@ -71,39 +71,22 @@ const Navbar = () => {
     invoke('trigger_folder_watcher', { folderPath: parentPath })
   }, []);
 
-
-  const handleProgressSound = useCallback((payload: any) => {
-    setProgressSound(payload);
-  }, [])
-
-  const handleProgressImage = useCallback((payload: any) => {
-    setProgressImage(payload);
-  }, [])
-
-  const handleCountingTotalChange = useCallback((counting: boolean) => {
-    setCountingTotal(counting);
-  }, [])
-
-  const handleScanProgressDone = useCallback(async () => {
-    // Update asset counts first
+  const handleFileChanges = useCallback(async () => {
     await updateAssetsCount();
-
-    // Then start thumbnail and waveform generation
-    // These run in background threads in Rust
     try {
       await invoke("generate_missing_thumbnails");
       await invoke("generate_missing_waveforms");
     } catch (error) {
       console.error("Error generating thumbnails/waveforms:", error);
     }
-  }, [updateAssetsCount])
+  }, [])
 
   useEventListeners({
-    onProgressSound: handleProgressSound,
-    onProgressImage: handleProgressImage,
-    onCountingTotalChange: handleCountingTotalChange,
-    onUpdateAssetsCount: updateAssetsCount,
-    onScanProgressDone: handleScanProgressDone
+    onProgressSound: (payload: any) => setProgressSound(payload),
+    onProgressImage: (payload: any) => setProgressImage(payload),
+    onCountingTotalChange: (counting: any) => setCountingTotal(counting),
+    onScanProgressDone: handleFileChanges,
+    onFileChanges: handleFileChanges,
   });
 
   const handleUpdate = async () => {

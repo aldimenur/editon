@@ -33,19 +33,11 @@ export const revokeThumbnailUrl = (url: string | undefined) => {
 };
 
 
-export const countAssets = {
-  audio: async () => {
-    const audio = await invoke("get_count_assets", { assetType: "audio" }) as number
-    return audio
-  },
-  video: async () => {
-    const video = await invoke("get_count_assets", { assetType: "video" }) as number
-    return video
-  },
-  image: async () => {
-    const image = await invoke("get_count_assets", { assetType: "image" }) as number
-    return image
-  }
+export const countAssets = async () => {
+  const video = await invoke("get_count_assets", { assetType: "video" }) as number
+  const audio = await invoke("get_count_assets", { assetType: "audio" }) as number
+  const image = await invoke("get_count_assets", { assetType: "image" }) as number
+  return { video: video, audio: audio, image: image }
 }
 
 export const formatFileSize = (bytes: number) => {

@@ -123,12 +123,9 @@ const useAssetStore = create<AssetStore>()(
 
       // Update asset counts
       updateAssetsCount: async () => {
-        const audioCount = await countAssets.audio()
-        const videoCount = await countAssets.video()
-        const imageCount = await countAssets.image()
-        set({ sfx: audioCount })
-        set({ video: videoCount })
-        set({ image: imageCount })
+        const assets = await countAssets();
+        set({ sfx: assets.audio, video: assets.video, image: assets.image });
+        return assets
       },
 
       // Path setters
@@ -137,14 +134,9 @@ const useAssetStore = create<AssetStore>()(
         await invoke("cancel_scan");
         await invoke('clear_db');
 
-        // Start the scan (runs in background)
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-
-        // Note: generate_missing_thumbnails and generate_missing_waveforms
-        // will be called when scan completes (via scan-progress event listener)
-        // This ensures all files are in the database before processing
       },
 
       // Fetch SFX assets with pagination

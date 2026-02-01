@@ -1,4 +1,3 @@
-import useAssetStore from "@/stores/asset-store";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 
@@ -15,48 +14,40 @@ interface UseEventListenersProps {
   onProgressSound: (payload: ProgressPayload) => void;
   onProgressImage: (payload: ProgressPayload) => void;
   onCountingTotalChange: (counting: boolean) => void;
-  onUpdateAssetsCount: () => void;
   onScanProgressDone: () => void;
+  onFileChanges: (e: any) => void;
 }
 
 export const useEventListeners = ({
   onProgressSound,
   onProgressImage,
   onCountingTotalChange,
-  onUpdateAssetsCount,
-  onScanProgressDone
+  onScanProgressDone,
+  onFileChanges,
 }: UseEventListenersProps) => {
-  const { fetchSfxAssets, fetchImageAssets, fetchVideoAssets } = useAssetStore((state) => state)
-
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
 
     const setupListeners = async () => {
       try {
-        // File change listeners
         unlisteners.push(
-          await listen("file-added", () => {
-            onUpdateAssetsCount();
+          await listen("file-added", (e) => {
+            onFileChanges(e)
           })
         );
 
         unlisteners.push(
           await listen("file-removed", (e) => {
-            console.log(e)
-            onUpdateAssetsCount();
+            onFileChanges(e)
           })
         );
 
         unlisteners.push(
           await listen("file-renamed", (e) => {
-            console.log(e)
-            fetchSfxAssets(30, 1, true)
-            fetchImageAssets(20, 1, true)
-            fetchVideoAssets(10, 1, true)
+            onFileChanges(e)
           })
         );
 
-        // Scan progress listener
         unlisteners.push(
           await listen("scan-progress", (event) => {
             const payload = event.payload as ProgressPayload;
@@ -103,5 +94,5 @@ export const useEventListeners = ({
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [onProgressSound, onProgressImage, onCountingTotalChange, onUpdateAssetsCount]);
+  }, [onProgressSound, onProgressImage, onCountingTotalChange]);
 };

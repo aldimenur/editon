@@ -207,140 +207,158 @@ fn handle_file_change(
     app: &AppHandle,
     rename_from: &mut Option<PathBuf>,
 ) {
-    // Debug: (verbose event logging removed)
+    use notify::event::{ModifyKind, RenameMode};
 
     match &event.kind {
-        // Handle rename "From" event - store the old path
-        EventKind::Modify(notify::event::ModifyKind::Name(notify::event::RenameMode::From)) => {
+        EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
             if let Some(path) = event.paths.first() {
                 *rename_from = Some(path.clone());
             }
-            return;
         }
-
-        // Handle rename "To" event - update database with new path
-        EventKind::Modify(notify::event::ModifyKind::Name(notify::event::RenameMode::To)) => {
-            if let Some(new_path) = event.paths.first() {
-                // Get the old path if available
-                let old_path = rename_from.take();
-
-                // Process the new path
-                if new_path.is_file() {
-                    if let Some(ext) = new_path.extension() {
-                        let ext_str = ext.to_string_lossy().to_string();
-
-                        if let Some(media_type) = get_media_type(&ext_str) {
-                            if let Ok(metadata) = new_path.metadata() {
-                                let filename = new_path
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string();
-                                let new_path_str = new_path.to_string_lossy().to_string();
-                                let file_size = metadata.len();
-
-                                // Handle rename in database
-                                if let Some(old_path) = old_path {
-                                    let old_path_str = old_path.to_string_lossy().to_string();
-
-                                    if let Err(e) = handle_rename_in_db(
-                                        db_conn,
-                                        &old_path_str,
-                                        &new_path_str,
-                                        &filename,
-                                        &ext_str,
-                                        &media_type,
-                                        file_size,
-                                    ) {
-                                        eprintln!("Error handling rename in DB: {}", e);
-                                    } else {
-                                        let _ = app.emit(
-                                            "file-renamed",
-                                            FileRenamedPayload {
-                                                old_path: old_path_str,
-                                                new_path: new_path_str,
-                                            },
-                                        );
-                                    }
-                                } else {
-                                    // No old path, treat as new file
-                                    let _ = replace_file_in_db(
-                                        db_conn,
-                                        &filename,
-                                        &ext_str,
-                                        &new_path_str,
-                                        &media_type,
-                                        file_size,
-                                    );
-                                }
-                            }
-                        } else if let Some(old_path) = old_path {
-                            // Renamed to non-media file, remove from DB
-                            let old_path_str = old_path.to_string_lossy().to_string();
-                            let _ = remove_file_from_db(db_conn, &old_path_str);
-                        }
-                    }
-                } else if let Some(old_path) = old_path {
-                    // File no longer exists, remove from DB
-                    let old_path_str = old_path.to_string_lossy().to_string();
-                    let _ = remove_file_from_db(db_conn, &old_path_str);
-                }
-            }
-            return;
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+            handle_rename_to(event, db_conn, app, rename_from);
         }
-
-        // File created or modified (non-rename modifications)
-        EventKind::Create(_) | EventKind::Modify(_) => {
-            for path in &event.paths {
-                if path.is_file() {
-                    if let Some(ext) = path.extension() {
-                        let ext_str = ext.to_string_lossy().to_string();
-
-                        // Only process files that match media types
-                        if let Some(media_type) = get_media_type(&ext_str) {
-                            if let Ok(metadata) = path.metadata() {
-                                let filename = path
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string();
-                                let path_str = path.to_string_lossy().to_string();
-                                let file_size = metadata.len();
-
-                                // Add or update file in database
-                                if let Err(e) = add_or_update_file_in_db(
-                                    db_conn,
-                                    &filename,
-                                    &ext_str,
-                                    &path_str,
-                                    &media_type,
-                                    file_size,
-                                ) {
-                                    eprintln!("Error updating DB for {}: {}", path_str, e);
-                                } else {
-                                    // Emit event to notify UI
-                                    let _ = app.emit("file-added", (&filename, &media_type));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        EventKind::Create(_) => {
+            println!("File Change");
+            handle_create(event, db_conn, app);
         }
-
-        // File deleted
+        EventKind::Modify(_) => {
+            handle_modify(event, db_conn, app);
+        }
         EventKind::Remove(_) => {
-            for path in &event.paths {
-                let path_str = path.to_string_lossy().to_string();
-                if let Err(e) = remove_file_from_db(db_conn, &path_str) {
-                    eprintln!("Error removing from DB: {}", e);
-                } else {
-                    let _ = app.emit("file-removed", &path_str);
-                }
-            }
+            handle_remove(event, db_conn, app);
         }
+        _ => {}
+    }
+}
 
-        _ => {} // Ignore other event types (chmod, etc.)
+/// Stores path and metadata for a media file; returns None if not a valid media file or metadata fails.
+fn media_file_info(path: &Path) -> Option<(String, String, String, String, u64)> {
+    if !path.is_file() {
+        return None;
+    }
+    let ext = path.extension()?.to_string_lossy().to_string();
+    let media_type = get_media_type(&ext)?;
+    let metadata = path.metadata().ok()?;
+    let filename = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let path_str = path.to_string_lossy().to_string();
+    Some((filename, ext, path_str, media_type, metadata.len()))
+}
+
+fn handle_rename_to(
+    event: &Event,
+    db_conn: &Arc<Mutex<rusqlite::Connection>>,
+    app: &AppHandle,
+    rename_from: &mut Option<PathBuf>,
+) {
+    let new_path = match event.paths.first() {
+        Some(p) => p,
+        None => return,
+    };
+    let old_path = rename_from.take();
+
+    if let Some((filename, ext_str, new_path_str, media_type, file_size)) =
+        media_file_info(new_path)
+    {
+        if let Some(ref old) = old_path {
+            let old_path_str = old.to_string_lossy().to_string();
+            if let Err(e) = handle_rename_in_db(
+                db_conn,
+                &old_path_str,
+                &new_path_str,
+                &filename,
+                &ext_str,
+                &media_type,
+                file_size,
+            ) {
+                eprintln!("Error handling rename in DB: {}", e);
+            } else {
+                let _ = app.emit(
+                    "file-renamed",
+                    FileRenamedPayload {
+                        old_path: old_path_str,
+                        new_path: new_path_str,
+                    },
+                );
+            }
+        } else {
+            let _ = replace_file_in_db(
+                db_conn,
+                &filename,
+                &ext_str,
+                &new_path_str,
+                &media_type,
+                file_size,
+            );
+        }
+        return;
+    }
+
+    if let Some(old) = old_path {
+        let old_path_str = old.to_string_lossy().to_string();
+        if let Err(e) = remove_file_from_db(db_conn, &old_path_str) {
+            eprintln!("Error removing renamed path from DB: {}", e);
+        }
+    }
+}
+
+fn handle_create(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
+    println!("Create Event");
+
+    for path in &event.paths {
+        let Some((filename, ext_str, path_str, media_type, file_size)) = media_file_info(path)
+        else {
+            continue;
+        };
+        if let Err(e) = add_or_update_file_in_db(
+            db_conn,
+            &filename,
+            &ext_str,
+            &path_str,
+            &media_type,
+            file_size,
+        ) {
+            eprintln!("Error updating DB for {}: {}", path_str, e);
+        } else {
+            let _ = app.emit("file-added", (&filename, &media_type));
+        }
+    }
+}
+
+fn handle_modify(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
+    println!("Create Event");
+
+    for path in &event.paths {
+        let Some((filename, ext_str, path_str, media_type, file_size)) = media_file_info(path)
+        else {
+            continue;
+        };
+        if let Err(e) = add_or_update_file_in_db(
+            db_conn,
+            &filename,
+            &ext_str,
+            &path_str,
+            &media_type,
+            file_size,
+        ) {
+            eprintln!("Error updating DB for {}: {}", path_str, e);
+        } else {
+            let _ = app.emit("file-added", (&filename, &media_type));
+        }
+    }
+}
+
+fn handle_remove(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
+    for path in &event.paths {
+        let path_str = path.to_string_lossy().to_string();
+        if let Err(e) = remove_file_from_db(db_conn, &path_str) {
+            eprintln!("Error removing from DB: {}", e);
+        } else {
+            let _ = app.emit("file-removed", &path_str);
+        }
     }
 }
 
