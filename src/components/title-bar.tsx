@@ -1,22 +1,13 @@
 import { cn } from "@/lib/utils";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Window } from "@tauri-apps/api/window";
 import { Minus, Pin, PinOff, Square, SquaresExclude, X } from "lucide-react";
-import { useEffect, useState } from "react";
 
-const TitleBar = ({ className }: { className?: string }) => {
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
-
-  const appWindow = getCurrentWindow();
-
-  useEffect(() => {
-    appWindow.isMaximized().then(setIsMaximized);
-    appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
-  }, [appWindow]);
+const TitleBar = (params: { window: { isMaximized: boolean, isAlwaysOnTop: boolean, appWindow: Window, setIsAlwaysOnTop: (e: any) => void, setIsMaximized: (e: any) => void } }) => {
+  const { isMaximized, isAlwaysOnTop, appWindow, setIsAlwaysOnTop, setIsMaximized } = params.window
 
   return (
     <div
-      className={cn("flex items-center gap-1 w-full h-8 select-none", className)}
+      className={cn("flex items-center gap-1 w-full h-8 select-none")}
       data-tauri-drag-region
     >
       <div className="flex-1 pointer-events-none"></div>

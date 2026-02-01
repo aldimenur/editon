@@ -1,16 +1,14 @@
 import useAssetStore from "@/stores/asset-store";
+import useEventListenerStore from "@/stores/event-listener-store";
 import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Image, Loader2, Music, Video, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ModeToggle } from "./mode-toggle";
 import { check } from "@tauri-apps/plugin-updater";
+import { ChevronLeft, ChevronRight, Download, Image, Loader2, Music, Video } from "lucide-react";
+import { useState } from "react";
+import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
-import { getVersion } from "@tauri-apps/api/app";
-import { useEventListeners } from "@/hooks/useEventListeners";
-import { invoke } from "@tauri-apps/api/core";
 
 const sidebarItems = [
   {
@@ -39,55 +37,13 @@ const sidebarItems = [
   }
 ];
 
-const Navbar = () => {
+const Navbar = (params: any) => {
+  const { updateAvailable, appVersion } = params.update
   const { activeItem, setActiveItem, isMinimized, toggleMinimized } = useNavStore((state) => state);
-  const { parentPath, setParentPath, sfx, video, image, updateAssetsCount } = useAssetStore((state) => state);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [appVersion, setAppVersion] = useState("Unknown");
-  const [countingTotal, setCountingTotal] = useState<boolean>(false)
-  const [progressSound, setProgressSound] = useState<any>(null);
+  const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
+  const { progressSound, progressImage, countingTotal, setCountingTotal } = useEventListenerStore((state) => state);
   const [progressVideo] = useState<any>(null);
-  const [progressImage, setProgressImage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>();
-  const initialized = useRef(false)
-
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const getAppVersion = async () => {
-      const version = await getVersion();
-      setAppVersion(version);
-    }
-    const checkForUpdates = async () => {
-      const updates = await check();
-      if (updates) {
-        setUpdateAvailable(true);
-      }
-    };
-
-    checkForUpdates();
-    getAppVersion();
-    invoke('trigger_folder_watcher', { folderPath: parentPath })
-  }, []);
-
-  const handleFileChanges = useCallback(async () => {
-    await updateAssetsCount();
-    try {
-      await invoke("generate_missing_thumbnails");
-      await invoke("generate_missing_waveforms");
-    } catch (error) {
-      console.error("Error generating thumbnails/waveforms:", error);
-    }
-  }, [])
-
-  useEventListeners({
-    onProgressSound: (payload: any) => setProgressSound(payload),
-    onProgressImage: (payload: any) => setProgressImage(payload),
-    onCountingTotalChange: (counting: any) => setCountingTotal(counting),
-    onScanProgressDone: handleFileChanges,
-    onFileChanges: handleFileChanges,
-  });
 
   const handleUpdate = async () => {
     setIsLoading(true);
@@ -163,7 +119,7 @@ const Navbar = () => {
               <div className="flex flex-col  justify-between text-xs text-muted-foreground truncate">
                 {progressSound &&
                   <div className="flex justify-between">
-                    {progressSound?.name.toString()}
+                    {progressSound?.name?.toString()}
                     <span>{progressSound?.current} / {progressSound?.total}</span>
                   </div>}
                 {progressVideo &&
@@ -173,7 +129,7 @@ const Navbar = () => {
                   </div>}
                 {progressImage &&
                   <div className="flex justify-between">
-                    {progressImage?.name.toString()}
+                    {progressImage?.name?.toString()}
                     <span>{progressImage?.current} / {progressImage?.total}</span>
                   </div>
                 }
