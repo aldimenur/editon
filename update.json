@@ -1,7 +1,7 @@
 {
   "version": "0.1.8",
   "notes": "Add tags table and fetch availableTags from database",
-  "pub_date": "2026-02-01:00:00.016Z",
+  "pub_date": "2026-02-02T18:15:38.884Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWw2SVA4OFRoL1RzdDl5Vm0rL09zaENoRWREOTJmcXRKYWJaVmZuazNCQzNXWnlzSFBYWVpPQjhPVGdaMWhac3MvNFVhbHBzY1VXd1FVRDU1Rzk4OXc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcwMDU1NjQ4CWZpbGU6RWRpdG9uXzAuMS44X3g2NC1zZXR1cC5leGUKVVppd2NEUUVMZ2F3elVRdThHTUZYc2luSmdTTXhrZzVFaGJxcnRETkZqN0hsQVAwUDAwbzNtbEROelJwbmF0eWRsb1FoeDlFOXFtS1ZPRHRXcGdXRHc9PQo=",
