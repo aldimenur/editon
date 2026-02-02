@@ -33,6 +33,7 @@ pub fn is_schema_valid(conn: &Connection) -> bool {
         "file_size",
         "waveform_data",
         "metadata",
+        "tags",
     ];
     let expected_columns: HashSet<String> = expected_columns_vec
         .into_iter()

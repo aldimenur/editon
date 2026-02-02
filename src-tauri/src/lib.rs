@@ -93,7 +93,7 @@ fn get_assets_paginated(
 
     let sql_data = format!(
         "SELECT id, filename, extension, original_path, type, 
-                thumbnail_path, duration_sec, file_size, waveform_data, metadata
+                thumbnail_path, duration_sec, file_size, waveform_data, metadata, tags
          {} 
          ORDER BY id ASC 
          LIMIT {} OFFSET {}",
@@ -118,6 +118,7 @@ fn get_assets_paginated(
                 file_size: row.get("file_size")?,
                 waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
                 metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
+                tags: row.get("tags")?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -233,7 +234,8 @@ pub fn run() {
                     duration_sec    REAL DEFAULT 0,
                     file_size       INTEGER NOT NULL,
                     waveform_data   TEXT,
-                    metadata        TEXT
+                    metadata        TEXT,
+                    tags            TEXT
                 )",
                 [],
             )?;

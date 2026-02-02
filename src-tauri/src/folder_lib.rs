@@ -457,9 +457,9 @@ fn add_or_update_file_in_db(
 
     // Try to insert first (if file is new)
     let result = tx.execute(
-        "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0],
+        "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0, None::<String>],
     );
 
     match result {
@@ -523,9 +523,9 @@ fn replace_file_in_db(
     } else {
         // File doesn't exist, insert as new
         conn.execute(
-            "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0],
+            "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0, None::<String>],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -564,9 +564,9 @@ fn handle_rename_in_db(
     } else {
         // Old path not in database, insert as new file
         conn.execute(
-            "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", 0.0],
+            "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", 0.0, None::<String>],
         )
         .map_err(|e| e.to_string())?;
     }

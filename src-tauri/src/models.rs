@@ -51,6 +51,9 @@ pub struct Asset {
 
     // Metadata fleksibel
     pub metadata: AssetMetadata,
+
+    // Tags untuk asset
+    pub tags: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
