@@ -163,46 +163,44 @@ pub fn generate_missing_video_thumbnails(
     let ffmpeg_path = resolve_ffmpeg_path(&app);
 
     std::thread::spawn(move || {
-        to_process
-            .par_iter()
-            .for_each(|(id, path, filename, extension)| {
-                if cancel_flag.load(Ordering::SeqCst) {
-                    return;
-                }
+        to_process.par_iter().for_each(|(id, path, filename, _)| {
+            if cancel_flag.load(Ordering::SeqCst) {
+                return;
+            }
 
-                let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+            let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-                let _ = app.emit(
-                    "thumbnail-progress",
-                    ProgressEvent {
-                        name: "Video".to_string(),
-                        current,
-                        total: total_files,
-                        filename: filename.clone(),
-                        status: "processing".to_string(),
-                    },
-                );
+            let _ = app.emit(
+                "thumbnail-progress",
+                ProgressEvent {
+                    name: "Video".to_string(),
+                    current,
+                    total: total_files,
+                    filename: filename.clone(),
+                    status: "processing".to_string(),
+                },
+            );
 
-                match generate_video_thumbnail_buffer(path, 200, "1", &ffmpeg_path) {
-                    Ok(blob) => {
-                        let thumb_filename = format!("{}.webp", id);
-                        let thumb_path = thumbnails_dir.join(&thumb_filename);
-                        let thumb_path_str = thumb_path.to_string_lossy().to_string();
+            match generate_video_thumbnail_buffer(path, 200, "1", &ffmpeg_path) {
+                Ok(blob) => {
+                    let thumb_filename = format!("{}.webp", id);
+                    let thumb_path = thumbnails_dir.join(&thumb_filename);
+                    let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
-                        if let Ok(_) = std::fs::write(&thumb_path, &blob) {
-                            if let Ok(conn) = db_arc.lock() {
-                                let _ = conn.execute(
-                                    "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
-                                    rusqlite::params![thumb_path_str, id],
-                                );
-                            }
+                    if let Ok(_) = std::fs::write(&thumb_path, &blob) {
+                        if let Ok(conn) = db_arc.lock() {
+                            let _ = conn.execute(
+                                "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
+                                rusqlite::params![thumb_path_str, id],
+                            );
                         }
                     }
-                    Err(e) => {
-                        println!("Failed to generate thumbnail for {}: {}", filename, e);
-                    }
                 }
-            });
+                Err(e) => {
+                    println!("Failed to generate thumbnail for {}: {}", filename, e);
+                }
+            }
+        });
 
         let _ = app.emit(
             "thumbnail-progress",
