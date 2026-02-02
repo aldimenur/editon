@@ -5,48 +5,60 @@ use tauri::State;
 use crate::models::DbState;
 
 pub fn is_schema_valid(conn: &Connection) -> bool {
-    // Ambil info kolom dari tabel assets
-    let mut stmt = match conn.prepare("PRAGMA table_info(assets)") {
+    // Check assets table structure
+    let assets_valid = check_table_schema(
+        conn,
+        "assets",
+        vec![
+            ("id", "INTEGER"),
+            ("filename", "TEXT"),
+            ("extension", "TEXT"),
+            ("original_path", "TEXT"),
+            ("type", "TEXT"),
+            ("thumbnail_path", "TEXT"),
+            ("duration_sec", "REAL"),
+            ("file_size", "INTEGER"),
+            ("waveform_data", "TEXT"),
+            ("metadata", "TEXT"),
+            ("tags", "TEXT"),
+        ],
+    );
+
+    assets_valid
+}
+
+fn check_table_schema(
+    conn: &Connection,
+    table_name: &str,
+    expected_columns: Vec<(&str, &str)>,
+) -> bool {
+    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({})", table_name)) {
         Ok(s) => s,
         Err(_) => return false,
     };
 
     let existing_columns: HashSet<String> = stmt
-        .query_map([], |row| row.get::<_, String>(1)) // Index 1 adalah nama kolom
+        .query_map([], |row| row.get::<_, String>(1)) // Index 1 is column name
         .unwrap()
         .filter_map(|c| c.ok())
         .collect();
 
     if existing_columns.is_empty() {
-        return true; // Tabel belum ada, biarkan 'CREATE TABLE IF NOT EXISTS' yang bekerja
+        return true; // Table doesn't exist yet, let CREATE TABLE IF NOT EXISTS work
     }
 
-    // Daftar kolom yang wajib ada sesuai skema baru
-    let expected_columns_vec = vec![
-        "id",
-        "filename",
-        "extension",
-        "original_path",
-        "type",
-        "thumbnail_path",
-        "duration_sec",
-        "file_size",
-        "waveform_data",
-        "metadata",
-        "tags",
-    ];
-    let expected_columns: HashSet<String> = expected_columns_vec
-        .into_iter()
-        .map(|s| s.to_string())
+    let expected_column_names: HashSet<String> = expected_columns
+        .iter()
+        .map(|(name, _)| name.to_string())
         .collect();
 
-    // Periksa apakah semua kolom yang diharapkan ada di database
-    let all_expected_cols_present = expected_columns.is_subset(&existing_columns);
+    // Check if all expected columns exist
+    let all_expected_present = expected_column_names.is_subset(&existing_columns);
 
-    // Periksa apakah tidak ada kolom tambahan di database yang tidak diharapkan
-    let no_extra_cols_present = existing_columns.is_subset(&expected_columns);
+    // Check if there are no extra unexpected columns
+    let no_extra_columns = existing_columns.is_subset(&expected_column_names);
 
-    all_expected_cols_present && no_extra_cols_present
+    all_expected_present && no_extra_columns
 }
 
 #[tauri::command]
@@ -67,12 +79,47 @@ pub fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn get_available_tags(state: State<'_, DbState>) -> Result<Vec<String>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT tags FROM assets WHERE tags IS NOT NULL AND tags != ''")
+        .map_err(|e| e.to_string())?;
+
+    let tag_iter = stmt
+        .query_map([], |row| {
+            let tags_string: String = row.get(0)?;
+            Ok(tags_string)
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut unique_tags = std::collections::HashSet::new();
+    for tag_result in tag_iter {
+        let tags_string = tag_result.map_err(|e| e.to_string())?;
+
+        // Split comma-separated tags and add each tag to the set
+        tags_string
+            .split(',')
+            .map(|tag| tag.trim())
+            .filter(|tag| !tag.is_empty())
+            .for_each(|tag| {
+                unique_tags.insert(tag.to_string());
+            });
+    }
+
+    let mut sorted_tags: Vec<String> = unique_tags.into_iter().collect();
+    sorted_tags.sort();
+
+    Ok(sorted_tags)
+}
+
+#[tauri::command]
 pub fn update_asset_tags(
     state: State<'_, DbState>,
     asset_id: i64,
     tags: Option<String>,
 ) -> Result<String, String> {
-    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
     conn.execute(
         "UPDATE assets SET tags = ?1 WHERE id = ?2",

@@ -70,8 +70,10 @@ const SfxPage = () => {
     id: number;
     tags: string | null;
   } | null>(null);
-  const [tagFilter, setTagFilter] = useState<string>("");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  console.log(tagFilter);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  console.log(availableTags);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -111,29 +113,28 @@ const SfxPage = () => {
     fetchSfxAssets(1, pageSize, true);
   }, [parentPath, pageSize, sfx]);
 
-  // Extract available tags from sfx files
+  // Fetch available tags from database
   useEffect(() => {
-    const tagsSet = new Set<string>();
-    sfxFiles.forEach((file) => {
-      if (file.tags) {
-        file.tags.split(",").forEach((tag) => {
-          const trimmed = tag.trim();
-          if (trimmed) tagsSet.add(trimmed);
-        });
+    const fetchTags = async () => {
+      try {
+        const tags = await invoke<string[]>("get_available_tags");
+        setAvailableTags(tags);
+      } catch (error) {
+        console.error("Failed to fetch tags:", error);
+        setAvailableTags([]);
       }
-    });
-    setAvailableTags(Array.from(tagsSet).sort());
-  }, [sfxFiles]);
+    };
+
+    fetchTags();
+  }, [parentPath]); // Refetch when path changes
 
   // search with debounce (including tag filter)
-  console.log(sfxSearch.search)
-
   useEffect(() => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
-      setSfxSearch(sfxSearch.search, { tags: tagFilter })
-      fetchSfxAssets(1, pageSize, true)
+      setSfxSearch(sfxSearch.search, { tags: tagFilter.join(" ") });
+      fetchSfxAssets(1, pageSize, true);
     }, 500);
 
     return () => clearTimeout(timeout);
@@ -520,7 +521,9 @@ const SfxPage = () => {
             type="text"
             placeholder="Search..."
             value={sfxSearch.search}
-            onChange={(e) => setSfxSearch(e.target.value)}
+            onChange={(e) =>
+              setSfxSearch(e.target.value, { tags: tagFilter.join(" ") })
+            }
             className="pl-10 pr-10 text-sm"
           />
           <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-xl px-2 py-1 text-xs">
@@ -534,25 +537,31 @@ const SfxPage = () => {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <Tag className="h-4 w-4" />
-                {tagFilter || "Filter by tag"}
+                {tagFilter.length > 0
+                  ? `${tagFilter.length} selected`
+                  : "Filter by tag"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
-                checked={tagFilter === ""}
-                onCheckedChange={() => setTagFilter("")}
+                checked={tagFilter.length === 0}
+                onCheckedChange={() => setTagFilter([])}
               >
                 All Tags
               </DropdownMenuCheckboxItem>
               {availableTags.map((tag) => (
                 <DropdownMenuCheckboxItem
                   key={tag}
-                  checked={tagFilter === tag}
-                  onCheckedChange={() =>
-                    setTagFilter(tagFilter === tag ? "" : tag)
-                  }
+                  checked={tagFilter.includes(tag)}
+                  onCheckedChange={() => {
+                    if (tagFilter.includes(tag)) {
+                      setTagFilter(tagFilter.filter((t) => t !== tag));
+                    } else {
+                      setTagFilter([...tagFilter, tag]);
+                    }
+                  }}
                 >
                   {tag}
                 </DropdownMenuCheckboxItem>
