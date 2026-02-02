@@ -165,11 +165,32 @@ fn watch_folder_changes(
     // Track rename operations (From -> To)
     let mut rename_from: Option<PathBuf> = None;
 
+    // Debounce duplicate events (file system emits multiple events for single operations)
+    use std::collections::HashMap;
+    let mut last_event_time: HashMap<PathBuf, std::time::Instant> = HashMap::new();
+    const DEBOUNCE_MS: u128 = 200; // Ignore duplicate events within 200ms
+
     // Process events in a loop
     for event in rx {
         match event {
             Ok(event) => {
-                handle_file_change(&event, &db_conn, &app, &mut rename_from);
+                // Filter out duplicate rapid events on the same path
+                let mut should_process = true;
+                if let Some(first_path) = event.paths.first() {
+                    if let Some(last_time) = last_event_time.get(first_path) {
+                        let elapsed = last_time.elapsed().as_millis();
+                        if elapsed < DEBOUNCE_MS {
+                            should_process = false;
+                        }
+                    }
+                    if should_process {
+                        last_event_time.insert(first_path.clone(), std::time::Instant::now());
+                    }
+                }
+
+                if should_process {
+                    handle_file_change(&event, &db_conn, &app, &mut rename_from);
+                }
             }
             Err(e) => eprintln!("Watch error: {}", e),
         }
@@ -188,12 +209,14 @@ fn handle_file_change(
 
     match &event.kind {
         EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+            println!("Rename Mode From");
             if let Some(path) = event.paths.first() {
                 *rename_from = Some(path.clone());
             }
         }
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
             handle_rename_to(event, db_conn, app, rename_from);
+            println!("\"Rename To: Rename From {:?}\"", rename_from)
         }
         EventKind::Create(_) => {
             println!("File Change");
@@ -201,8 +224,10 @@ fn handle_file_change(
         }
         EventKind::Modify(_) => {
             handle_modify(event, db_conn, app);
+            println!("Metadata modified")
         }
         EventKind::Remove(_) => {
+            println!("File Removed!");
             handle_remove(event, db_conn, app);
         }
         _ => {}
@@ -283,8 +308,6 @@ fn handle_rename_to(
 }
 
 fn handle_create(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
-    println!("Create Event");
-
     for path in &event.paths {
         let Some((filename, ext_str, path_str, media_type, file_size)) = media_file_info(path)
         else {
@@ -306,8 +329,6 @@ fn handle_create(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app:
 }
 
 fn handle_modify(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app: &AppHandle) {
-    println!("Create Event");
-
     for path in &event.paths {
         let Some((filename, ext_str, path_str, media_type, file_size)) = media_file_info(path)
         else {

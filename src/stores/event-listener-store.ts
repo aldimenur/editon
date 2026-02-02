@@ -27,10 +27,15 @@ interface EventListenerStore {
 
 const handleFileChanges = async () => {
   const updateAssetsCount = useAssetStore.getState().updateAssetsCount;
+  const refetchAssets = useAssetStore.getState().refetchAssets;
+
   await updateAssetsCount();
+  await refetchAssets()
   try {
-    await invoke("generate_missing_thumbnails");
-    await invoke("generate_missing_waveforms");
+    const thumb = await invoke("generate_missing_thumbnails");
+    console.log('thumb', thumb)
+    const wav = await invoke("generate_missing_waveforms");
+    console.log('wav', wav)
   } catch (error) {
     console.error("Error generating thumbnails/waveforms:", error);
   }
@@ -65,6 +70,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         set({ progressSound: payload });
         if (payload.status === "done") {
           set({ progressSound: null });
+          handleFileChanges();
         }
       });
 
@@ -73,6 +79,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         set({ progressImage: payload });
         if (payload.status === "done") {
           set({ progressImage: null });
+          handleFileChanges();
         }
       });
     } catch (error) {

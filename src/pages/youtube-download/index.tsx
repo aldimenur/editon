@@ -56,6 +56,8 @@ const YoutubeDownloadPage = () => {
       console.log(err)
     }
     setIsLoading(false)
+    checkDependencies()
+    setProgress(0)
   }
 
   const downloadVideo = async () => {

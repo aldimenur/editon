@@ -55,6 +55,7 @@ interface AssetStore {
   fetchSfxAssets: (page: number, pageSize: number, reset?: boolean) => Promise<void>;
   fetchVideoAssets: (page: number, pageSize: number, reset?: boolean) => Promise<void>;
   fetchImageAssets: (page: number, pageSize: number, reset?: boolean) => Promise<void>;
+  refetchAssets: (page?: number, pageSize?: number) => Promise<void>;
 }
 
 const useAssetStore = create<AssetStore>()(
@@ -209,6 +210,31 @@ const useAssetStore = create<AssetStore>()(
 
         } catch (error) {
           console.error("Error fetching Image assets:", error);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      // Refetch all asset types (audio, video, image) in a single trigger
+      refetchAssets: async (page: number = 1, pageSize: number = 50) => {
+        const state = get();
+        if (!state.parentPath) return;
+
+        try {
+          set({ isLoading: true });
+
+          // Reset current lists
+          state.setSfxFiles([], true);
+          state.setVideoFiles([], true);
+          state.setImageFiles([], true);
+
+          // Fetch each type (sequentially to avoid overloading the backend)
+          await state.fetchSfxAssets(page, pageSize, true);
+          await state.fetchVideoAssets(page, pageSize, true);
+          await state.fetchImageAssets(page, pageSize, true);
+
+        } catch (error) {
+          console.error("Error refetching assets:", error);
         } finally {
           set({ isLoading: false });
         }
