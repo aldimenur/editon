@@ -65,3 +65,20 @@ pub fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
 
     Ok("Database cleared".to_string())
 }
+
+#[tauri::command]
+pub fn update_asset_tags(
+    state: State<'_, DbState>,
+    asset_id: i64,
+    tags: Option<String>,
+) -> Result<String, String> {
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE assets SET tags = ?1 WHERE id = ?2",
+        rusqlite::params![tags, asset_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("Tags updated successfully".to_string())
+}

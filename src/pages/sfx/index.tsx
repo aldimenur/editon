@@ -1,22 +1,43 @@
 import useAssetStore from "@/stores/asset-store";
-import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
-import { Search, Volume2, LayoutList, LayoutGrid, Maximize2, FolderSearch, MoreHorizontal, Settings2, PencilLine, Trash } from "lucide-react";
+import {
+  Search,
+  Volume2,
+  LayoutList,
+  LayoutGrid,
+  Maximize2,
+  FolderSearch,
+  MoreHorizontal,
+  Settings2,
+  PencilLine,
+  Trash,
+  Tag,
+} from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { invoke } from "@tauri-apps/api/core";
-import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import TagsDialog from "@/components/TagsDialog";
 
 const ITEM_HEIGHTS = {
   list: 110,
@@ -33,7 +54,7 @@ const SfxPage = () => {
     sfxSearchCount,
     isLoading,
     fetchSfxAssets,
-    sfx
+    sfx,
   } = useAssetStore((state) => state);
 
   const [pageSize] = useState(40);
@@ -44,6 +65,13 @@ const SfxPage = () => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [assetToEdit, setAssetToEdit] = useState<{
+    id: number;
+    tags: string | null;
+  } | null>(null);
+  const [tagFilter, setTagFilter] = useState<string>("");
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -83,17 +111,33 @@ const SfxPage = () => {
     fetchSfxAssets(1, pageSize, true);
   }, [parentPath, pageSize, sfx]);
 
-  // search with debounce
+  // Extract available tags from sfx files
+  useEffect(() => {
+    const tagsSet = new Set<string>();
+    sfxFiles.forEach((file) => {
+      if (file.tags) {
+        file.tags.split(",").forEach((tag) => {
+          const trimmed = tag.trim();
+          if (trimmed) tagsSet.add(trimmed);
+        });
+      }
+    });
+    setAvailableTags(Array.from(tagsSet).sort());
+  }, [sfxFiles]);
+
+  // search with debounce (including tag filter)
+  console.log(sfxSearch.search)
+
   useEffect(() => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
-      fetchSfxAssets(1, pageSize, true);
+      setSfxSearch(sfxSearch.search, { tags: tagFilter })
+      fetchSfxAssets(1, pageSize, true)
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [sfxSearch, parentPath, pageSize]);
-
+  }, [sfxSearch.search, tagFilter, parentPath, pageSize]);
 
   // Calculate row count based on view mode
   const getRowCount = () => {
@@ -121,9 +165,10 @@ const SfxPage = () => {
     const lastItem = virtualItems[virtualItems.length - 1];
 
     // Calculate actual file index based on view mode
-    const actualLastIndex = viewModeAudio === "grid"
-      ? (lastItem.index * gridColumns) + (gridColumns - 1)  // In grid mode, each row has gridColumns items
-      : lastItem.index;
+    const actualLastIndex =
+      viewModeAudio === "grid"
+        ? lastItem.index * gridColumns + (gridColumns - 1) // In grid mode, each row has gridColumns items
+        : lastItem.index;
 
     // when we scroll within a few items of the end, load next page
     if (actualLastIndex >= sfxFiles.length - 5) {
@@ -131,7 +176,15 @@ const SfxPage = () => {
       console.log("Loading next page:", nextPage);
       fetchSfxAssets(nextPage, pageSize);
     }
-  }, [virtualItems.length, sfxFiles.length, hasMore, isLoading, pageSize, viewModeAudio, gridColumns]);
+  }, [
+    virtualItems.length,
+    sfxFiles.length,
+    hasMore,
+    isLoading,
+    pageSize,
+    viewModeAudio,
+    gridColumns,
+  ]);
 
   // Reset scroll position when view mode or columns change
   useEffect(() => {
@@ -159,27 +212,28 @@ const SfxPage = () => {
   const handleRenameClick = (path: string, currentName: string) => {
     setFileToRename(path);
     // Extract name without extension
-    const lastDotIndex = currentName.lastIndexOf('.');
-    const nameWithoutExt = lastDotIndex > 0 ? currentName.substring(0, lastDotIndex) : currentName;
+    const lastDotIndex = currentName.lastIndexOf(".");
+    const nameWithoutExt =
+      lastDotIndex > 0 ? currentName.substring(0, lastDotIndex) : currentName;
     setNewFileName(nameWithoutExt);
     setRenameDialogOpen(true);
   };
-
 
   const handleRenameConfirm = async () => {
     if (fileToRename && newFileName.trim()) {
       try {
         // Get the original filename to extract the extension
         const originalFilename = fileToRename.split(/[\\/]/).pop() || "";
-        const lastDotIndex = originalFilename.lastIndexOf('.');
-        const extension = lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : "";
+        const lastDotIndex = originalFilename.lastIndexOf(".");
+        const extension =
+          lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : "";
 
         // Append the extension to the new name
         const newFullName = newFileName.trim() + extension;
 
         await invoke("rename_file", {
           oldPath: fileToRename,
-          newName: newFullName
+          newName: newFullName,
         });
         setRenameDialogOpen(false);
         setFileToRename(null);
@@ -198,19 +252,28 @@ const SfxPage = () => {
     setNewFileName("");
   };
 
+  const handleTagsClick = (assetId: number, tags: string | null) => {
+    setAssetToEdit({ id: assetId, tags });
+    setTagsDialogOpen(true);
+  };
+
+  const handleTagsUpdated = () => {
+    fetchSfxAssets(1, pageSize, true);
+  };
+
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
 
     // Tokenize search query: split by whitespace
     const tokens = search
       .split(/\s+/)
-      .filter(token => token.trim().length > 0)
-      .map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); // Escape regex special chars
+      .filter((token) => token.trim().length > 0)
+      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); // Escape regex special chars
 
     if (tokens.length === 0) return text;
 
     // Create regex pattern that matches any token
-    const pattern = new RegExp(`(${tokens.join('|')})`, 'gi');
+    const pattern = new RegExp(`(${tokens.join("|")})`, "gi");
     const parts = text.split(pattern);
 
     return (
@@ -218,11 +281,14 @@ const SfxPage = () => {
         {parts.map((part, index) => {
           // Check if this part matches any of the search tokens
           const isMatch = tokens.some(
-            token => part.toLowerCase() === token.toLowerCase()
+            (token) => part.toLowerCase() === token.toLowerCase(),
           );
 
           return isMatch ? (
-            <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 text-foreground">
+            <mark
+              key={index}
+              className="bg-yellow-300 dark:bg-yellow-600 text-foreground"
+            >
               {part}
             </mark>
           ) : (
@@ -233,7 +299,38 @@ const SfxPage = () => {
     );
   };
 
-  const renderAudioCard = (file: any, waveHeight: number, minHeight: number) => {
+  const renderTags = (tags: string | null) => {
+    if (!tags) return null;
+    const tagArray = tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tagArray.length === 0) return null;
+
+    return (
+      <div className="flex flex-wrap gap-1 mt-1">
+        {tagArray.slice(0, 3).map((tag, index) => (
+          <span
+            key={index}
+            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
+          >
+            {tag}
+          </span>
+        ))}
+        {tagArray.length > 3 && (
+          <span className="text-muted-foreground text-xs">
+            +{tagArray.length - 3}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const renderAudioCard = (
+    file: any,
+    waveHeight: number,
+    minHeight: number,
+  ) => {
     return (
       <div
         key={file.id}
@@ -242,9 +339,10 @@ const SfxPage = () => {
       >
         <div className="h-full flex flex-col flex-1 bg-accent">
           <div className="grid grid-cols-3">
-            <p className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 col-span-2 my-auto">
-              {highlightText(file.filename, sfxSearch)}
-            </p>
+            <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 col-span-2 my-auto">
+              <div>{highlightText(file.filename, sfxSearch.search)}</div>
+              {renderTags(file.tags)}
+            </div>
             <Button variant="ghost" size="icon-sm" className="justify-self-end">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -261,13 +359,34 @@ const SfxPage = () => {
         </div>
         <div className="px-2 bg-accent/50 flex">
           <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button variant="ghost" size="icon-xs" onClick={() => handleRenameClick(file.original_path, file.filename)}>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => handleTagsClick(file.id, file.tags)}
+            >
+              <Tag className="h-2 w-2" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() =>
+                handleRenameClick(file.original_path, file.filename)
+              }
+            >
               <PencilLine className="h-2 w-2" />
             </Button>
-            <Button variant="ghost" size="icon-xs" onClick={() => revealItemInDir(file.original_path)}>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => revealItemInDir(file.original_path)}
+            >
               <FolderSearch className="h-2 w-2" />
             </Button>
-            <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteClick(file.original_path)}>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => handleDeleteClick(file.original_path)}
+            >
               <Trash className="h-2 w-2 text-red-500" />
             </Button>
           </div>
@@ -334,7 +453,9 @@ const SfxPage = () => {
 
               {/* View Mode Section */}
               <div className="px-2 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">View Mode</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  View Mode
+                </p>
                 <div className="flex gap-2">
                   <Button
                     variant={viewModeAudio === "list" ? "default" : "outline"}
@@ -370,7 +491,9 @@ const SfxPage = () => {
 
               {/* Volume Section */}
               <div className="px-2 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Volume</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Volume
+                </p>
                 <div className="flex items-center gap-2">
                   <Volume2 className="h-4 w-4" />
                   <Slider
@@ -382,7 +505,9 @@ const SfxPage = () => {
                     onValueChange={(value) => setSliderValue(value[0])}
                     className="flex-1"
                   />
-                  <span className="text-xs w-8 text-right">{Math.round(sliderValue * 100)}%</span>
+                  <span className="text-xs w-8 text-right">
+                    {Math.round(sliderValue * 100)}%
+                  </span>
                 </div>
               </div>
             </DropdownMenuContent>
@@ -394,7 +519,7 @@ const SfxPage = () => {
           <Input
             type="text"
             placeholder="Search..."
-            value={sfxSearch}
+            value={sfxSearch.search}
             onChange={(e) => setSfxSearch(e.target.value)}
             className="pl-10 pr-10 text-sm"
           />
@@ -402,6 +527,39 @@ const SfxPage = () => {
             {sfxSearchCount}
           </div>
         </div>
+
+        {/* Tag Filter */}
+        {availableTags.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Tag className="h-4 w-4" />
+                {tagFilter || "Filter by tag"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={tagFilter === ""}
+                onCheckedChange={() => setTagFilter("")}
+              >
+                All Tags
+              </DropdownMenuCheckboxItem>
+              {availableTags.map((tag) => (
+                <DropdownMenuCheckboxItem
+                  key={tag}
+                  checked={tagFilter === tag}
+                  onCheckedChange={() =>
+                    setTagFilter(tagFilter === tag ? "" : tag)
+                  }
+                >
+                  {tag}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
@@ -413,7 +571,10 @@ const SfxPage = () => {
         ) : (
           <div
             className="relative w-full"
-            style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeAudio] : 0) }}
+            style={{
+              height:
+                totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeAudio] : 0),
+            }}
           >
             {!!virtualItems.length && (
               <div
@@ -426,15 +587,19 @@ const SfxPage = () => {
                   if (viewModeAudio === "grid") {
                     // Grid mode: dynamic columns based on screen width
                     const startIndex = virtualRow.index * gridColumns;
-                    const files = Array.from({ length: gridColumns }, (_, i) =>
-                      sfxFiles[startIndex + i]
+                    const files = Array.from(
+                      { length: gridColumns },
+                      (_, i) => sfxFiles[startIndex + i],
                     ).filter(Boolean);
 
                     const gridColsClass =
-                      gridColumns === 5 ? "grid-cols-5" :
-                        gridColumns === 4 ? "grid-cols-4" :
-                          gridColumns === 3 ? "grid-cols-3" :
-                            "grid-cols-2";
+                      gridColumns === 5
+                        ? "grid-cols-5"
+                        : gridColumns === 4
+                          ? "grid-cols-4"
+                          : gridColumns === 3
+                            ? "grid-cols-3"
+                            : "grid-cols-2";
 
                     return (
                       <div
@@ -442,7 +607,9 @@ const SfxPage = () => {
                         className={`grid ${gridColsClass} gap-2`}
                         style={{ minHeight: virtualRow.size }}
                       >
-                        {files.map(file => renderAudioCard(file, 60, virtualRow.size))}
+                        {files.map((file) =>
+                          renderAudioCard(file, 60, virtualRow.size),
+                        )}
                       </div>
                     );
                   } else {
@@ -460,16 +627,28 @@ const SfxPage = () => {
         )}
       </div>
 
+      <TagsDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        assetId={assetToEdit?.id || 0}
+        currentTags={assetToEdit?.tags || null}
+        onTagsUpdated={handleTagsUpdated}
+      />
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the file from your system.
+              This action cannot be undone. This will permanently delete the
+              file from your system.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>
@@ -492,9 +671,9 @@ const SfxPage = () => {
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 handleRenameConfirm();
-              } else if (e.key === 'Escape') {
+              } else if (e.key === "Escape") {
                 handleRenameCancel();
               }
             }}
@@ -506,13 +685,16 @@ const SfxPage = () => {
             <Button variant="outline" onClick={handleRenameCancel}>
               Cancel
             </Button>
-            <Button onClick={handleRenameConfirm} disabled={!newFileName.trim()}>
+            <Button
+              onClick={handleRenameConfirm}
+              disabled={!newFileName.trim()}
+            >
               Rename
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div >
+    </div>
   );
 };
 

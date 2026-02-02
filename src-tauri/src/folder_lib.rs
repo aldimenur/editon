@@ -138,6 +138,18 @@ pub fn scan_and_import_folder(
 }
 
 #[tauri::command]
+pub fn stop_folder_watcher() -> Result<String, String> {
+    let mut watcher_state = WATCHER_STATE.lock().map_err(|e| e.to_string())?;
+
+    if watcher_state.is_running() {
+        watcher_state.stop()?;
+        Ok("Folder watcher stopped".to_string())
+    } else {
+        Ok("No active folder watcher".to_string())
+    }
+}
+
+#[tauri::command]
 pub fn trigger_folder_watcher(
     app: AppHandle,
     state: State<'_, DbState>,

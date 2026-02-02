@@ -19,17 +19,20 @@ export interface Asset {
   extension: string;
   original_path: string;
   type_name: string; // 'audio', 'video', 'image'
-  
+
   thumbnail_path?: string;
   thumbnail_blob?: number[];
   duration_sec: number;
   file_size: number;
-  
+
   // Waveform stored as binary data (array of floats)
   waveform_data?: number[];
-  
+
   // Flexible metadata
   metadata: AssetMetadata;
+
+  // Tags for organizing assets
+  tags?: string | null;
 }
 
 export interface PaginatedResponse {

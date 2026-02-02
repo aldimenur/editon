@@ -4,6 +4,10 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { Asset } from '@/types/tauri';
 
+type FilterType = {
+  tags: string
+}
+
 interface AssetStore {
   // Counts
   sfx: number;
@@ -14,7 +18,10 @@ interface AssetStore {
   parentPath: string;
 
   // Search queries
-  sfxSearch: string;
+  sfxSearch: {
+    search: string,
+    filter: FilterType
+  };
   videoSearch: string;
   imageSearch: string;
 
@@ -35,7 +42,7 @@ interface AssetStore {
   setParentPath: (path: string) => void;
 
   // Setters for search
-  setSfxSearch: (search: string) => void;
+  setSfxSearch: (search: string, filter?: FilterType) => void;
   setVideoSearch: (search: string) => void;
   setImageSearch: (search: string) => void;
 
@@ -75,7 +82,7 @@ const useAssetStore = create<AssetStore>()(
       imagePath: "",
 
       // Initial search queries
-      sfxSearch: "",
+      sfxSearch: { search: "", filter: { tags: '' } },
       videoSearch: "",
       musicSearch: "",
       imageSearch: "",
@@ -96,7 +103,7 @@ const useAssetStore = create<AssetStore>()(
       isLoading: false,
 
       // Search setters
-      setSfxSearch: (search: string) => set({ sfxSearch: search }),
+      setSfxSearch: (search: string, filter: FilterType = { tags: '' }) => set({ sfxSearch: { search: search, filter: filter } }),
       setVideoSearch: (search: string) => set({ videoSearch: search }),
       setImageSearch: (search: string) => set({ imageSearch: search }),
 
@@ -152,7 +159,7 @@ const useAssetStore = create<AssetStore>()(
           const result = await invoke("get_assets_paginated", {
             page,
             pageSize,
-            query: state.sfxSearch || "",
+            query: state.sfxSearch.search + "" + state.sfxSearch.filter.tags || "",
             assetType: "audio",
           }) as any;
 

@@ -54,18 +54,19 @@ fn get_assets_paginated(
         let tokens: Vec<&str> = query.split_whitespace().filter(|s| !s.is_empty()).collect();
 
         if !tokens.is_empty() {
-            // Build search condition for each token across filename and original_path
+            // Build search condition for each token across filename, original_path, and tags
             let mut token_conditions = Vec::new();
             for _ in &tokens {
-                token_conditions.push("(filename LIKE ? OR original_path LIKE ?)");
+                token_conditions.push("(filename LIKE ? OR original_path LIKE ? OR tags LIKE ?)");
             }
 
             // Combine all token conditions with AND (all tokens must match)
             sql_base.push_str(&format!(" AND ({})", token_conditions.join(" AND ")));
 
-            // Add wildcard parameters for each token (2 params per token: filename and original_path)
+            // Add wildcard parameters for each token (3 params per token: filename, original_path, and tags)
             for token in tokens {
                 let wildcard = format!("%{}%", token);
+                params_values.push(Box::new(wildcard.clone()));
                 params_values.push(Box::new(wildcard.clone()));
                 params_values.push(Box::new(wildcard));
             }
@@ -262,11 +263,13 @@ pub fn run() {
             yt_dlp::update_ytdlp,
             yt_dlp::run_ytdlp,
             db_lib::clear_db,
+            db_lib::update_asset_tags,
             sound_lib::generate_missing_waveforms,
             image_lib::generate_missing_thumbnails,
             video_lib::generate_missing_video_thumbnails,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
+            folder_lib::stop_folder_watcher,
             folder_lib::delete_file,
             folder_lib::rename_file,
             cancel_scan,
