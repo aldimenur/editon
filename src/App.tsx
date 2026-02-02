@@ -54,7 +54,14 @@ function App() {
     appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
   }, [appWindow]);
 
+  const startWatcher = async () => {
+    const watcher = await invoke('stop_folder_watcher').then(() => invoke('trigger_folder_watcher', { folderPath: parentPath })
+    )
+    console.log(watcher)
+  }
+
   useEffect(() => {
+
     if (initialized.current) return;
     initialized.current = true;
 
@@ -69,9 +76,9 @@ function App() {
       }
     };
 
+    startWatcher()
     checkForUpdates();
     getAppVersion();
-    invoke('trigger_folder_watcher', { folderPath: parentPath })
   }, []);
 
   return (

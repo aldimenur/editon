@@ -45,3 +45,4 @@ futures-util = { version = "0.3.31" }
 tokio = { version = "1.49.0", features = ["full"] }
 notify = "8.1.0"
 scopeguard = "1.2.0"
+lazy_static = "1.4"

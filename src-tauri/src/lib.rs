@@ -263,6 +263,7 @@ pub fn run() {
             image_lib::generate_missing_thumbnails,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
+            folder_lib::stop_folder_watcher,
             folder_lib::delete_file,
             folder_lib::rename_file,
             cancel_scan,

@@ -1,11 +1,17 @@
 use notify::{Event, EventKind, RecursiveMode, Result as NotifyResult, Watcher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use tokio::fs;
 use walkdir::WalkDir;
 
 use crate::{models::DbState, utils::get_media_type};
+
+// Global state to manage the active watcher
+lazy_static::lazy_static! {
+    static ref WATCHER_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
 
 #[derive(Clone, serde::Serialize)]
 struct ScanProgress {
@@ -91,13 +97,31 @@ pub fn scan_and_import_folder(
 
 #[tauri::command]
 pub fn trigger_folder_watcher(
-    app: AppHandle, // Tambahkan AppHandle untuk emit event
+    app: AppHandle,
     state: State<'_, DbState>,
     folder_path: String,
 ) -> Result<String, String> {
+    // Stop any existing watcher before starting a new one
+    if WATCHER_RUNNING.load(Ordering::SeqCst) {
+        stop_folder_watcher()?;
+        // Small delay to ensure the old watcher stops
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
     let db_conn = state.conn.clone();
     start_folder_watcher(folder_path, db_conn, app);
-    Ok("Scan berjalan di background".to_string())
+    Ok("Folder watcher started".to_string())
+}
+
+/// Stops the currently running folder watcher
+#[tauri::command]
+pub fn stop_folder_watcher() -> Result<String, String> {
+    if WATCHER_RUNNING.load(Ordering::SeqCst) {
+        WATCHER_RUNNING.store(false, Ordering::SeqCst);
+        Ok("Folder watcher stopped".to_string())
+    } else {
+        Ok("No active folder watcher".to_string())
+    }
 }
 
 #[tauri::command]
@@ -142,10 +166,15 @@ fn start_folder_watcher(
     db_conn: Arc<Mutex<rusqlite::Connection>>,
     app: AppHandle,
 ) {
+    // Mark watcher as running
+    WATCHER_RUNNING.store(true, Ordering::SeqCst);
+
     std::thread::spawn(move || {
         if let Err(e) = watch_folder_changes(&folder_path, &db_conn, &app) {
             eprintln!("Folder watcher error: {}", e);
         }
+        // Mark as stopped when thread exits
+        WATCHER_RUNNING.store(false, Ordering::SeqCst);
     });
 }
 
@@ -171,28 +200,46 @@ fn watch_folder_changes(
     const DEBOUNCE_MS: u128 = 200; // Ignore duplicate events within 200ms
 
     // Process events in a loop
-    for event in rx {
-        match event {
-            Ok(event) => {
-                // Filter out duplicate rapid events on the same path
-                let mut should_process = true;
-                if let Some(first_path) = event.paths.first() {
-                    if let Some(last_time) = last_event_time.get(first_path) {
-                        let elapsed = last_time.elapsed().as_millis();
-                        if elapsed < DEBOUNCE_MS {
-                            should_process = false;
+    loop {
+        // Check if we should stop the watcher
+        if !WATCHER_RUNNING.load(Ordering::SeqCst) {
+            println!("Folder watcher stopping...");
+            break;
+        }
+
+        // Use recv_timeout to periodically check shutdown signal
+        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+            Ok(event) => match event {
+                Ok(event) => {
+                    // Filter out duplicate rapid events on the same path
+                    let mut should_process = true;
+                    if let Some(first_path) = event.paths.first() {
+                        if let Some(last_time) = last_event_time.get(first_path) {
+                            let elapsed = last_time.elapsed().as_millis();
+                            if elapsed < DEBOUNCE_MS {
+                                should_process = false;
+                            }
+                        }
+                        if should_process {
+                            last_event_time.insert(first_path.clone(), std::time::Instant::now());
                         }
                     }
+
                     if should_process {
-                        last_event_time.insert(first_path.clone(), std::time::Instant::now());
+                        handle_file_change(&event, &db_conn, &app, &mut rename_from);
                     }
                 }
-
-                if should_process {
-                    handle_file_change(&event, &db_conn, &app, &mut rename_from);
-                }
+                Err(e) => eprintln!("Watch error: {}", e),
+            },
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // No event received, continue loop to check shutdown signal
+                continue;
             }
-            Err(e) => eprintln!("Watch error: {}", e),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                // Channel disconnected, exit loop
+                eprintln!("Watcher channel disconnected");
+                break;
+            }
         }
     }
 

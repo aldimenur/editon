@@ -9,6 +9,7 @@ dependencies = [
  "fast_image_resize",
  "futures-util",
  "image",
+ "lazy_static",
  "libwebp",
  "notify",
  "rayon",
