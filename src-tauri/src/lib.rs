@@ -14,6 +14,7 @@ mod image_lib;
 mod models;
 mod sound_lib;
 mod utils;
+mod video_lib;
 mod yt_dlp;
 
 #[tauri::command]
@@ -261,6 +262,7 @@ pub fn run() {
             db_lib::clear_db,
             sound_lib::generate_missing_waveforms,
             image_lib::generate_missing_thumbnails,
+            video_lib::generate_missing_video_thumbnails,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
             folder_lib::stop_folder_watcher,

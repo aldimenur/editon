@@ -9,7 +9,6 @@ import ImagePage from "./pages/image";
 import YoutubeDownloadPage from "./pages/youtube-download";
 import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
 import useAssetStore from "./stores/asset-store";
 import { check } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";

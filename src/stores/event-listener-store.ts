@@ -36,6 +36,8 @@ const handleFileChanges = async () => {
     console.log('thumb', thumb)
     const wav = await invoke("generate_missing_waveforms");
     console.log('wav', wav)
+    const vid = await invoke("generate_missing_video_thumbnails");
+    console.log(vid)
   } catch (error) {
     console.error("Error generating thumbnails/waveforms:", error);
   }

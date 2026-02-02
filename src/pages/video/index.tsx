@@ -2,7 +2,7 @@ import useAssetStore from "@/stores/asset-store";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2, Settings2 } from "lucide-react";
+import { Search, LayoutList, LayoutGrid, Maximize2, Settings2, Play } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,7 @@ const VideoPage = () => {
     getScrollElement: () => containerRef.current,
     estimateSize: () => ITEM_HEIGHTS[viewModeVideo],
     getItemKey: (index) => `${viewModeVideo}-${index}`, // reset size cache when mode changes
-    overscan: 5,
+    overscan: 1,
   });
 
   // infinite scroll with virtualizer
@@ -140,8 +140,11 @@ const VideoPage = () => {
     );
   };
 
-  const renderVideoCard = (file: Asset, videoHeight: string, minHeight: number) => {
-    const videoSrc = convertFileSrc(file.original_path)
+  // New VideoCard component to manage per-card playing state (thumbnail -> video)
+  const VideoCard = ({ file, videoHeight, minHeight = 0 }: { file: Asset; videoHeight: string; minHeight?: number }) => {
+    const [playing, setPlaying] = useState(false);
+    const videoSrc = convertFileSrc(file.original_path);
+    const thumbSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
 
     return (
       <div
@@ -149,11 +152,21 @@ const VideoPage = () => {
         className="flex flex-col justify-between border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
         style={{ minHeight }}
       >
-        <video
-          src={videoSrc}
-          className={`w-full ${videoHeight} object-cover bg-muted`}
-          controls
-        />
+        <div className="relative group">
+          {!playing && thumbSrc ? (
+            <div className="relative cursor-pointer" onClick={() => setPlaying(true)}>
+              <img src={thumbSrc} className={`w-full ${videoHeight} object-cover bg-muted`} loading="lazy" decoding="async" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-black/40 rounded-full p-3">
+                  <Play className="w-6 h-6 text-white" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <video src={videoSrc} className={`w-full ${videoHeight} object-cover bg-muted`} controls autoPlay={playing} />
+          )}
+        </div>
+
         {/* Video Info */}
         <div className="p-2 bg-accent">
           <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
@@ -298,12 +311,11 @@ const VideoPage = () => {
                     return (
                       <div
                         key={virtualRow.index}
-                        className="grid grid-cols-3 gap-2"
-                        style={{ minHeight: virtualRow.size }}
+                        className="grid grid-cols-3 gap-2 h-fit"
                       >
-                        {file1 && renderVideoCard(file1, "h-full", virtualRow.size)}
-                        {file2 && renderVideoCard(file2, "h-full", virtualRow.size)}
-                        {file3 && renderVideoCard(file3, "h-full", virtualRow.size)}
+                        {file1 && <VideoCard file={file1} videoHeight="h-full" />}
+                        {file2 && <VideoCard file={file2} videoHeight="h-full" />}
+                        {file3 && <VideoCard file={file3} videoHeight="h-full" />}
                       </div>
                     );
                   } else {
@@ -312,7 +324,7 @@ const VideoPage = () => {
                     if (!file) return null;
 
                     const videoHeight = viewModeVideo === "large" ? "h-full" : "h-48";
-                    return renderVideoCard(file, videoHeight, virtualRow.size);
+                    return <VideoCard file={file} videoHeight={videoHeight} minHeight={virtualRow.size} />;
                   }
                 })}
               </div>
