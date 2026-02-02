@@ -4,6 +4,8 @@ use image::{ExtendedColorType, ImageEncoder, ImageReader};
 use rayon::prelude::*;
 use std::io::{BufReader, Cursor};
 use std::num::NonZeroU32;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{Emitter, Manager};
@@ -32,22 +34,25 @@ pub fn generate_video_thumbnail_buffer(
     ffmpeg_path: &str,
 ) -> Result<Vec<u8>, String> {
     // Run ffmpeg to output a single PNG frame to stdout
-    let output = Command::new(ffmpeg_path)
-        .args(&[
-            "-ss",
-            seek_time,
-            "-i",
-            path,
-            "-frames:v",
-            "1",
-            "-f",
-            "image2pipe",
-            "-vcodec",
-            "png",
-            "-",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(ffmpeg_path);
+    cmd.args(&[
+        "-ss",
+        seek_time,
+        "-i",
+        path,
+        "-frames:v",
+        "1",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "png",
+        "-",
+    ]);
+
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW flag to hide console
+
+    let output = cmd.output().map_err(|e| e.to_string())?;
 
     if !output.status.success() {
         return Err(format!(

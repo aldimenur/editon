@@ -103,7 +103,7 @@ fn get_assets_paginated(
 
     let mut stmt = conn.prepare(&sql_data).map_err(|e| e.to_string())?;
 
-let asset_iter = stmt
+    let asset_iter = stmt
         .query_map(params_refs.as_slice(), |row| {
             let waveform_str: String = row.get("waveform_data").unwrap_or("[]".to_string());
             let metadata_str: String = row.get("metadata").unwrap_or("{}".to_string());
@@ -224,7 +224,7 @@ pub fn run() {
             conn.pragma_update(None, "journal_mode", "WAL").unwrap();
             conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
 
-conn.execute(
+            conn.execute(
                 "CREATE TABLE IF NOT EXISTS assets (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     filename        TEXT NOT NULL,
@@ -241,7 +241,7 @@ conn.execute(
                 [],
             )?;
 
-conn.execute(
+            conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_path_type
                  ON assets(original_path, type)",
                 [],
@@ -257,7 +257,7 @@ conn.execute(
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
-.invoke_handler(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![
             yt_dlp::check_dependencies,
             yt_dlp::get_ytdlp_version,
             yt_dlp::update_ytdlp,

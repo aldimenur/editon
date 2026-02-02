@@ -71,9 +71,7 @@ const SfxPage = () => {
     tags: string | null;
   } | null>(null);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
-  console.log(tagFilter);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
-  console.log(availableTags);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
