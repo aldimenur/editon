@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import useAssetStore from "./stores/asset-store";
 import { check } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { startWatcher } from "./lib/utils";
 
 
 const router = [
@@ -54,11 +55,6 @@ function App() {
     appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
   }, [appWindow]);
 
-  const startWatcher = async () => {
-    const watcher = await invoke('stop_folder_watcher').then(() => invoke('trigger_folder_watcher', { folderPath: parentPath })
-    )
-    console.log(watcher)
-  }
 
   useEffect(() => {
 
@@ -76,7 +72,7 @@ function App() {
       }
     };
 
-    startWatcher()
+    startWatcher(parentPath)
     checkForUpdates();
     getAppVersion();
   }, []);

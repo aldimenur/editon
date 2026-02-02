@@ -155,7 +155,7 @@ const VideoPage = () => {
           controls
         />
         {/* Video Info */}
-        <div className="p-2 bg-accent flex-1">
+        <div className="p-2 bg-accent">
           <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
             {highlightText(file.filename, videoSearch)}
           </p>
@@ -301,9 +301,9 @@ const VideoPage = () => {
                         className="grid grid-cols-3 gap-2"
                         style={{ minHeight: virtualRow.size }}
                       >
-                        {file1 && renderVideoCard(file1, "h-52", virtualRow.size)}
-                        {file2 && renderVideoCard(file2, "h-52", virtualRow.size)}
-                        {file3 && renderVideoCard(file3, "h-52", virtualRow.size)}
+                        {file1 && renderVideoCard(file1, "h-full", virtualRow.size)}
+                        {file2 && renderVideoCard(file2, "h-full", virtualRow.size)}
+                        {file3 && renderVideoCard(file3, "h-full", virtualRow.size)}
                       </div>
                     );
                   } else {
@@ -311,7 +311,7 @@ const VideoPage = () => {
                     const file = videoFiles[virtualRow.index];
                     if (!file) return null;
 
-                    const videoHeight = viewModeVideo === "large" ? "h-80" : "h-48";
+                    const videoHeight = viewModeVideo === "large" ? "h-full" : "h-48";
                     return renderVideoCard(file, videoHeight, virtualRow.size);
                   }
                 })}
