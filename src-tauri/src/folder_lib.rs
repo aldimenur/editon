@@ -1,7 +1,7 @@
 use notify::{Event, EventKind, RecursiveMode, Result as NotifyResult, Watcher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use tauri::{AppHandle, Emitter, State};
 use tokio::fs;
 use walkdir::WalkDir;
@@ -10,7 +10,49 @@ use crate::{models::DbState, utils::get_media_type};
 
 // Global state to manage the active watcher
 lazy_static::lazy_static! {
-    static ref WATCHER_RUNNING: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    static ref WATCHER_STATE: Arc<Mutex<WatcherState>> = Arc::new(Mutex::new(WatcherState::new()));
+}
+
+struct WatcherState {
+    handle: Option<JoinHandle<()>>,
+    shutdown_tx: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl WatcherState {
+    fn new() -> Self {
+        Self {
+            handle: None,
+            shutdown_tx: None,
+        }
+    }
+
+    fn is_running(&self) -> bool {
+        self.handle.is_some()
+    }
+
+    fn stop(&mut self) -> Result<(), String> {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(()); // Send shutdown signal
+        }
+        
+        if let Some(handle) = self.handle.take() {
+            // Wait for the watcher thread to finish (with timeout)
+            match handle.join() {
+                Ok(_) => Ok(()),
+                Err(_) => Err("Failed to join watcher thread".to_string()),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn start(&mut self, handle: JoinHandle<()>, shutdown_tx: std::sync::mpsc::Sender<()>) {
+        // Stop any existing watcher first
+        let _ = self.stop();
+        
+        self.handle = Some(handle);
+        self.shutdown_tx = Some(shutdown_tx);
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -101,23 +143,26 @@ pub fn trigger_folder_watcher(
     state: State<'_, DbState>,
     folder_path: String,
 ) -> Result<String, String> {
+    let mut watcher_state = WATCHER_STATE.lock().map_err(|e| e.to_string())?;
+    
     // Stop any existing watcher before starting a new one
-    if WATCHER_RUNNING.load(Ordering::SeqCst) {
-        stop_folder_watcher()?;
-        // Small delay to ensure the old watcher stops
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    if watcher_state.is_running() {
+        watcher_state.stop()?;
     }
 
     let db_conn = state.conn.clone();
-    start_folder_watcher(folder_path, db_conn, app);
+    let (handle, shutdown_tx) = start_folder_watcher(folder_path, db_conn, app);
+    watcher_state.start(handle, shutdown_tx);
     Ok("Folder watcher started".to_string())
 }
 
 /// Stops the currently running folder watcher
 #[tauri::command]
 pub fn stop_folder_watcher() -> Result<String, String> {
-    if WATCHER_RUNNING.load(Ordering::SeqCst) {
-        WATCHER_RUNNING.store(false, Ordering::SeqCst);
+    let mut watcher_state = WATCHER_STATE.lock().map_err(|e| e.to_string())?;
+    
+    if watcher_state.is_running() {
+        watcher_state.stop()?;
         Ok("Folder watcher stopped".to_string())
     } else {
         Ok("No active folder watcher".to_string())
@@ -165,23 +210,23 @@ fn start_folder_watcher(
     folder_path: String,
     db_conn: Arc<Mutex<rusqlite::Connection>>,
     app: AppHandle,
-) {
-    // Mark watcher as running
-    WATCHER_RUNNING.store(true, Ordering::SeqCst);
+) -> (JoinHandle<()>, std::sync::mpsc::Sender<()>) {
+    let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
 
-    std::thread::spawn(move || {
-        if let Err(e) = watch_folder_changes(&folder_path, &db_conn, &app) {
+    let handle = std::thread::spawn(move || {
+        if let Err(e) = watch_folder_changes(&folder_path, &db_conn, &app, shutdown_rx) {
             eprintln!("Folder watcher error: {}", e);
         }
-        // Mark as stopped when thread exits
-        WATCHER_RUNNING.store(false, Ordering::SeqCst);
     });
+
+    (handle, shutdown_tx)
 }
 
 fn watch_folder_changes(
     folder_path: &str,
     db_conn: &Arc<Mutex<rusqlite::Connection>>,
     app: &AppHandle,
+    shutdown_rx: std::sync::mpsc::Receiver<()>,
 ) -> NotifyResult<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher = notify::recommended_watcher(tx)?;
@@ -201,14 +246,19 @@ fn watch_folder_changes(
 
     // Process events in a loop
     loop {
-        // Check if we should stop the watcher
-        if !WATCHER_RUNNING.load(Ordering::SeqCst) {
-            println!("Folder watcher stopping...");
-            break;
+        // Check for shutdown signal first (non-blocking)
+        match shutdown_rx.try_recv() {
+            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                println!("Folder watcher stopping...");
+                break;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Continue processing events
+            }
         }
 
         // Use recv_timeout to periodically check shutdown signal
-        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+        match rx.recv_timeout(std::time::Duration::from_millis(100)) {
             Ok(event) => match event {
                 Ok(event) => {
                     // Filter out duplicate rapid events on the same path
