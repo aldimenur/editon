@@ -77,11 +77,12 @@ const ImagePage = () => {
         overscan: 10,
     });
 
+    // compute virtual items once per render
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    const totalHeight = rowVirtualizer.getTotalSize();
     // infinite scroll with virtualizer
     useEffect(() => {
         if (!hasMore || isLoading || imageFiles.length === 0) return;
-
-        const virtualItems = rowVirtualizer.getVirtualItems();
         if (!virtualItems.length) return;
 
         const lastItem = virtualItems[virtualItems.length - 1];
@@ -96,7 +97,7 @@ const ImagePage = () => {
             const nextPage = Math.floor(imageFiles.length / pageSize) + 1;
             fetchImageAssets(nextPage, pageSize);
         }
-    }, [rowVirtualizer.getVirtualItems(), imageFiles.length, hasMore, isLoading, pageSize, viewModeImage]);
+    }, [virtualItems.length, imageFiles.length, hasMore, isLoading, pageSize, viewModeImage]);
 
     // Reset scroll position when view mode changes
     useEffect(() => {
@@ -104,7 +105,7 @@ const ImagePage = () => {
         if (containerRef.current) {
             containerRef.current.scrollTop = 0;
         }
-    }, [viewModeImage, rowVirtualizer]);
+    }, [viewModeImage]);
 
     const closeModal = () => {
         setSelectedImage(null);
@@ -206,8 +207,6 @@ const ImagePage = () => {
         );
     };
 
-    const virtualItems = rowVirtualizer.getVirtualItems();
-    const totalHeight = rowVirtualizer.getTotalSize();
 
     const showEmptyState = !isLoading && imageFiles.length === 0;
 

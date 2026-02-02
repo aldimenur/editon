@@ -72,14 +72,16 @@ const VideoPage = () => {
     getScrollElement: () => containerRef.current,
     estimateSize: () => ITEM_HEIGHTS[viewModeVideo],
     getItemKey: (index) => `${viewModeVideo}-${index}`, // reset size cache when mode changes
-    overscan: 1,
+    overscan: 2,
   });
+
+  // compute virtual items once per render
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize();
 
   // infinite scroll with virtualizer
   useEffect(() => {
     if (!hasMore || isLoading || videoFiles.length === 0) return;
-
-    const virtualItems = rowVirtualizer.getVirtualItems();
     if (!virtualItems.length) return;
 
     const lastItem = virtualItems[virtualItems.length - 1];
@@ -95,7 +97,7 @@ const VideoPage = () => {
       console.log("Loading next page:", nextPage);
       fetchVideoAssets(nextPage, pageSize);
     }
-  }, [rowVirtualizer.getVirtualItems(), videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo]);
+  }, [virtualItems.length, videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {
@@ -103,7 +105,7 @@ const VideoPage = () => {
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-  }, [viewModeVideo, rowVirtualizer]);
+  }, [viewModeVideo]);
 
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
@@ -183,8 +185,6 @@ const VideoPage = () => {
     );
   };
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const totalHeight = rowVirtualizer.getTotalSize();
 
   const showEmptyState = !isLoading && videoFiles.length === 0;
 

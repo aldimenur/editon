@@ -110,12 +110,12 @@ const SfxPage = () => {
     getItemKey: (index) => `${viewModeAudio}-${gridColumns}-${index}`, // reset size cache when mode or columns change
     overscan: 10,
   });
-
+  // compute virtual items once per render
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalHeight = rowVirtualizer.getTotalSize();
   // infinite scroll with virtualizer
   useEffect(() => {
     if (!hasMore || isLoading || sfxFiles.length === 0) return;
-
-    const virtualItems = rowVirtualizer.getVirtualItems();
     if (!virtualItems.length) return;
 
     const lastItem = virtualItems[virtualItems.length - 1];
@@ -131,7 +131,7 @@ const SfxPage = () => {
       console.log("Loading next page:", nextPage);
       fetchSfxAssets(nextPage, pageSize);
     }
-  }, [rowVirtualizer.getVirtualItems(), sfxFiles.length, hasMore, isLoading, pageSize, viewModeAudio, fetchSfxAssets]);
+  }, [virtualItems.length, sfxFiles.length, hasMore, isLoading, pageSize, viewModeAudio, gridColumns]);
 
   // Reset scroll position when view mode or columns change
   useEffect(() => {
@@ -139,10 +139,7 @@ const SfxPage = () => {
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-  }, [viewModeAudio, gridColumns, rowVirtualizer]);
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const totalHeight = rowVirtualizer.getTotalSize();
+  }, [viewModeAudio, gridColumns]);
 
   const showEmptyState = !isLoading && sfxFiles.length === 0;
 
