@@ -57,6 +57,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
           set({ countingTotal: false });
           handleFileChanges();
         }
+        console.log(payload)
       });
 
       await listen("waveform-progress", (event) => {

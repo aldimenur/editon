@@ -1,5 +1,5 @@
 use rusqlite::{Connection, Result, ToSql};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
@@ -167,6 +167,13 @@ async fn download_dependencies(
     Ok("Semua dependencies berhasil didownload".to_string())
 }
 
+#[tauri::command]
+fn cancel_scan(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    state.cancel_scan.store(true, Ordering::SeqCst);
+    println!("Scan cancelled!");
+    Ok("Cancel scan success!".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let total_cores = std::thread::available_parallelism()
@@ -254,11 +261,11 @@ pub fn run() {
             db_lib::clear_db,
             sound_lib::generate_missing_waveforms,
             image_lib::generate_missing_thumbnails,
-            image_lib::cancel_scan,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
             folder_lib::delete_file,
             folder_lib::rename_file,
+            cancel_scan,
             download_dependencies,
             get_assets_paginated,
             get_count_assets,

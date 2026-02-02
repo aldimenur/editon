@@ -17,13 +17,6 @@ use crate::models::ProgressEvent;
 use crate::AssetMetadata;
 use crate::DbState;
 
-#[tauri::command]
-pub fn cancel_scan(state: tauri::State<'_, DbState>) -> Result<String, String> {
-    state.cancel_scan.store(true, Ordering::SeqCst);
-
-    Ok("Cancel scan success!".to_string())
-}
-
 pub fn get_image_metadata(path: &str, ext: &str) -> AssetMetadata {
     if ext == "svg" {
         return AssetMetadata::None;
@@ -155,11 +148,10 @@ pub fn generate_missing_thumbnails(
         to_process
             .par_iter()
             .for_each(|(id, path, filename, extension)| {
-                // Check cancel flag FIRST before processing
                 if cancel_flag.load(Ordering::SeqCst) {
                     return;
-                };
-
+                }
+                
                 let metadata = get_image_metadata(path, extension);
                 let metadata_json = serde_json::to_string(&metadata).unwrap_or("{}".to_string());
                 let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
