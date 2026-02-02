@@ -265,7 +265,6 @@ pub fn run() {
             video_lib::generate_missing_video_thumbnails,
             folder_lib::scan_and_import_folder,
             folder_lib::trigger_folder_watcher,
-            folder_lib::stop_folder_watcher,
             folder_lib::delete_file,
             folder_lib::rename_file,
             cancel_scan,

@@ -34,7 +34,7 @@ impl WatcherState {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(()); // Send shutdown signal
         }
-        
+
         if let Some(handle) = self.handle.take() {
             // Wait for the watcher thread to finish (with timeout)
             match handle.join() {
@@ -49,7 +49,7 @@ impl WatcherState {
     fn start(&mut self, handle: JoinHandle<()>, shutdown_tx: std::sync::mpsc::Sender<()>) {
         // Stop any existing watcher first
         let _ = self.stop();
-        
+
         self.handle = Some(handle);
         self.shutdown_tx = Some(shutdown_tx);
     }
@@ -144,7 +144,7 @@ pub fn trigger_folder_watcher(
     folder_path: String,
 ) -> Result<String, String> {
     let mut watcher_state = WATCHER_STATE.lock().map_err(|e| e.to_string())?;
-    
+
     // Stop any existing watcher before starting a new one
     if watcher_state.is_running() {
         watcher_state.stop()?;
@@ -154,19 +154,6 @@ pub fn trigger_folder_watcher(
     let (handle, shutdown_tx) = start_folder_watcher(folder_path, db_conn, app);
     watcher_state.start(handle, shutdown_tx);
     Ok("Folder watcher started".to_string())
-}
-
-/// Stops the currently running folder watcher
-#[tauri::command]
-pub fn stop_folder_watcher() -> Result<String, String> {
-    let mut watcher_state = WATCHER_STATE.lock().map_err(|e| e.to_string())?;
-    
-    if watcher_state.is_running() {
-        watcher_state.stop()?;
-        Ok("Folder watcher stopped".to_string())
-    } else {
-        Ok("No active folder watcher".to_string())
-    }
 }
 
 #[tauri::command]
