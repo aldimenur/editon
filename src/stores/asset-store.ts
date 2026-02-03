@@ -26,7 +26,10 @@ interface AssetStore {
     search: string,
     filter: FilterType
   };
-  imageSearch: string;
+  imageSearch: {
+    search: string,
+    filter: FilterType
+  };
 
   // Asset data
   sfxFiles: Asset[];
@@ -47,7 +50,7 @@ interface AssetStore {
   // Setters for search
   setSfxSearch: (search: string, filter?: FilterType) => void;
   setVideoSearch: (search: string, filter?: FilterType) => void;
-  setImageSearch: (search: string) => void;
+  setImageSearch: (search: string, filter?: FilterType) => void;
 
   // Asset data operations
   setSfxFiles: (files: Asset[], reset?: boolean) => void;
@@ -88,7 +91,7 @@ const useAssetStore = create<AssetStore>()(
       sfxSearch: { search: "", filter: { tags: '' } },
       videoSearch: { search: "", filter: { tags: '' } },
       musicSearch: "",
-      imageSearch: "",
+      imageSearch: { search: "", filter: { tags: "" } },
 
       // Initial asset files
       sfxFiles: [],
@@ -109,7 +112,8 @@ const useAssetStore = create<AssetStore>()(
       setSfxSearch: (search: string, filter: FilterType = { tags: '' }) => set({ sfxSearch: { search: search, filter: filter } }),
       setVideoSearch: (search: string, filter: FilterType = { tags: '' }) =>
         set({ videoSearch: { search: search, filter: filter } }),
-      setImageSearch: (search: string) => set({ imageSearch: search }),
+      setImageSearch: (search: string, filter: FilterType = { tags: "" }) =>
+        set({ imageSearch: { search: search, filter: filter } }),
 
       // File setters
       setSfxFiles: (files: Asset[], reset: boolean = false) =>
@@ -234,10 +238,29 @@ const useAssetStore = create<AssetStore>()(
 
         try {
           set({ isLoading: true });
+          const rawImageSearch = state.imageSearch as unknown as {
+            search?: string;
+            filter?: FilterType;
+          } | string | null | undefined;
+          const normalizedImageSearch =
+            typeof rawImageSearch === "string"
+              ? { search: rawImageSearch, filter: { tags: "" } }
+              : {
+                  search: rawImageSearch?.search ?? "",
+                  filter: rawImageSearch?.filter ?? { tags: "" },
+                };
+          const query = [
+            normalizedImageSearch.search,
+            normalizedImageSearch.filter.tags,
+          ]
+            .map((part) => part?.trim())
+            .filter((part) => part && part.length > 0)
+            .join(" ");
+
           const result = await invoke("get_assets_paginated", {
             page,
             pageSize,
-            query: state.imageSearch || "",
+            query,
             assetType: "image",
           }) as any;
 

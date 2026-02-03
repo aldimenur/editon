@@ -1,8 +1,8 @@
 import useAssetStore from "@/stores/asset-store";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2, ZoomIn, Settings2 } from "lucide-react";
+import { Search, LayoutList, LayoutGrid, Maximize2, ZoomIn, Settings2, Tag } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,13 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { formatFileSize } from "@/lib/utils";
 import {
     DropdownMenu,
+    DropdownMenuCheckboxItem,
     DropdownMenuContent,
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TagsDialog from "@/components/TagsDialog";
 
 const ITEM_HEIGHTS = {
     list: 240,
@@ -40,7 +42,22 @@ const ImagePage = () => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [hoveredId, setHoveredId] = useState<number | null>(null);
     const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
+    const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+    const [assetToEdit, setAssetToEdit] = useState<{
+        id: number;
+        tags: string | null | undefined;
+    } | null>(null);
+    const [tagFilter, setTagFilter] = useState<string[]>([]);
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
     const hasMore = imageFiles.length < imageSearchCount;
+    const rawImageSearch = imageSearch as unknown as {
+        search?: string;
+        filter?: { tags?: string };
+    } | string | null | undefined;
+    const imageSearchText =
+        typeof rawImageSearch === "string"
+            ? rawImageSearch
+            : rawImageSearch?.search ?? "";
 
     // initial load / path change
     useEffect(() => {
@@ -50,16 +67,35 @@ const ImagePage = () => {
         fetchImageAssets(1, pageSize, true);
     }, [parentPath, pageSize]);
 
+    const fetchAvailableTags = useCallback(async () => {
+        try {
+            const tags = await invoke<string[]>("get_available_tags");
+            setAvailableTags(tags);
+            setTagFilter((prev) => prev.filter((tag) => tags.includes(tag)));
+        } catch (error) {
+            console.error("Failed to fetch tags:", error);
+            setAvailableTags([]);
+            setTagFilter([]);
+        }
+    }, []);
+
+    // Fetch available tags from database
+    useEffect(() => {
+        if (!parentPath) return;
+        fetchAvailableTags();
+    }, [parentPath, fetchAvailableTags]);
+
     // search with debounce
     useEffect(() => {
         if (!parentPath) return;
 
         const timeout = setTimeout(() => {
+            setImageSearch(imageSearchText, { tags: tagFilter.join(" ") });
             fetchImageAssets(1, pageSize, true);
         }, 500);
 
         return () => clearTimeout(timeout);
-    }, [imageSearch, parentPath, pageSize, image]);
+    }, [imageSearchText, tagFilter, parentPath, pageSize, image]);
 
     // Calculate row count based on view mode
     const getRowCount = () => {
@@ -112,7 +148,7 @@ const ImagePage = () => {
     };
 
     const highlightText = (text: string, search: string) => {
-        if (!search.trim()) return text;
+        if (typeof search !== "string" || !search.trim()) return text;
 
         // Tokenize search query: split by whitespace
         const tokens = search
@@ -143,6 +179,43 @@ const ImagePage = () => {
                     );
                 })}
             </>
+        );
+    };
+
+    const handleTagsClick = (assetId: number, tags: string | null | undefined) => {
+        setAssetToEdit({ id: assetId, tags });
+        setTagsDialogOpen(true);
+    };
+
+    const handleTagsUpdated = () => {
+        fetchImageAssets(1, pageSize, true);
+        fetchAvailableTags();
+    };
+
+    const renderTags = (tags: string | null | undefined) => {
+        if (!tags) return null;
+        const tagArray = tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0);
+        if (tagArray.length === 0) return null;
+
+        return (
+            <div className="flex flex-wrap gap-1 mt-1">
+                {tagArray.slice(0, 3).map((tag, index) => (
+                    <span
+                        key={index}
+                        className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
+                    >
+                        {tag}
+                    </span>
+                ))}
+                {tagArray.length > 3 && (
+                    <span className="text-muted-foreground text-xs">
+                        +{tagArray.length - 3}
+                    </span>
+                )}
+            </div>
         );
     };
 
@@ -183,9 +256,22 @@ const ImagePage = () => {
 
                 {/* Image Info */}
                 <div className="p-2 bg-accent">
-                    <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
-                        {highlightText(file.filename, imageSearch)}
-                    </p>
+                    <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-medium text-ellipsis overflow-hidden whitespace-nowrap">
+                            {highlightText(file.filename, imageSearchText)}
+                        </p>
+                        <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => {
+                                if (file.id == null) return;
+                                handleTagsClick(file.id, file.tags);
+                            }}
+                        >
+                            <Tag className="h-2 w-2" />
+                        </Button>
+                    </div>
+                    {renderTags(file.tags)}
                     <div className="flex flex-col">
                         <div className="flex justify-between text-xs text-muted-foreground">
                             <span>
@@ -295,19 +381,60 @@ const ImagePage = () => {
                     <Input
                         type="text"
                         placeholder="Search..."
-                        value={imageSearch}
-                        onChange={(e) => setImageSearch(e.target.value)}
+                        value={imageSearchText}
+                        onChange={(e) =>
+                            setImageSearch(e.target.value, { tags: tagFilter.join(" ") })
+                        }
                         className="pl-10 pr-10 text-sm"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-xl px-2 py-1 text-xs">
                         {imageSearchCount}
                     </div>
                 </div>
+
+                {/* Tag Filter */}
+                {availableTags.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="gap-2">
+                                <Tag className="h-4 w-4" />
+                                {tagFilter.length > 0
+                                    ? `${tagFilter.length} selected`
+                                    : "Filter by tag"}
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuCheckboxItem
+                                checked={tagFilter.length === 0}
+                                onCheckedChange={() => setTagFilter([])}
+                            >
+                                All Tags
+                            </DropdownMenuCheckboxItem>
+                            {availableTags.map((tag) => (
+                                <DropdownMenuCheckboxItem
+                                    key={tag}
+                                    checked={tagFilter.includes(tag)}
+                                    onCheckedChange={() => {
+                                        if (tagFilter.includes(tag)) {
+                                            setTagFilter(tagFilter.filter((t) => t !== tag));
+                                        } else {
+                                            setTagFilter([...tagFilter, tag]);
+                                        }
+                                    }}
+                                >
+                                    {tag}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
             <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
                 {showEmptyState ? (
                     <div className="text-center text-muted-foreground py-8 text-sm">
-                        {imageSearch
+                        {imageSearchText
                             ? "No images found matching your search"
                             : "No image files found"}
                     </div>
@@ -401,6 +528,15 @@ const ImagePage = () => {
                     </div>
                 </div>
             )}
+
+            <TagsDialog
+                open={tagsDialogOpen}
+                onOpenChange={setTagsDialogOpen}
+                assetId={assetToEdit?.id || 0}
+                currentTags={assetToEdit?.tags || null}
+                availableTags={availableTags}
+                onTagsUpdated={handleTagsUpdated}
+            />
         </div>
     );
 };
