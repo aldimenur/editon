@@ -1,8 +1,8 @@
 import useAssetStore from "@/stores/asset-store";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2, Settings2, Play } from "lucide-react";
+import { Search, LayoutList, LayoutGrid, Maximize2, Settings2, Play, Tag } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,13 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { formatFileSize } from "@/lib/utils";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TagsDialog from "@/components/TagsDialog";
 
 const ITEM_HEIGHTS = {
   list: 240,
@@ -38,7 +40,22 @@ const VideoPage = () => {
   const [pageSize] = useState(10);
   const { viewModeVideo, setViewModeVideo } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [assetToEdit, setAssetToEdit] = useState<{
+    id: number;
+    tags: string | null | undefined;
+  } | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const hasMore = videoFiles.length < videoSearchCount;
+  const rawVideoSearch = videoSearch as unknown as {
+    search?: string;
+    filter?: { tags?: string };
+  } | string | null | undefined;
+  const videoSearchText =
+    typeof rawVideoSearch === "string"
+      ? rawVideoSearch
+      : rawVideoSearch?.search ?? "";
 
   // initial load / path change
   useEffect(() => {
@@ -48,16 +65,35 @@ const VideoPage = () => {
     fetchVideoAssets(1, pageSize, true);
   }, [parentPath, pageSize, video]);
 
-  // search with debounce
+  const fetchAvailableTags = useCallback(async () => {
+    try {
+      const tags = await invoke<string[]>("get_available_tags");
+      setAvailableTags(tags);
+      setTagFilter((prev) => prev.filter((tag) => tags.includes(tag)));
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+      setAvailableTags([]);
+      setTagFilter([]);
+    }
+  }, []);
+
+  // Fetch available tags from database
+  useEffect(() => {
+    if (!parentPath) return;
+    fetchAvailableTags();
+  }, [parentPath, fetchAvailableTags]);
+
+  // search with debounce (including tag filter)
   useEffect(() => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
+      setVideoSearch(videoSearchText, { tags: tagFilter.join(" ") });
       fetchVideoAssets(1, pageSize, true);
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [videoSearch, parentPath, pageSize]);
+  }, [videoSearchText, tagFilter, parentPath, pageSize]);
 
   // Calculate row count based on view mode
   const getRowCount = () => {
@@ -108,7 +144,7 @@ const VideoPage = () => {
   }, [viewModeVideo]);
 
   const highlightText = (text: string, search: string) => {
-    if (!search.trim()) return text;
+    if (typeof search !== "string" || !search.trim()) return text;
 
     // Tokenize search query: split by whitespace
     const tokens = search
@@ -142,22 +178,64 @@ const VideoPage = () => {
     );
   };
 
+  const handleTagsClick = (assetId: number, tags: string | null | undefined) => {
+    setAssetToEdit({ id: assetId, tags });
+    setTagsDialogOpen(true);
+  };
+
+  const handleTagsUpdated = () => {
+    fetchVideoAssets(1, pageSize, true);
+    fetchAvailableTags();
+  };
+
+  const renderTags = (tags: string | null | undefined) => {
+    if (!tags) return null;
+    const tagArray = tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tagArray.length === 0) return null;
+
+    return (
+      <div className="flex flex-wrap gap-1 mt-1">
+        {tagArray.slice(0, 3).map((tag, index) => (
+          <span
+            key={index}
+            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
+          >
+            {tag}
+          </span>
+        ))}
+        {tagArray.length > 3 && (
+          <span className="text-muted-foreground text-xs">
+            +{tagArray.length - 3}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // New VideoCard component to manage per-card playing state (thumbnail -> video)
-  const VideoCard = ({ file, videoHeight, minHeight = 0 }: { file: Asset; videoHeight: string; minHeight?: number }) => {
+  const VideoCard = ({ file, mediaClassName, minHeight = 0 }: { file: Asset; mediaClassName: string; minHeight?: number }) => {
     const [playing, setPlaying] = useState(false);
     const videoSrc = convertFileSrc(file.original_path);
     const thumbSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
 
     return (
-      <div
-        key={file.id}
-        className="flex flex-col justify-between border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
-        style={{ minHeight }}
-      >
-        <div className="relative group">
+        <div
+          key={file.id}
+          className="flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
+          style={{ minHeight }}
+        >
+        <div className={`relative group ${mediaClassName}`}>
           {!playing && thumbSrc ? (
-            <div className="relative cursor-pointer" onClick={() => setPlaying(true)}>
-              <img src={thumbSrc} className={`w-full ${videoHeight} object-cover bg-muted`} loading="lazy" decoding="async" />
+            <div className="relative h-full w-full cursor-pointer" onClick={() => setPlaying(true)}>
+              <img
+                src={thumbSrc}
+                className="absolute inset-0 h-full w-full object-cover bg-muted"
+                loading="lazy"
+                decoding="async"
+              />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-black/40 rounded-full p-3">
                   <Play className="w-6 h-6 text-white" />
@@ -165,15 +243,33 @@ const VideoPage = () => {
               </div>
             </div>
           ) : (
-            <video src={videoSrc} className={`w-full ${videoHeight} object-cover bg-muted`} controls autoPlay={playing} />
+            <video
+              src={videoSrc}
+              className="absolute inset-0 h-full w-full object-cover bg-muted"
+              controls
+              autoPlay={playing}
+            />
           )}
         </div>
 
         {/* Video Info */}
         <div className="p-2 bg-accent">
-          <p className="text-xs font-medium mb-1 text-ellipsis overflow-hidden whitespace-nowrap">
-            {highlightText(file.filename, videoSearch)}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium text-ellipsis overflow-hidden whitespace-nowrap">
+              {highlightText(file.filename, videoSearchText)}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                if (file.id == null) return;
+                handleTagsClick(file.id, file.tags);
+              }}
+            >
+              <Tag className="h-2 w-2" />
+            </Button>
+          </div>
+          {renderTags(file.tags)}
           <div className="flex justify-between text-xs text-muted-foreground">
             <span className="cursor-pointer truncate w-1/2 text-primary" onClick={() => revealItemInDir(file.original_path)}>
               {file.original_path}
@@ -273,19 +369,60 @@ const VideoPage = () => {
           <Input
             type="text"
             placeholder="Search..."
-            value={videoSearch}
-            onChange={(e) => setVideoSearch(e.target.value)}
+            value={videoSearchText}
+            onChange={(e) =>
+              setVideoSearch(e.target.value, { tags: tagFilter.join(" ") })
+            }
             className="pl-10 pr-10 text-sm"
           />
           <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-xl px-2 py-1 text-xs">
             {videoSearchCount}
           </div>
         </div>
+
+        {/* Tag Filter */}
+        {availableTags.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Tag className="h-4 w-4" />
+                {tagFilter.length > 0
+                  ? `${tagFilter.length} selected`
+                  : "Filter by tag"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={tagFilter.length === 0}
+                onCheckedChange={() => setTagFilter([])}
+              >
+                All Tags
+              </DropdownMenuCheckboxItem>
+              {availableTags.map((tag) => (
+                <DropdownMenuCheckboxItem
+                  key={tag}
+                  checked={tagFilter.includes(tag)}
+                  onCheckedChange={() => {
+                    if (tagFilter.includes(tag)) {
+                      setTagFilter(tagFilter.filter((t) => t !== tag));
+                    } else {
+                      setTagFilter([...tagFilter, tag]);
+                    }
+                  }}
+                >
+                  {tag}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
-            {videoSearch
+            {videoSearchText
               ? "No videos found matching your search"
               : "No video files found"}
           </div>
@@ -294,44 +431,64 @@ const VideoPage = () => {
             className="relative w-full"
             style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeVideo] : 0) }}
           >
-            {!!virtualItems.length && (
-              <div
-                className={`absolute left-0 right-0 space-y-2`}
-                style={{
-                  transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-                }}
-              >
-                {virtualItems.map((virtualRow) => {
-                  if (viewModeVideo === "grid") {
-                    // Grid mode: 3 columns
-                    const file1 = videoFiles[virtualRow.index * 3];
-                    const file2 = videoFiles[virtualRow.index * 3 + 1];
-                    const file3 = videoFiles[virtualRow.index * 3 + 2];
+            {!!virtualItems.length &&
+              virtualItems.map((virtualRow) => {
+                if (viewModeVideo === "grid") {
+                  // Grid mode: 3 columns
+                  const file1 = videoFiles[virtualRow.index * 3];
+                  const file2 = videoFiles[virtualRow.index * 3 + 1];
+                  const file3 = videoFiles[virtualRow.index * 3 + 2];
 
-                    return (
-                      <div
-                        key={virtualRow.index}
-                        className="grid grid-cols-3 gap-2 h-fit"
-                      >
-                        {file1 && <VideoCard file={file1} videoHeight="h-full" />}
-                        {file2 && <VideoCard file={file2} videoHeight="h-full" />}
-                        {file3 && <VideoCard file={file3} videoHeight="h-full" />}
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="absolute left-0 right-0 pb-2"
+                      style={{
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="grid grid-cols-3 gap-2">
+                        {file1 && <VideoCard file={file1} mediaClassName="aspect-video" />}
+                        {file2 && <VideoCard file={file2} mediaClassName="aspect-video" />}
+                        {file3 && <VideoCard file={file3} mediaClassName="aspect-video" />}
                       </div>
-                    );
-                  } else {
-                    // List or Large mode: single column
-                    const file = videoFiles[virtualRow.index];
-                    if (!file) return null;
+                    </div>
+                  );
+                }
 
-                    const videoHeight = viewModeVideo === "large" ? "h-full" : "h-48";
-                    return <VideoCard file={file} videoHeight={videoHeight} minHeight={virtualRow.size} />;
-                  }
-                })}
-              </div>
-            )}
+                // List or Large mode: single column
+                const file = videoFiles[virtualRow.index];
+                if (!file) return null;
+
+                const mediaClassName = viewModeVideo === "large" ? "aspect-video" : "h-48";
+                return (
+                  <div
+                    key={virtualRow.key}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    className="absolute left-0 right-0 pb-2"
+                    style={{
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <VideoCard file={file} mediaClassName={mediaClassName} minHeight={ITEM_HEIGHTS[viewModeVideo]} />
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
+
+      <TagsDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        assetId={assetToEdit?.id || 0}
+        currentTags={assetToEdit?.tags || null}
+        availableTags={availableTags}
+        onTagsUpdated={handleTagsUpdated}
+      />
     </div>
   );
 };

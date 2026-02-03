@@ -22,7 +22,10 @@ interface AssetStore {
     search: string,
     filter: FilterType
   };
-  videoSearch: string;
+  videoSearch: {
+    search: string,
+    filter: FilterType
+  };
   imageSearch: string;
 
   // Asset data
@@ -43,7 +46,7 @@ interface AssetStore {
 
   // Setters for search
   setSfxSearch: (search: string, filter?: FilterType) => void;
-  setVideoSearch: (search: string) => void;
+  setVideoSearch: (search: string, filter?: FilterType) => void;
   setImageSearch: (search: string) => void;
 
   // Asset data operations
@@ -83,7 +86,7 @@ const useAssetStore = create<AssetStore>()(
 
       // Initial search queries
       sfxSearch: { search: "", filter: { tags: '' } },
-      videoSearch: "",
+      videoSearch: { search: "", filter: { tags: '' } },
       musicSearch: "",
       imageSearch: "",
 
@@ -104,7 +107,8 @@ const useAssetStore = create<AssetStore>()(
 
       // Search setters
       setSfxSearch: (search: string, filter: FilterType = { tags: '' }) => set({ sfxSearch: { search: search, filter: filter } }),
-      setVideoSearch: (search: string) => set({ videoSearch: search }),
+      setVideoSearch: (search: string, filter: FilterType = { tags: '' }) =>
+        set({ videoSearch: { search: search, filter: filter } }),
       setImageSearch: (search: string) => set({ imageSearch: search }),
 
       // File setters
@@ -186,10 +190,29 @@ const useAssetStore = create<AssetStore>()(
 
         try {
           set({ isLoading: true });
+          const rawVideoSearch = state.videoSearch as unknown as {
+            search?: string;
+            filter?: FilterType;
+          } | string | null | undefined;
+          const normalizedVideoSearch =
+            typeof rawVideoSearch === "string"
+              ? { search: rawVideoSearch, filter: { tags: "" } }
+              : {
+                  search: rawVideoSearch?.search ?? "",
+                  filter: rawVideoSearch?.filter ?? { tags: "" },
+                };
+          const query = [
+            normalizedVideoSearch.search,
+            normalizedVideoSearch.filter.tags,
+          ]
+            .map((part) => part?.trim())
+            .filter((part) => part && part.length > 0)
+            .join(" ");
+
           const result = await invoke("get_assets_paginated", {
             page,
             pageSize,
-            query: state.videoSearch || "",
+            query,
             assetType: "video",
           }) as any;
 
