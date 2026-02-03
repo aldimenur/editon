@@ -10,7 +10,6 @@ import {
   LayoutGrid,
   Maximize2,
   FolderSearch,
-  MoreHorizontal,
   Settings2,
   PencilLine,
   Trash,
