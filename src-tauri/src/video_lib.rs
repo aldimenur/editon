@@ -203,6 +203,13 @@ pub fn generate_missing_video_thumbnails(
                 }
                 Err(e) => {
                     println!("Failed to generate thumbnail for {}: {}", filename, e);
+                    // Mark as failed to avoid infinite reprocessing loops.
+                    if let Ok(conn) = db_arc.lock() {
+                        let _ = conn.execute(
+                            "UPDATE assets SET thumbnail_path = '' WHERE id = ?1",
+                            rusqlite::params![id],
+                        );
+                    }
                 }
             }
         });
