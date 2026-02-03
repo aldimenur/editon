@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Plus, Tag } from "lucide-react";
@@ -17,6 +17,7 @@ interface TagsDialogProps {
   onOpenChange: (open: boolean) => void;
   assetId: number;
   currentTags: string | null;
+  availableTags: string[];
   onTagsUpdated: () => void;
 }
 
@@ -25,21 +26,33 @@ const TagsDialog = ({
   onOpenChange,
   assetId,
   currentTags,
+  availableTags,
   onTagsUpdated,
 }: TagsDialogProps) => {
-  const [tags, setTags] = useState<string[]>(() => {
-    if (!currentTags) return [];
-    return currentTags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-  });
+  const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    const parsedTags = currentTags
+      ? currentTags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [];
+    setTags(parsedTags);
+  }, [open, currentTags, assetId]);
 
   const addTag = () => {
     if (newTag.trim() && !tags.includes(newTag.trim())) {
       setTags([...tags, newTag.trim()]);
       setNewTag("");
+    }
+  };
+
+  const addExistingTag = (tagToAdd: string) => {
+    if (!tags.includes(tagToAdd)) {
+      setTags([...tags, tagToAdd]);
     }
   };
 
@@ -102,6 +115,30 @@ const TagsDialog = ({
                   </Button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Available tags */}
+          {availableTags.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">
+                Available tags
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availableTags
+                  .filter((tag) => !tags.includes(tag))
+                  .map((tag) => (
+                    <Button
+                      key={tag}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addExistingTag(tag)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      {tag}
+                    </Button>
+                  ))}
+              </div>
             </div>
           )}
 

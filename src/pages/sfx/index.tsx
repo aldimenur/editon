@@ -1,6 +1,6 @@
 import useAssetStore from "@/stores/asset-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import {
@@ -111,20 +111,23 @@ const SfxPage = () => {
     fetchSfxAssets(1, pageSize, true);
   }, [parentPath, pageSize, sfx]);
 
+  const fetchAvailableTags = useCallback(async () => {
+    try {
+      const tags = await invoke<string[]>("get_available_tags");
+      setAvailableTags(tags);
+      setTagFilter((prev) => prev.filter((tag) => tags.includes(tag)));
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+      setAvailableTags([]);
+      setTagFilter([]);
+    }
+  }, []);
+
   // Fetch available tags from database
   useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        const tags = await invoke<string[]>("get_available_tags");
-        setAvailableTags(tags);
-      } catch (error) {
-        console.error("Failed to fetch tags:", error);
-        setAvailableTags([]);
-      }
-    };
-
-    fetchTags();
-  }, [parentPath]); // Refetch when path changes
+    if (!parentPath) return;
+    fetchAvailableTags();
+  }, [parentPath, fetchAvailableTags]); // Refetch when path changes
 
   // search with debounce (including tag filter)
   useEffect(() => {
@@ -258,6 +261,7 @@ const SfxPage = () => {
 
   const handleTagsUpdated = () => {
     fetchSfxAssets(1, pageSize, true);
+    fetchAvailableTags();
   };
 
   const highlightText = (text: string, search: string) => {
@@ -639,6 +643,7 @@ const SfxPage = () => {
         onOpenChange={setTagsDialogOpen}
         assetId={assetToEdit?.id || 0}
         currentTags={assetToEdit?.tags || null}
+        availableTags={availableTags}
         onTagsUpdated={handleTagsUpdated}
       />
 

@@ -156,10 +156,15 @@ const useAssetStore = create<AssetStore>()(
 
         try {
           set({ isLoading: true });
+          const query = [state.sfxSearch.search, state.sfxSearch.filter.tags]
+            .map((part) => part?.trim())
+            .filter((part) => part && part.length > 0)
+            .join(" ");
+
           const result = await invoke("get_assets_paginated", {
             page,
             pageSize,
-            query: state.sfxSearch.search + "" + state.sfxSearch.filter.tags || "",
+            query,
             assetType: "audio",
           }) as any;
 
