@@ -2,7 +2,18 @@ import useAssetStore from "@/stores/asset-store";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutList, LayoutGrid, Maximize2, ZoomIn, Settings2, Tag } from "lucide-react";
+import {
+    Search,
+    LayoutList,
+    LayoutGrid,
+    Maximize2,
+    ZoomIn,
+    Settings2,
+    Tag,
+    PencilLine,
+    Trash,
+    FolderSearch,
+} from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
@@ -18,6 +29,14 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import TagsDialog from "@/components/TagsDialog";
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const ITEM_HEIGHTS = {
     list: 240,
@@ -47,6 +66,11 @@ const ImagePage = () => {
         id: number;
         tags: string | null | undefined;
     } | null>(null);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [fileToDelete, setFileToDelete] = useState<string | null>(null);
+    const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+    const [fileToRename, setFileToRename] = useState<string | null>(null);
+    const [newFileName, setNewFileName] = useState("");
     const [tagFilter, setTagFilter] = useState<string[]>([]);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
     const hasMore = imageFiles.length < imageSearchCount;
@@ -192,6 +216,59 @@ const ImagePage = () => {
         fetchAvailableTags();
     };
 
+    const handleDeleteClick = (path: string) => {
+        setFileToDelete(path);
+        setDeleteDialogOpen(true);
+    };
+
+    const handleDeleteConfirm = async () => {
+        if (fileToDelete) {
+            await invoke("delete_file", { path: fileToDelete });
+            setDeleteDialogOpen(false);
+            setFileToDelete(null);
+            fetchImageAssets(1, pageSize, true);
+        }
+    };
+
+    const handleRenameClick = (path: string, currentName: string) => {
+        setFileToRename(path);
+        const lastDotIndex = currentName.lastIndexOf(".");
+        const nameWithoutExt =
+            lastDotIndex > 0 ? currentName.substring(0, lastDotIndex) : currentName;
+        setNewFileName(nameWithoutExt);
+        setRenameDialogOpen(true);
+    };
+
+    const handleRenameConfirm = async () => {
+        if (fileToRename && newFileName.trim()) {
+            try {
+                const originalFilename = fileToRename.split(/[\\/]/).pop() || "";
+                const lastDotIndex = originalFilename.lastIndexOf(".");
+                const extension =
+                    lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : "";
+
+                const newFullName = newFileName.trim() + extension;
+
+                await invoke("rename_file", {
+                    oldPath: fileToRename,
+                    newName: newFullName,
+                });
+                setRenameDialogOpen(false);
+                setFileToRename(null);
+                setNewFileName("");
+                fetchImageAssets(1, pageSize, true);
+            } catch (error) {
+                console.error("Failed to rename file:", error);
+            }
+        }
+    };
+
+    const handleRenameCancel = () => {
+        setRenameDialogOpen(false);
+        setFileToRename(null);
+        setNewFileName("");
+    };
+
     const renderTags = (tags: string | null | undefined) => {
         if (!tags) return null;
         const tagArray = tags
@@ -226,10 +303,10 @@ const ImagePage = () => {
         return (
             <div
                 key={file.id}
-                className="border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
+                className="group border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
                 style={{ minHeight }}
             >
-                <div className="relative group">
+                <div className="relative">
                     {/* Image */}
                     <img
                         src={imageSrc}
@@ -260,16 +337,43 @@ const ImagePage = () => {
                         <p className="text-xs font-medium text-ellipsis overflow-hidden whitespace-nowrap">
                             {highlightText(file.filename, imageSearchText)}
                         </p>
-                        <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => {
-                                if (file.id == null) return;
-                                handleTagsClick(file.id, file.tags);
-                            }}
-                        >
-                            <Tag className="h-2 w-2" />
-                        </Button>
+                        <div className="flex items-center gap-1 rounded-md border bg-background/80 p-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                            <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="rounded-sm"
+                                onClick={() => {
+                                    if (file.id == null) return;
+                                    handleTagsClick(file.id, file.tags);
+                                }}
+                            >
+                                <Tag className="h-2 w-2" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="rounded-sm"
+                                onClick={() => handleRenameClick(file.original_path, file.filename)}
+                            >
+                                <PencilLine className="h-2 w-2" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="rounded-sm"
+                                onClick={() => revealItemInDir(file.original_path)}
+                            >
+                                <FolderSearch className="h-2 w-2" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="rounded-sm text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteClick(file.original_path)}
+                            >
+                                <Trash className="h-2 w-2" />
+                            </Button>
+                        </div>
                     </div>
                     {renderTags(file.tags)}
                     <div className="flex flex-col">
@@ -537,6 +641,66 @@ const ImagePage = () => {
                 availableTags={availableTags}
                 onTagsUpdated={handleTagsUpdated}
             />
+
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the
+                            file from your system.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteDialogOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleDeleteConfirm}>
+                            Delete
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Rename File</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Enter a new name for the file.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Input
+                        type="text"
+                        value={newFileName}
+                        onChange={(e) => setNewFileName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                handleRenameConfirm();
+                            } else if (e.key === "Escape") {
+                                handleRenameCancel();
+                            }
+                        }}
+                        placeholder="New file name"
+                        className="mt-2"
+                        autoFocus
+                    />
+                    <AlertDialogFooter>
+                        <Button variant="outline" onClick={handleRenameCancel}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleRenameConfirm}
+                            disabled={!newFileName.trim()}
+                        >
+                            Rename
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

@@ -337,18 +337,15 @@ const SfxPage = () => {
     return (
       <div
         key={file.id}
-        className="border-2 rounded-lg flex"
+        className="group relative border-2 rounded-lg flex"
         style={{ height: minHeight, width: "100%" }}
       >
         <div className="h-full flex flex-col flex-1 bg-accent">
-          <div className="grid grid-cols-3">
-            <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 col-span-2 my-auto">
+          <div className="grid grid-cols-1">
+            <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 my-auto">
               <div>{highlightText(file.filename, sfxSearch.search)}</div>
               {renderTags(file.tags)}
             </div>
-            <Button variant="ghost" size="icon-sm" className="justify-self-end">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
           </div>
           <div className="flex justify-center items-center h-full bg-background">
             <WavesurferRender
@@ -360,39 +357,39 @@ const SfxPage = () => {
             />
           </div>
         </div>
-        <div className="px-2 bg-accent/50 flex">
-          <div className="mt-2 flex flex-col justify-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => handleTagsClick(file.id, file.tags)}
-            >
-              <Tag className="h-2 w-2" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() =>
-                handleRenameClick(file.original_path, file.filename)
-              }
-            >
-              <PencilLine className="h-2 w-2" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => revealItemInDir(file.original_path)}
-            >
-              <FolderSearch className="h-2 w-2" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => handleDeleteClick(file.original_path)}
-            >
-              <Trash className="h-2 w-2 text-red-500" />
-            </Button>
-          </div>
+        <div className="absolute right-2 bottom-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => handleTagsClick(file.id, file.tags)}
+          >
+            <Tag className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => handleRenameClick(file.original_path, file.filename)}
+          >
+            <PencilLine className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => revealItemInDir(file.original_path)}
+          >
+            <FolderSearch className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+            onClick={() => handleDeleteClick(file.original_path)}
+          >
+            <Trash className="h-2 w-2" />
+          </Button>
         </div>
       </div>
     );
