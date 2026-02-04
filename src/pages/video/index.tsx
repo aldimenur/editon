@@ -63,6 +63,7 @@ const VideoPage = () => {
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
   const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
+  const [fullscreenVideo, setFullscreenVideo] = useState<Asset | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -257,6 +258,10 @@ const VideoPage = () => {
     );
   };
 
+  const closeFullscreen = () => {
+    setFullscreenVideo(null);
+  };
+
   const openBulkTagsDialog = () => {
     const selectedAssets = videoFiles.filter((file) =>
       selectedAssetIds.includes(file.id ?? -1),
@@ -403,6 +408,9 @@ const VideoPage = () => {
               src={videoSrc}
               className="absolute inset-0 h-full w-full object-cover bg-muted"
               controls
+              playsInline
+              disablePictureInPicture
+              controlsList="nofullscreen"
               autoPlay={playing}
             />
           )}
@@ -433,6 +441,14 @@ const VideoPage = () => {
                 onClick={() => handleRenameClick(file.original_path, file.filename)}
               >
                 <PencilLine className="h-2 w-2" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="rounded-sm"
+                onClick={() => setFullscreenVideo(file)}
+              >
+                <Maximize2 className="h-2 w-2" />
               </Button>
               <Button
                 variant="ghost"
@@ -692,6 +708,32 @@ const VideoPage = () => {
           </div>
         )}
       </div>
+
+      {/* Fullscreen Video Modal */}
+      {fullscreenVideo && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={closeFullscreen}
+        >
+          <div className="relative w-full max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-10 w-10 text-white hover:bg-white/20 z-10"
+              onClick={closeFullscreen}
+            >
+              <span className="text-2xl">×</span>
+            </Button>
+            <video
+              src={convertFileSrc(fullscreenVideo.original_path)}
+              className="w-full max-h-[90vh] object-contain bg-black"
+              controls
+              autoPlay
+              playsInline
+            />
+          </div>
+        </div>
+      )}
 
       <TagsDialog
         open={tagsDialogOpen}

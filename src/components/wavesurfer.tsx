@@ -11,8 +11,9 @@ const WavesurferRender = (props: {
   height: number | "auto";
   waveform: number[];
   volume: number;
+  enableDrag?: boolean;
 }) => {
-  const { src, width, height, waveform, volume } = props;
+  const { src, width, height, waveform, volume, enableDrag = true } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,6 +54,7 @@ const WavesurferRender = (props: {
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!enableDrag) return;
     e.preventDefault();
     wavesurferRef.current?.pause();
     try {
@@ -129,8 +131,8 @@ const WavesurferRender = (props: {
   return (
     <div
       className="cursor-pointer active:cursor-grabbing w-full relative"
-      draggable
-      onDragStart={handleDragStart}
+      draggable={enableDrag}
+      onDragStart={enableDrag ? handleDragStart : undefined}
       onDragEnd={handleDragEnd}
       onClick={handleClick}
       onMouseLeave={() => wavesurferRef.current?.pause()}

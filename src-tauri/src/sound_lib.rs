@@ -1,7 +1,10 @@
 use std::{
     fs::File,
     path::Path,
+    path::PathBuf,
+    process::Command,
     sync::atomic::{AtomicUsize, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -13,9 +16,102 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::utils::get_app_data_dir;
 use crate::{models::ProgressEvent, DbState};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Try to locate ffmpeg binary: first under app data bin, else fallback to `ffmpeg` on PATH.
+fn resolve_ffmpeg_path(app: &tauri::AppHandle) -> String {
+    if let Ok(bin_dir) = get_app_data_dir(app) {
+        let exe = bin_dir.join("ffmpeg.exe");
+        if exe.exists() {
+            return exe.to_string_lossy().to_string();
+        }
+    }
+    "ffmpeg".to_string()
+}
+
+#[tauri::command]
+pub fn trim_audio(
+    app: AppHandle,
+    input_path: String,
+    start_sec: f64,
+    end_sec: f64,
+    output_path: Option<String>,
+) -> Result<String, String> {
+    if start_sec < 0.0 {
+        return Err("Start time must be >= 0".to_string());
+    }
+    if end_sec <= start_sec {
+        return Err("End time must be greater than start time".to_string());
+    }
+
+    let input = Path::new(&input_path);
+    if !input.exists() {
+        return Err("Input file not found".to_string());
+    }
+
+    let output: PathBuf = if let Some(path) = output_path {
+        PathBuf::from(path)
+    } else {
+        let app_data_dir = app.path().app_data_dir().unwrap();
+        let trimmed_dir = app_data_dir.join("trimmed");
+        std::fs::create_dir_all(&trimmed_dir).map_err(|e| e.to_string())?;
+
+        let stem = input
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("audio");
+        let ext = input.extension().and_then(|s| s.to_str()).unwrap_or("wav");
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis();
+        trimmed_dir.join(format!("{}_trim_{}.{}", stem, ts, ext))
+    };
+
+    if output == input {
+        return Err("Output path must be different from input".to_string());
+    }
+
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let duration = end_sec - start_sec;
+    let ffmpeg_path = resolve_ffmpeg_path(&app);
+    let mut cmd = Command::new(ffmpeg_path);
+    cmd.args([
+        "-y",
+        "-i",
+        &input_path,
+        "-ss",
+        &format!("{:.3}", start_sec),
+        "-t",
+        &format!("{:.3}", duration),
+        "-vn",
+        "-c:a",
+        "copy",
+        output.to_string_lossy().as_ref(),
+    ]);
+
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW flag
+
+    let output_result = cmd.output().map_err(|e| e.to_string())?;
+    if !output_result.status.success() {
+        return Err(format!(
+            "ffmpeg failed: {}",
+            String::from_utf8_lossy(&output_result.stderr)
+        ));
+    }
+
+    Ok(output.to_string_lossy().to_string())
+}
 
 pub fn get_audio_waveform(
     path: &str,

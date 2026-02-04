@@ -1,20 +1,26 @@
 import useAssetStore from "@/stores/asset-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import {
-  Search,
-  Volume2,
-  LayoutList,
-  LayoutGrid,
-  Maximize2,
-  FolderSearch,
-  Settings2,
-  PencilLine,
-  Trash,
-  Tag,
   Check,
+  FolderSearch,
+  LayoutGrid,
+  LayoutList,
+  Maximize2,
+  PencilLine,
+  Search,
+  Settings2,
+  Tag,
+  Trash,
+  Volume2,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
@@ -38,11 +44,120 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import TagsDialog from "@/components/TagsDialog";
+import type { Asset } from "@/types/tauri";
 
 const ITEM_HEIGHTS = {
   list: 110,
   grid: 110,
   large: 140,
+};
+
+type SfxAudioCardProps = {
+  file: Asset;
+  waveHeight: number;
+  minHeight: number;
+  searchText: string;
+  volume: number;
+  isSelected: boolean;
+  onToggleSelect: (id: number) => void;
+  onTagsClick: (id: number, tags: string | null) => void;
+  onRenameClick: (path: string, currentName: string) => void;
+  onDeleteClick: (path: string) => void;
+  onReveal: (path: string) => void;
+  renderTags: (tags: string | null) => ReactNode;
+  highlightText: (text: string, search: string) => ReactNode;
+};
+
+const SfxAudioCard = ({
+  file,
+  waveHeight,
+  minHeight,
+  searchText,
+  volume,
+  isSelected,
+  onToggleSelect,
+  onTagsClick,
+  onRenameClick,
+  onDeleteClick,
+  onReveal,
+  renderTags,
+  highlightText,
+}: SfxAudioCardProps) => {
+  const fileId = file.id as number;
+  const isSelectedClass = isSelected
+    ? "border-primary ring-2 ring-primary/30"
+    : "border-border";
+
+  return (
+    <div
+      className={`group relative border-2 rounded-lg flex ${isSelectedClass}`}
+      style={{ minHeight, width: "100%" }}
+    >
+      <Button
+        variant={isSelected ? "default" : "outline"}
+        size="icon-xs"
+        className="absolute right-2 top-2 h-5 w-5 rounded-sm z-10 bg-background/80 shadow-sm"
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleSelect(fileId);
+        }}
+      >
+        <Check className="h-3 w-3" />
+      </Button>
+      <div className="flex flex-col flex-1 bg-accent">
+        <div className="grid grid-cols-1">
+          <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 my-auto">
+            <div>{highlightText(file.filename, searchText)}</div>
+            {renderTags(file.tags ?? null)}
+          </div>
+        </div>
+        <div className="flex justify-center items-center bg-background px-1 py-1">
+          <WavesurferRender
+            src={file.original_path}
+            waveform={file.waveform_data || []}
+            volume={volume}
+            height={waveHeight}
+            width={"100%"}
+            enableDrag
+          />
+        </div>
+      </div>
+      <div className="absolute right-8 top-1 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          onClick={() => onTagsClick(fileId, file.tags ?? null)}
+        >
+          <Tag className="h-2 w-2" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          onClick={() => onRenameClick(file.original_path, file.filename)}
+        >
+          <PencilLine className="h-2 w-2" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          onClick={() => onReveal(file.original_path)}
+        >
+          <FolderSearch className="h-2 w-2" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+          onClick={() => onDeleteClick(file.original_path)}
+        >
+          <Trash className="h-2 w-2" />
+        </Button>
+      </div>
+    </div>
+  );
 };
 
 const SfxPage = () => {
@@ -54,6 +169,7 @@ const SfxPage = () => {
     sfxSearchCount,
     isLoading,
     fetchSfxAssets,
+    updateAssetsCount,
     sfx,
   } = useAssetStore((state) => state);
 
@@ -70,6 +186,7 @@ const SfxPage = () => {
   const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -281,12 +398,17 @@ const SfxPage = () => {
     }
   };
 
+  const refreshAssets = useCallback(async () => {
+    await updateAssetsCount();
+    await fetchSfxAssets(1, pageSize, true);
+  }, [updateAssetsCount, fetchSfxAssets, pageSize]);
+
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -310,7 +432,7 @@ const SfxPage = () => {
 
   const openBulkTagsDialog = () => {
     const selectedAssets = sfxFiles.filter((file) =>
-      selectedAssetIds.includes(file.id),
+      selectedAssetIds.includes(file.id as any),
     );
     setTagsDialogAssetIds(selectedAssetIds);
     setTagsDialogCurrentTags(getCommonTags(selectedAssets));
@@ -386,86 +508,8 @@ const SfxPage = () => {
     );
   };
 
-  const renderAudioCard = (
-    file: any,
-    waveHeight: number,
-    minHeight: number,
-  ) => {
-    const isSelected = selectedAssetIds.includes(file.id);
-    return (
-      <div
-        key={file.id}
-        className={`group relative border-2 rounded-lg flex ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
-        style={{ height: minHeight, width: "100%" }}
-      >
-        <Button
-          variant={isSelected ? "default" : "outline"}
-          size="icon-xs"
-          className="absolute right-2 top-2 h-5 w-5 rounded-sm z-10 bg-background/80 shadow-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleSelection(file.id);
-          }}
-        >
-          <Check className="h-3 w-3" />
-        </Button>
-        <div className="h-full flex flex-col flex-1 bg-accent">
-          <div className="grid grid-cols-1">
-            <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 my-auto">
-              <div>{highlightText(file.filename, sfxSearch.search)}</div>
-              {renderTags(file.tags)}
-            </div>
-          </div>
-          <div className="flex justify-center items-center h-full bg-background">
-            <WavesurferRender
-              src={file.original_path}
-              waveform={file.waveform_data || []}
-              volume={sliderValue}
-              height={waveHeight}
-              width={"100%"}
-            />
-          </div>
-        </div>
-        <div className="absolute right-2 bottom-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => handleTagsClick(file.id, file.tags)}
-          >
-            <Tag className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => handleRenameClick(file.original_path, file.filename)}
-          >
-            <PencilLine className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => revealItemInDir(file.original_path)}
-          >
-            <FolderSearch className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
-            onClick={() => handleDeleteClick(file.original_path)}
-          >
-            <Trash className="h-2 w-2" />
-          </Button>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="px-2 flex flex-col gap-2">
+    <div className="px-2 flex flex-col gap-2 h-[calc(100vh-80px)]">
       <div className="flex items-center justify-between gap-2">
         {/* View Mode Switcher - Desktop */}
         <div className="hidden md:flex gap-1 mr-2">
@@ -667,7 +711,7 @@ const SfxPage = () => {
           </div>
         )}
       </div>
-      <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
             {sfxSearch
@@ -710,12 +754,29 @@ const SfxPage = () => {
                     return (
                       <div
                         key={virtualRow.index}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
                         className={`grid ${gridColsClass} gap-2`}
                         style={{ minHeight: virtualRow.size }}
                       >
-                        {files.map((file) =>
-                          renderAudioCard(file, 60, virtualRow.size),
-                        )}
+                        {files.map((file) => (
+                          <SfxAudioCard
+                            key={file.id}
+                            file={file}
+                            waveHeight={60}
+                            minHeight={ITEM_HEIGHTS[viewModeAudio]}
+                            searchText={sfxSearch.search}
+                            volume={sliderValue}
+                            isSelected={selectedAssetIds.includes(file.id as number)}
+                            onToggleSelect={toggleSelection}
+                            onTagsClick={handleTagsClick}
+                            onRenameClick={handleRenameClick}
+                            onDeleteClick={handleDeleteClick}
+                            onReveal={revealItemInDir}
+                            renderTags={renderTags}
+                            highlightText={highlightText}
+                          />
+                        ))}
                       </div>
                     );
                   } else {
@@ -724,7 +785,29 @@ const SfxPage = () => {
                     if (!file) return null;
 
                     const waveHeight = viewModeAudio === "large" ? 80 : 40;
-                    return renderAudioCard(file, waveHeight, virtualRow.size);
+                    return (
+                      <div
+                        key={file.id}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                      >
+                        <SfxAudioCard
+                          file={file}
+                          waveHeight={waveHeight}
+                          minHeight={ITEM_HEIGHTS[viewModeAudio]}
+                          searchText={sfxSearch.search}
+                          volume={sliderValue}
+                          isSelected={selectedAssetIds.includes(file.id as number)}
+                          onToggleSelect={toggleSelection}
+                          onTagsClick={handleTagsClick}
+                          onRenameClick={handleRenameClick}
+                          onDeleteClick={handleDeleteClick}
+                          onReveal={revealItemInDir}
+                          renderTags={renderTags}
+                          highlightText={highlightText}
+                        />
+                      </div>
+                    );
                   }
                 })}
               </div>

@@ -267,6 +267,7 @@ pub fn run() {
             db_lib::update_assets_tags,
             db_lib::get_available_tags,
             sound_lib::generate_missing_waveforms,
+            sound_lib::trim_audio,
             image_lib::generate_missing_thumbnails,
             video_lib::generate_missing_video_thumbnails,
             folder_lib::scan_and_import_folder,
