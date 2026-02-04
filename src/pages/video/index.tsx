@@ -13,6 +13,7 @@ import {
   PencilLine,
   Trash,
   FolderSearch,
+  Check,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
@@ -60,10 +61,8 @@ const VideoPage = () => {
   const { viewModeVideo, setViewModeVideo } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
-  const [assetToEdit, setAssetToEdit] = useState<{
-    id: number;
-    tags: string | null | undefined;
-  } | null>(null);
+  const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
+  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -71,6 +70,13 @@ const VideoPage = () => {
   const [newFileName, setNewFileName] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const filteredAssetIds = videoFiles
+    .map((file) => file.id)
+    .filter((id): id is number => typeof id === "number");
+  const allFilteredSelected =
+    filteredAssetIds.length > 0 &&
+    filteredAssetIds.every((id) => selectedAssetIds.includes(id));
   const hasMore = videoFiles.length < videoSearchCount;
   const rawVideoSearch = videoSearch as unknown as {
     search?: string;
@@ -203,13 +209,65 @@ const VideoPage = () => {
   };
 
   const handleTagsClick = (assetId: number, tags: string | null | undefined) => {
-    setAssetToEdit({ id: assetId, tags });
+    setTagsDialogAssetIds([assetId]);
+    setTagsDialogCurrentTags(tags ?? null);
     setTagsDialogOpen(true);
   };
 
   const handleTagsUpdated = () => {
     fetchVideoAssets(1, pageSize, true);
     fetchAvailableTags();
+    if (tagsDialogAssetIds.length > 1) {
+      setSelectedAssetIds([]);
+    }
+  };
+
+  const handleTagsDialogChange = (open: boolean) => {
+    setTagsDialogOpen(open);
+    if (!open) {
+      setTagsDialogAssetIds([]);
+      setTagsDialogCurrentTags(null);
+    }
+  };
+
+  const parseTags = (tags: string | null | undefined) =>
+    tags
+      ? tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [];
+
+  const getCommonTags = (assets: { tags?: string | null }[]) => {
+    if (assets.length === 0) return null;
+    let common = parseTags(assets[0].tags);
+    for (let i = 1; i < assets.length; i += 1) {
+      const tagSet = new Set(parseTags(assets[i].tags));
+      common = common.filter((tag) => tagSet.has(tag));
+      if (common.length === 0) break;
+    }
+    return common.length > 0 ? common.join(", ") : null;
+  };
+
+  const toggleSelection = (assetId: number) => {
+    setSelectedAssetIds((prev) =>
+      prev.includes(assetId)
+        ? prev.filter((id) => id !== assetId)
+        : [...prev, assetId],
+    );
+  };
+
+  const openBulkTagsDialog = () => {
+    const selectedAssets = videoFiles.filter((file) =>
+      selectedAssetIds.includes(file.id ?? -1),
+    );
+    setTagsDialogAssetIds(selectedAssetIds);
+    setTagsDialogCurrentTags(getCommonTags(selectedAssets));
+    setTagsDialogOpen(true);
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedAssetIds(filteredAssetIds);
   };
 
   const handleDeleteClick = (path: string) => {
@@ -305,13 +363,26 @@ const VideoPage = () => {
     const [playing, setPlaying] = useState(false);
     const videoSrc = convertFileSrc(file.original_path);
     const thumbSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
+    const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
     return (
       <div
         key={file.id}
-        className="group flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg"
+        className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
         style={{ minHeight }}
       >
+        <Button
+          variant={isSelected ? "default" : "outline"}
+          size="icon-xs"
+          className="absolute left-2 top-2 h-5 w-5 rounded-sm z-10"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (file.id == null) return;
+            toggleSelection(file.id);
+          }}
+        >
+          <Check className="h-3 w-3" />
+        </Button>
         <div className={`relative ${mediaClassName}`}>
           {!playing && thumbSrc ? (
             <div className="relative h-full w-full cursor-pointer" onClick={() => setPlaying(true)}>
@@ -530,6 +601,35 @@ const VideoPage = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        {filteredAssetIds.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={selectAllFiltered}
+            disabled={allFilteredSelected}
+          >
+            Select All
+          </Button>
+        )}
+
+        {selectedAssetIds.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {selectedAssetIds.length} selected
+            </span>
+            <Button size="sm" onClick={openBulkTagsDialog}>
+              Edit Tags
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedAssetIds([])}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
       </div>
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
@@ -595,9 +695,9 @@ const VideoPage = () => {
 
       <TagsDialog
         open={tagsDialogOpen}
-        onOpenChange={setTagsDialogOpen}
-        assetId={assetToEdit?.id || 0}
-        currentTags={assetToEdit?.tags || null}
+        onOpenChange={handleTagsDialogChange}
+        assetIds={tagsDialogAssetIds}
+        currentTags={tagsDialogCurrentTags}
         availableTags={availableTags}
         onTagsUpdated={handleTagsUpdated}
       />

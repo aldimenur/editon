@@ -264,6 +264,7 @@ pub fn run() {
             yt_dlp::run_ytdlp,
             db_lib::clear_db,
             db_lib::update_asset_tags,
+            db_lib::update_assets_tags,
             db_lib::get_available_tags,
             sound_lib::generate_missing_waveforms,
             image_lib::generate_missing_thumbnails,

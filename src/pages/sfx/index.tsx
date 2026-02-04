@@ -14,6 +14,7 @@ import {
   PencilLine,
   Trash,
   Tag,
+  Check,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
@@ -65,15 +66,20 @@ const SfxPage = () => {
   const [fileToRename, setFileToRename] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
-  const [assetToEdit, setAssetToEdit] = useState<{
-    id: number;
-    tags: string | null;
-  } | null>(null);
+  const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
+  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
+  const filteredAssetIds = sfxFiles
+    .map((file) => file.id)
+    .filter((id): id is number => typeof id === "number");
+  const allFilteredSelected =
+    filteredAssetIds.length > 0 &&
+    filteredAssetIds.every((id) => selectedAssetIds.includes(id));
 
   // Track container width and update columns responsively
   useEffect(() => {
@@ -254,13 +260,65 @@ const SfxPage = () => {
   };
 
   const handleTagsClick = (assetId: number, tags: string | null) => {
-    setAssetToEdit({ id: assetId, tags });
+    setTagsDialogAssetIds([assetId]);
+    setTagsDialogCurrentTags(tags ?? null);
     setTagsDialogOpen(true);
   };
 
   const handleTagsUpdated = () => {
     fetchSfxAssets(1, pageSize, true);
     fetchAvailableTags();
+    if (tagsDialogAssetIds.length > 1) {
+      setSelectedAssetIds([]);
+    }
+  };
+
+  const handleTagsDialogChange = (open: boolean) => {
+    setTagsDialogOpen(open);
+    if (!open) {
+      setTagsDialogAssetIds([]);
+      setTagsDialogCurrentTags(null);
+    }
+  };
+
+  const parseTags = (tags: string | null | undefined) =>
+    tags
+      ? tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [];
+
+  const getCommonTags = (assets: { tags?: string | null }[]) => {
+    if (assets.length === 0) return null;
+    let common = parseTags(assets[0].tags);
+    for (let i = 1; i < assets.length; i += 1) {
+      const tagSet = new Set(parseTags(assets[i].tags));
+      common = common.filter((tag) => tagSet.has(tag));
+      if (common.length === 0) break;
+    }
+    return common.length > 0 ? common.join(", ") : null;
+  };
+
+  const toggleSelection = (assetId: number) => {
+    setSelectedAssetIds((prev) =>
+      prev.includes(assetId)
+        ? prev.filter((id) => id !== assetId)
+        : [...prev, assetId],
+    );
+  };
+
+  const openBulkTagsDialog = () => {
+    const selectedAssets = sfxFiles.filter((file) =>
+      selectedAssetIds.includes(file.id),
+    );
+    setTagsDialogAssetIds(selectedAssetIds);
+    setTagsDialogCurrentTags(getCommonTags(selectedAssets));
+    setTagsDialogOpen(true);
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedAssetIds(filteredAssetIds);
   };
 
   const highlightText = (text: string, search: string) => {
@@ -333,12 +391,24 @@ const SfxPage = () => {
     waveHeight: number,
     minHeight: number,
   ) => {
+    const isSelected = selectedAssetIds.includes(file.id);
     return (
       <div
         key={file.id}
-        className="group relative border-2 rounded-lg flex"
+        className={`group relative border-2 rounded-lg flex ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
         style={{ height: minHeight, width: "100%" }}
       >
+        <Button
+          variant={isSelected ? "default" : "outline"}
+          size="icon-xs"
+          className="absolute right-2 top-2 h-5 w-5 rounded-sm z-10 bg-background/80 shadow-sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleSelection(file.id);
+          }}
+        >
+          <Check className="h-3 w-3" />
+        </Button>
         <div className="h-full flex flex-col flex-1 bg-accent">
           <div className="grid grid-cols-1">
             <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 my-auto">
@@ -567,6 +637,35 @@ const SfxPage = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        {filteredAssetIds.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={selectAllFiltered}
+            disabled={allFilteredSelected}
+          >
+            Select All
+          </Button>
+        )}
+
+        {selectedAssetIds.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {selectedAssetIds.length} selected
+            </span>
+            <Button size="sm" onClick={openBulkTagsDialog}>
+              Edit Tags
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedAssetIds([])}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
       </div>
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
@@ -636,9 +735,9 @@ const SfxPage = () => {
 
       <TagsDialog
         open={tagsDialogOpen}
-        onOpenChange={setTagsDialogOpen}
-        assetId={assetToEdit?.id || 0}
-        currentTags={assetToEdit?.tags || null}
+        onOpenChange={handleTagsDialogChange}
+        assetIds={tagsDialogAssetIds}
+        currentTags={tagsDialogCurrentTags}
         availableTags={availableTags}
         onTagsUpdated={handleTagsUpdated}
       />

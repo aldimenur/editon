@@ -129,3 +129,31 @@ pub fn update_asset_tags(
 
     Ok("Tags updated successfully".to_string())
 }
+
+#[tauri::command]
+pub fn update_assets_tags(
+    state: State<'_, DbState>,
+    asset_ids: Vec<i64>,
+    tags: Option<String>,
+) -> Result<String, String> {
+    if asset_ids.is_empty() {
+        return Err("No asset IDs provided".to_string());
+    }
+
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let mut stmt = tx
+        .prepare("UPDATE assets SET tags = ?1 WHERE id = ?2")
+        .map_err(|e| e.to_string())?;
+
+    for asset_id in asset_ids {
+        stmt.execute(rusqlite::params![tags, asset_id])
+            .map_err(|e| e.to_string())?;
+    }
+
+    drop(stmt);
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok("Tags updated successfully".to_string())
+}

@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 interface TagsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  assetId: number;
+  assetIds: number[];
   currentTags: string | null;
   availableTags: string[];
   onTagsUpdated: () => void;
@@ -24,13 +24,15 @@ interface TagsDialogProps {
 const TagsDialog = ({
   open,
   onOpenChange,
-  assetId,
+  assetIds,
   currentTags,
   availableTags,
   onTagsUpdated,
 }: TagsDialogProps) => {
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
+  const isBulkEdit = assetIds.length > 1;
+  const hasSelection = assetIds.length > 0;
 
   useEffect(() => {
     if (!open) return;
@@ -41,7 +43,7 @@ const TagsDialog = ({
           .filter((tag) => tag.length > 0)
       : [];
     setTags(parsedTags);
-  }, [open, currentTags, assetId]);
+  }, [open, currentTags, assetIds]);
 
   const addTag = () => {
     if (newTag.trim() && !tags.includes(newTag.trim())) {
@@ -69,9 +71,10 @@ const TagsDialog = ({
 
   const saveTags = async () => {
     try {
+      if (!hasSelection) return;
       const tagsString = tags.length > 0 ? tags.join(", ") : null;
-      await invoke("update_asset_tags", {
-        assetId,
+      await invoke("update_assets_tags", {
+        assetIds,
         tags: tagsString,
       });
       onTagsUpdated();
@@ -87,11 +90,12 @@ const TagsDialog = ({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Tag className="h-4 w-4" />
-            Manage Tags
+            {isBulkEdit ? "Manage Tags (Bulk)" : "Manage Tags"}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Add or remove tags for this asset. Tags help organize and search
-            your files.
+            {isBulkEdit
+              ? `Editing ${assetIds.length} assets. Saving replaces tags for all selected items.`
+              : "Add or remove tags for this asset. Tags help organize and search your files."}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -166,7 +170,9 @@ const TagsDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={saveTags}>Save Tags</Button>
+          <Button onClick={saveTags} disabled={!hasSelection}>
+            Save Tags
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
