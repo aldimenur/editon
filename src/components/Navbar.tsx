@@ -4,8 +4,7 @@ import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
-import { check } from "@tauri-apps/plugin-updater";
-import { ChevronLeft, ChevronRight, Download, Image, Loader2, Music, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Image, Loader2, Music, Settings, Video } from "lucide-react";
 import { useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
@@ -34,27 +33,20 @@ const sidebarItems = [
     label: "Download",
     path: "/youtube-download",
     type: "youtube",
-  }
+  },
+  {
+    icon: <Settings size={14} />,
+    label: "Settings",
+    path: "/settings",
+    type: "settings",
+  },
 ];
 
-const Navbar = (params: any) => {
-  const { updateAvailable, appVersion } = params.update
+const Navbar = () => {
   const { activeItem, setActiveItem, isMinimized, toggleMinimized } = useNavStore((state) => state);
   const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
   const { progressSound, progressImage, countingTotal, setCountingTotal } = useEventListenerStore((state) => state);
   const [progressVideo] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState<boolean>();
-
-  const handleUpdate = async () => {
-    setIsLoading(true);
-    const update = await check();
-    if (update) {
-      await update.download();
-      await update.install();
-      window.location.reload();
-    }
-    setIsLoading(false);
-  }
 
   const handleSetPath = async () => {
     try {
@@ -137,20 +129,6 @@ const Navbar = (params: any) => {
             </div>
           </div>
         )}
-        {!isMinimized && updateAvailable &&
-          <div className="flex items-center col-span-2 justify-center m-2 p-2 animate-in slide-in-from-bottom-2 fade-in duration-300 border rounded-xl">
-            <span className="text-xs font-bold text-green-500">
-              Update available
-            </span>
-            <Button variant="default" size="sm" onClick={handleUpdate} loading={isLoading}>Update</Button>
-          </div>
-        }
-        {isMinimized && updateAvailable &&
-          <div className="col-span-2 flex justify-center">
-            <Button variant="default" size="sm" onClick={handleUpdate} loading={isLoading}><Download className="animate-caret-blink" /></Button>
-          </div>
-        }
-
         <div className={`p-2 flex gap-2 col-span-2 ${isMinimized ? 'flex-col items-center' : 'justify-center'}`}>
           <ModeToggle />
           {!isMinimized && (
@@ -174,11 +152,6 @@ const Navbar = (params: any) => {
           )}
         </div>
 
-        {!isMinimized && (
-          <div className="col-span-2 flex justify-center">
-            <span className="text-xs text-accent-foreground">Version {appVersion}</span>
-          </div>
-        )}
       </div>
     </div>
   );
