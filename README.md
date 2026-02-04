@@ -143,9 +143,6 @@ Editon menyimpan metadata aset di SQLite, termasuk:
 
 Pull request dan issue sangat disambut.
 
-## 📄 License
-
-[Tambahkan license sesuai kebutuhan]
 
 ## 👤 Author
 
