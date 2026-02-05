@@ -10,18 +10,22 @@ import {
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import {
-  Check,
-  FolderSearch,
   LayoutGrid,
   LayoutList,
   Maximize2,
-  PencilLine,
   Search,
   Settings2,
   Tag,
-  Trash,
   Volume2,
 } from "lucide-react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCheck,
+  faFolderOpen,
+  faPenToSquare,
+  faTag,
+  faTrashCan,
+} from "@fortawesome/free-solid-svg-icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -47,9 +51,9 @@ import TagsDialog from "@/components/TagsDialog";
 import type { Asset } from "@/types/tauri";
 
 const ITEM_HEIGHTS = {
-  list: 68,
-  grid: 78,
-  large: 110,
+  list: 46,
+  grid: 56,
+  large: 80,
 };
 
 type SfxAudioCardProps = {
@@ -84,12 +88,12 @@ const SfxAudioCard = ({
 }: SfxAudioCardProps) => {
   const fileId = file.id as number;
   const isSelectedClass = isSelected
-    ? "border-primary ring-2 ring-primary/30"
+    ? "border-primary ring-1 ring-primary/30"
     : "border-border";
 
   return (
     <div
-      className={`group relative border-2 flex overflow-hidden bg-background rounded-md transition-shadow hover:shadow-sm ${isSelectedClass}`}
+      className={`group relative border flex bg-background rounded-[2px] transition-shadow hover:shadow-sm ${isSelectedClass}`}
       style={{ minHeight, height: minHeight, width: "100%" }}
     >
       <div className="flex flex-col flex-1 h-full">
@@ -102,60 +106,72 @@ const SfxAudioCard = ({
           enableDrag
         />
       </div>
-      <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+      <div className="absolute inset-x-0 bottom-0 z-10 pb-0.5 pt-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
         <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
         <div className="relative">
-          <div className="text-xs font-medium truncate whitespace-nowrap">
+          <div className="text-[10px] font-medium truncate whitespace-nowrap leading-none">
             {highlightText(file.filename, searchText)}
           </div>
-          <div className="max-h-7 overflow-hidden">
+          <div className="max-h-6 overflow-hidden">
             {renderTags(file.tags ?? null)}
           </div>
         </div>
       </div>
-      <div className="absolute right-2 top-1 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-[2px] border border-border bg-background/85 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <Button
           variant={isSelected ? "default" : "ghost"}
-          size="icon-xs"
-          className="rounded-sm bg-background shadow-sm hover:bg-background transition-opacity"
+          size="icon"
+          className="h-5 w-5 rounded-[2px] bg-transparent p-0 shadow-none hover:bg-background/70 transition-opacity"
           onClick={(event) => {
             event.stopPropagation();
             onToggleSelect(fileId);
           }}
         >
-          <Check className="h-2 w-2" />
+          <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" fixedWidth />
         </Button>
         <Button
           variant="ghost"
-          size="icon-xs"
-          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          size="icon"
+          className="h-5 w-5 rounded-[2px] bg-transparent p-0 shadow-none hover:bg-background/70"
           onClick={() => onTagsClick(fileId, file.tags ?? null)}
         >
-          <Tag className="h-2 w-2" />
+          <FontAwesomeIcon icon={faTag} className="h-2.5 w-2.5" fixedWidth />
         </Button>
         <Button
           variant="ghost"
-          size="icon-xs"
-          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          size="icon"
+          className="h-5 w-5 rounded-[2px] bg-transparent p-0 shadow-none hover:bg-background/70"
           onClick={() => onRenameClick(file.original_path, file.filename)}
         >
-          <PencilLine className="h-2 w-2" />
+          <FontAwesomeIcon
+            icon={faPenToSquare}
+            className="h-2.5 w-2.5"
+            fixedWidth
+          />
         </Button>
         <Button
           variant="ghost"
-          size="icon-xs"
-          className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+          size="icon"
+          className="h-5 w-5 rounded-[2px] bg-transparent p-0 shadow-none hover:bg-background/70"
           onClick={() => onReveal(file.original_path)}
         >
-          <FolderSearch className="h-2 w-2" />
+          <FontAwesomeIcon
+            icon={faFolderOpen}
+            className="h-2.5 w-2.5"
+            fixedWidth
+          />
         </Button>
         <Button
           variant="ghost"
-          size="icon-xs"
-          className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+          size="icon"
+          className="h-5 w-5 rounded-[2px] bg-transparent p-0 shadow-none text-destructive hover:text-destructive hover:bg-background/70"
           onClick={() => onDeleteClick(file.original_path)}
         >
-          <Trash className="h-2 w-2" />
+          <FontAwesomeIcon
+            icon={faTrashCan}
+            className="h-2.5 w-2.5"
+            fixedWidth
+          />
         </Button>
       </div>
     </div>
@@ -184,7 +200,9 @@ const SfxPage = () => {
   const [newFileName, setNewFileName] = useState("");
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
-  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
+  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<
+    string | null
+  >(null);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
@@ -402,9 +420,9 @@ const SfxPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -486,11 +504,11 @@ const SfxPage = () => {
     if (tagArray.length === 0) return null;
 
     return (
-      <div className="flex flex-wrap gap-1 mt-0.5">
+      <div className="flex flex-wrap gap-0.5 mt-0.5">
         {tagArray.slice(0, 3).map((tag, index) => (
           <span
             key={index}
-            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-[10px]"
+            className="bg-primary/10 text-primary px-1 py-0.5 rounded-[2px] text-[10px] leading-none"
           >
             {tag}
           </span>
@@ -505,39 +523,39 @@ const SfxPage = () => {
   };
 
   return (
-    <div className="px-2 flex flex-col gap-1 h-[calc(100vh-40px)]">
-      <div className="flex items-center justify-between gap-1">
+    <div className="px-1 py-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
+      <div className="flex items-center gap-1 h-6">
         {/* View Mode Switcher - Desktop */}
-        <div className="hidden md:flex gap-1 mr-1">
+        <div className="hidden md:flex items-center gap-0.5 h-6 shrink-0">
           <Button
             variant={viewModeAudio === "list" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("list")}
-            className="h-7 w-7"
+            className="h-6 w-6"
           >
-            <LayoutList className="h-4 w-4" />
+            <LayoutList className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant={viewModeAudio === "grid" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("grid")}
-            className="h-7 w-7"
+            className="h-6 w-6"
           >
-            <LayoutGrid className="h-4 w-4" />
+            <LayoutGrid className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant={viewModeAudio === "large" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("large")}
-            className="h-7 w-7"
+            className="h-6 w-6"
           >
-            <Maximize2 className="h-4 w-4" />
+            <Maximize2 className="h-3.5 w-3.5" />
           </Button>
         </div>
 
         {/* Volume Control - Desktop */}
-        <div className="hidden md:flex w-24 mr-1 items-center gap-1">
-          <Volume2 className="h-6 w-6" />
+        <div className="hidden md:flex w-24 items-center gap-1 h-6 shrink-0">
+          <Volume2 className="h-4 w-4" />
           <Slider
             defaultValue={[sliderValue]}
             min={0}
@@ -545,15 +563,16 @@ const SfxPage = () => {
             step={0.1}
             value={[sliderValue]}
             onValueChange={(value) => setSliderValue(value[0])}
+            className="h-4"
           />
         </div>
 
         {/* Mobile Popup Menu */}
-        <div className="md:hidden mr-1">
+        <div className="md:hidden h-6 flex items-center shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-7 w-7">
-                <Settings2 className="h-4 w-4" />
+              <Button variant="outline" size="icon" className="h-6 w-6">
+                <Settings2 className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -562,35 +581,35 @@ const SfxPage = () => {
 
               {/* View Mode Section */}
               <div className="px-2 py-1">
-                <p className="text-xs font-medium text-muted-foreground mb-1">
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">
                   View Mode
                 </p>
-                <div className="flex gap-1">
+                <div className="flex gap-0.5">
                   <Button
                     variant={viewModeAudio === "list" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("list")}
-                    className="flex-1"
+                    className="flex-1 h-6 text-[11px]"
                   >
-                    <LayoutList className="h-4 w-4 mr-1" />
+                    <LayoutList className="h-3.5 w-3.5 mr-1" />
                     List
                   </Button>
                   <Button
                     variant={viewModeAudio === "grid" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("grid")}
-                    className="flex-1"
+                    className="flex-1 h-6 text-[11px]"
                   >
-                    <LayoutGrid className="h-4 w-4 mr-1" />
+                    <LayoutGrid className="h-3.5 w-3.5 mr-1" />
                     Grid
                   </Button>
                   <Button
                     variant={viewModeAudio === "large" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("large")}
-                    className="flex-1"
+                    className="flex-1 h-6 text-[11px]"
                   >
-                    <Maximize2 className="h-4 w-4 mr-1" />
+                    <Maximize2 className="h-3.5 w-3.5 mr-1" />
                     Large
                   </Button>
                 </div>
@@ -600,11 +619,11 @@ const SfxPage = () => {
 
               {/* Volume Section */}
               <div className="px-2 py-1">
-                <p className="text-xs font-medium text-muted-foreground mb-1">
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">
                   Volume
                 </p>
                 <div className="flex items-center gap-1">
-                  <Volume2 className="h-4 w-4" />
+                  <Volume2 className="h-3.5 w-3.5" />
                   <Slider
                     defaultValue={[sliderValue]}
                     min={0}
@@ -614,7 +633,7 @@ const SfxPage = () => {
                     onValueChange={(value) => setSliderValue(value[0])}
                     className="flex-1"
                   />
-                  <span className="text-xs w-8 text-right">
+                  <span className="text-[11px] w-8 text-right">
                     {Math.round(sliderValue * 100)}%
                   </span>
                 </div>
@@ -623,8 +642,8 @@ const SfxPage = () => {
           </DropdownMenu>
         </div>
 
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+        <div className="relative flex-1 h-6 flex items-center min-w-[160px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
           <Input
             type="text"
             placeholder="Search..."
@@ -632,9 +651,9 @@ const SfxPage = () => {
             onChange={(e) =>
               setSfxSearch(e.target.value, { tags: tagFilter.join(" ") })
             }
-            className="pl-8 pr-8 text-sm"
+            className="pl-7 pr-8 text-[11px] h-6 py-0 leading-none"
           />
-          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-lg px-1.5 py-0.5 text-xs">
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground rounded px-1 py-0.5 text-[10px]">
             {sfxSearchCount}
           </div>
         </div>
@@ -643,8 +662,12 @@ const SfxPage = () => {
         {availableTags.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Tag className="h-4 w-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 h-6 px-2 text-[11px] shrink-0"
+              >
+                <Tag className="h-3.5 w-3.5" />
                 {tagFilter.length > 0
                   ? `${tagFilter.length} selected`
                   : "Filter by tag"}
@@ -684,23 +707,29 @@ const SfxPage = () => {
             variant="outline"
             onClick={selectAllFiltered}
             disabled={allFilteredSelected}
+            className="h-6 px-2 text-[11px] self-center shrink-0"
           >
             Select All
           </Button>
         )}
 
         {selectedAssetIds.length > 0 && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">
+          <div className="flex items-center gap-0.5 shrink-0">
+            <span className="text-[11px] text-muted-foreground">
               {selectedAssetIds.length} selected
             </span>
-            <Button size="sm" onClick={openBulkTagsDialog}>
+            <Button
+              size="sm"
+              onClick={openBulkTagsDialog}
+              className="h-6 px-2 text-[11px]"
+            >
               Edit Tags
             </Button>
             <Button
               size="sm"
               variant="outline"
               onClick={() => setSelectedAssetIds([])}
+              className="h-6 px-2 text-[11px]"
             >
               Clear
             </Button>
@@ -709,7 +738,7 @@ const SfxPage = () => {
       </div>
       <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
         {showEmptyState ? (
-          <div className="text-center text-muted-foreground py-8 text-sm">
+          <div className="text-center text-muted-foreground py-4 text-[11px]">
             {sfxSearch
               ? "No files found matching your search"
               : "No sound files found"}
@@ -724,7 +753,7 @@ const SfxPage = () => {
           >
             {!!virtualItems.length && (
               <div
-                className={`absolute left-0 right-0 space-y-1`}
+                className="absolute left-0 right-0 space-y-1"
                 style={{
                   transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
                 }}
@@ -763,7 +792,9 @@ const SfxPage = () => {
                             minHeight={ITEM_HEIGHTS[viewModeAudio]}
                             searchText={sfxSearch.search}
                             volume={sliderValue}
-                            isSelected={selectedAssetIds.includes(file.id as number)}
+                            isSelected={selectedAssetIds.includes(
+                              file.id as number,
+                            )}
                             onToggleSelect={toggleSelection}
                             onTagsClick={handleTagsClick}
                             onRenameClick={handleRenameClick}
@@ -793,7 +824,9 @@ const SfxPage = () => {
                           minHeight={ITEM_HEIGHTS[viewModeAudio]}
                           searchText={sfxSearch.search}
                           volume={sliderValue}
-                          isSelected={selectedAssetIds.includes(file.id as number)}
+                          isSelected={selectedAssetIds.includes(
+                            file.id as number,
+                          )}
                           onToggleSelect={toggleSelection}
                           onTagsClick={handleTagsClick}
                           onRenameClick={handleRenameClick}
@@ -834,10 +867,15 @@ const SfxPage = () => {
             <Button
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
+              className="h-6 px-2 text-[11px]"
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              className="h-6 px-2 text-[11px]"
+            >
               Delete
             </Button>
           </AlertDialogFooter>
@@ -868,12 +906,17 @@ const SfxPage = () => {
             autoFocus
           />
           <AlertDialogFooter>
-            <Button variant="outline" onClick={handleRenameCancel}>
+            <Button
+              variant="outline"
+              onClick={handleRenameCancel}
+              className="h-6 px-2 text-[11px]"
+            >
               Cancel
             </Button>
             <Button
               onClick={handleRenameConfirm}
               disabled={!newFileName.trim()}
+              className="h-6 px-2 text-[11px]"
             >
               Rename
             </Button>

@@ -154,7 +154,7 @@ const WavesurferRender = (props: {
     >
       <div
         ref={containerRef}
-        className="w-full h-full overflow-hidden bg-accent/60 rounded-md border border-border/60"
+        className="bg-accent/60"
         style={{
           visibility: isLoading ? "hidden" : "visible",
           height: resolvedHeight,
