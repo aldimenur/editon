@@ -428,7 +428,7 @@ const VideoPage = () => {
                 decoding="async"
               />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/40 rounded-full p-3">
+                <div className="bg-black/40 rounded-full p-2">
                   <Play className="w-6 h-6 text-white" />
                 </div>
               </div>
@@ -446,7 +446,7 @@ const VideoPage = () => {
           )}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+        <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
           <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
           <div className="relative">
             <div className="text-xs font-medium truncate whitespace-nowrap">
@@ -560,15 +560,15 @@ const VideoPage = () => {
   const showEmptyState = !isLoading && videoFiles.length === 0;
 
   return (
-    <div className="px-2 flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className="px-2 flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-1">
         {/* View Mode Switcher - Desktop */}
-        <div className="hidden md:flex gap-1 mr-2">
+        <div className="hidden md:flex gap-1 mr-1">
           <Button
             variant={viewModeVideo === "list" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeVideo("list")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <LayoutList className="h-4 w-4" />
           </Button>
@@ -576,7 +576,7 @@ const VideoPage = () => {
             variant={viewModeVideo === "grid" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeVideo("grid")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -584,17 +584,17 @@ const VideoPage = () => {
             variant={viewModeVideo === "large" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeVideo("large")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <Maximize2 className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Mobile Popup Menu */}
-        <div className="md:hidden mr-2">
+        <div className="md:hidden mr-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8">
+              <Button variant="outline" size="icon" className="h-7 w-7">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -603,9 +603,9 @@ const VideoPage = () => {
               <DropdownMenuSeparator />
 
               {/* View Mode Section */}
-              <div className="px-2 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">View Mode</p>
-                <div className="flex gap-2">
+              <div className="px-2 py-1">
+                <p className="text-xs font-medium text-muted-foreground mb-1">View Mode</p>
+                <div className="flex gap-1">
                   <Button
                     variant={viewModeVideo === "list" ? "default" : "outline"}
                     size="sm"
@@ -640,7 +640,7 @@ const VideoPage = () => {
         </div>
 
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             type="text"
             placeholder="Search..."
@@ -648,9 +648,9 @@ const VideoPage = () => {
             onChange={(e) =>
               setVideoSearch(e.target.value, { tags: tagFilter.join(" ") })
             }
-            className="pl-10 pr-10 text-sm"
+            className="pl-8 pr-8 text-sm"
           />
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-xl px-2 py-1 text-xs">
+          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-lg px-1.5 py-0.5 text-xs">
             {videoSearchCount}
           </div>
         </div>
@@ -659,7 +659,7 @@ const VideoPage = () => {
         {availableTags.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5">
                 <Tag className="h-4 w-4" />
                 {tagFilter.length > 0
                   ? `${tagFilter.length} selected`
@@ -706,7 +706,7 @@ const VideoPage = () => {
         )}
 
         {selectedAssetIds.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">
               {selectedAssetIds.length} selected
             </span>
@@ -758,12 +758,12 @@ const VideoPage = () => {
                       key={virtualRow.key}
                       ref={rowVirtualizer.measureElement}
                       data-index={virtualRow.index}
-                      className="absolute left-0 right-0 pb-2"
+                      className="absolute left-0 right-0 pb-1"
                       style={{
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <div className={`grid ${gridColsClass} gap-2`}>
+                      <div className={`grid ${gridColsClass} gap-1`}>
                         {files.map((file) => (
                           <VideoCard key={file.id} file={file} minHeight={rowHeight} />
                         ))}
@@ -781,7 +781,7 @@ const VideoPage = () => {
                     key={virtualRow.key}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualRow.index}
-                    className="absolute left-0 right-0 pb-2"
+                    className="absolute left-0 right-0 pb-1"
                     style={{
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
@@ -797,7 +797,7 @@ const VideoPage = () => {
       {/* Fullscreen Video Modal */}
       {fullscreenVideo && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3"
           onClick={closeFullscreen}
         >
           <div className="relative w-full max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>

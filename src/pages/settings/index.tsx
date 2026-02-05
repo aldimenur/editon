@@ -39,7 +39,7 @@ const SettingsPage = ({
   };
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-3 space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>
@@ -49,8 +49,8 @@ const SettingsPage = ({
         </div>
       </div>
 
-      <div className="border rounded-xl p-4 space-y-3">
-        <div className="flex items-start justify-between gap-4">
+      <div className="border rounded-xl p-3 space-y-2">
+        <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold">App Updates</h3>
             <p className="text-xs text-muted-foreground">

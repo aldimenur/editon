@@ -4,7 +4,7 @@ import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronLeft, ChevronRight, Image, Loader2, Music, Settings, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, FolderOpen, Image, Loader2, Music, Settings, Video } from "lucide-react";
 import { useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
@@ -65,22 +65,22 @@ const Navbar = () => {
 
 
   return (
-    <div className={`flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ${isMinimized ? 'w-[60px]' : 'w-[170px]'}`}>
-      <div className="flex items-center justify-between pt-3 px-3">
-        {!isMinimized && <h3 className="text-sm font-medium select-none">Editon</h3>}
+    <div className={`flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ${isMinimized ? 'w-[48px]' : 'w-[148px]'}`}>
+      <div className="flex items-center justify-between h-8 pt-1 px-1.5">
+        {!isMinimized && <h3 className="text-xs font-medium select-none">Editon</h3>}
         <button
           onClick={toggleMinimized}
-          className="p-1 rounded-md hover:bg-sidebar-accent/50 transition-colors ml-auto"
+          className="p-0.5 rounded-sm hover:bg-sidebar-accent/50 transition-colors ml-auto"
           aria-label={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
         >
-          {isMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          {isMinimized ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       </div>
-      <div className="mt-4 gap-1 flex flex-col h-screen px-3 select-none">
+      <div className="mt-1 gap-0.5 flex flex-col h-screen px-1.5 select-none">
         {sidebarItems.map((item) => (
           <div
             key={item.path}
-            className={`flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-sidebar-accent/50 ${activeItem === item.path ? "bg-sidebar-accent" : ""
+            className={`flex items-center gap-1.5 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-sidebar-accent/50 ${activeItem === item.path ? "bg-sidebar-accent" : ""
               } ${isMinimized ? 'justify-center' : ''}`}
             onClick={() => setActiveItem(item.path)}
             title={isMinimized ? item.label : undefined}
@@ -88,8 +88,8 @@ const Navbar = () => {
             {item.icon}
             {!isMinimized && (
               <div className="flex justify-between w-full">
-                <span className="text-sm">{item.label}</span>
-                <span className="text-xs text-muted-foreground flex items-center">
+                <span className="text-xs">{item.label}</span>
+                <span className="text-[10px] text-muted-foreground flex items-center">
                   {!countingTotal ? item.type === "sfx" ? sfx : item.type === "video" ? video : item.type === "image" ? image : null : <Loader2 className="animate-spin" size={12} />}
                 </span>
               </div>
@@ -99,16 +99,16 @@ const Navbar = () => {
       </div>
       <div className="grid grid-cols-2 mb-2">
         {!isMinimized && (progressSound || progressVideo || progressImage) && (
-          <div className="col-span-2 animate-in slide-in-from-bottom-2 fade-in duration-300 p-2">
-            <div className="bg-card border rounded-lg shadow-lg p-3 space-y-2">
-              <div className="flex items-center gap-2">
+          <div className="col-span-2 animate-in slide-in-from-bottom-2 fade-in duration-300 p-1.5">
+            <div className="bg-card border rounded-sm p-1.5 space-y-1">
+              <div className="flex items-center gap-1.5">
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-semibold">Optimizing...</h4>
+                  <h4 className="text-xs font-semibold">Optimizing...</h4>
                 </div>
               </div>
 
               {/* Stats */}
-              <div className="flex flex-col  justify-between text-xs text-muted-foreground truncate">
+              <div className="flex flex-col justify-between text-[10px] text-muted-foreground truncate">
                 {progressSound &&
                   <div className="flex justify-between">
                     {progressSound?.name?.toString()}
@@ -129,15 +129,16 @@ const Navbar = () => {
             </div>
           </div>
         )}
-        <div className={`p-2 flex gap-2 col-span-2 ${isMinimized ? 'flex-col items-center' : 'justify-center'}`}>
+        <div className={`p-1.5 flex gap-1 col-span-2 ${isMinimized ? 'flex-col items-center' : 'justify-center'}`}>
           <ModeToggle />
           {!isMinimized && (
             <Button
               onClick={() => handleSetPath()}
               variant="outline"
-              size="default"
+              size="sm"
+              className="h-6 px-2 text-xs"
             >
-              Scan Folder
+              <FolderOpen /> Import
             </Button>
           )}
           {isMinimized && (
@@ -146,8 +147,9 @@ const Navbar = () => {
               variant="outline"
               size="icon"
               title="Scan Folder"
+              className="h-6 w-6"
             >
-              <Music size={16} />
+              <FolderOpen size={14} />
             </Button>
           )}
         </div>

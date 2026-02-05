@@ -99,14 +99,14 @@ const TagsDialog = ({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Current tags */}
           {tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1">
               {tags.map((tag) => (
                 <div
                   key={tag}
-                  className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-md text-sm"
+                  className="flex items-center gap-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded-md text-sm"
                 >
                   <span>{tag}</span>
                   <Button
@@ -124,11 +124,11 @@ const TagsDialog = ({
 
           {/* Available tags */}
           {availableTags.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="text-xs font-medium text-muted-foreground">
                 Available tags
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1">
                 {availableTags
                   .filter((tag) => !tags.includes(tag))
                   .map((tag) => (
@@ -147,7 +147,7 @@ const TagsDialog = ({
           )}
 
           {/* Add new tag */}
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             <Input
               type="text"
               placeholder="Add a tag..."

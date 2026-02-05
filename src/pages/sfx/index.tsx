@@ -102,7 +102,7 @@ const SfxAudioCard = ({
           enableDrag
         />
       </div>
-      <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+      <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
         <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
         <div className="relative">
           <div className="text-xs font-medium truncate whitespace-nowrap">
@@ -505,15 +505,15 @@ const SfxPage = () => {
   };
 
   return (
-    <div className="px-2 flex flex-col gap-2 h-[calc(100vh-40px)]">
-      <div className="flex items-center justify-between gap-2">
+    <div className="px-2 flex flex-col gap-1 h-[calc(100vh-40px)]">
+      <div className="flex items-center justify-between gap-1">
         {/* View Mode Switcher - Desktop */}
-        <div className="hidden md:flex gap-1 mr-2">
+        <div className="hidden md:flex gap-1 mr-1">
           <Button
             variant={viewModeAudio === "list" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("list")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <LayoutList className="h-4 w-4" />
           </Button>
@@ -521,7 +521,7 @@ const SfxPage = () => {
             variant={viewModeAudio === "grid" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("grid")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -529,14 +529,14 @@ const SfxPage = () => {
             variant={viewModeAudio === "large" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("large")}
-            className="h-8 w-8"
+            className="h-7 w-7"
           >
             <Maximize2 className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Volume Control - Desktop */}
-        <div className="hidden md:flex w-24 mr-2 items-center gap-2">
+        <div className="hidden md:flex w-24 mr-1 items-center gap-1">
           <Volume2 className="h-6 w-6" />
           <Slider
             defaultValue={[sliderValue]}
@@ -549,10 +549,10 @@ const SfxPage = () => {
         </div>
 
         {/* Mobile Popup Menu */}
-        <div className="md:hidden mr-2">
+        <div className="md:hidden mr-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8">
+              <Button variant="outline" size="icon" className="h-7 w-7">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -561,11 +561,11 @@ const SfxPage = () => {
               <DropdownMenuSeparator />
 
               {/* View Mode Section */}
-              <div className="px-2 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
+              <div className="px-2 py-1">
+                <p className="text-xs font-medium text-muted-foreground mb-1">
                   View Mode
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Button
                     variant={viewModeAudio === "list" ? "default" : "outline"}
                     size="sm"
@@ -599,11 +599,11 @@ const SfxPage = () => {
               <DropdownMenuSeparator />
 
               {/* Volume Section */}
-              <div className="px-2 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
+              <div className="px-2 py-1">
+                <p className="text-xs font-medium text-muted-foreground mb-1">
                   Volume
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Volume2 className="h-4 w-4" />
                   <Slider
                     defaultValue={[sliderValue]}
@@ -624,7 +624,7 @@ const SfxPage = () => {
         </div>
 
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             type="text"
             placeholder="Search..."
@@ -632,9 +632,9 @@ const SfxPage = () => {
             onChange={(e) =>
               setSfxSearch(e.target.value, { tags: tagFilter.join(" ") })
             }
-            className="pl-10 pr-10 text-sm"
+            className="pl-8 pr-8 text-sm"
           />
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-xl px-2 py-1 text-xs">
+          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-lg px-1.5 py-0.5 text-xs">
             {sfxSearchCount}
           </div>
         </div>
@@ -643,7 +643,7 @@ const SfxPage = () => {
         {availableTags.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5">
                 <Tag className="h-4 w-4" />
                 {tagFilter.length > 0
                   ? `${tagFilter.length} selected`
@@ -690,7 +690,7 @@ const SfxPage = () => {
         )}
 
         {selectedAssetIds.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">
               {selectedAssetIds.length} selected
             </span>
@@ -724,7 +724,7 @@ const SfxPage = () => {
           >
             {!!virtualItems.length && (
               <div
-                className={`absolute left-0 right-0 space-y-2`}
+                className={`absolute left-0 right-0 space-y-1`}
                 style={{
                   transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
                 }}
@@ -752,7 +752,7 @@ const SfxPage = () => {
                         key={virtualRow.index}
                         data-index={virtualRow.index}
                         ref={rowVirtualizer.measureElement}
-                        className={`grid ${gridColsClass} gap-2`}
+                        className={`grid ${gridColsClass} gap-1`}
                         style={{ minHeight: virtualRow.size }}
                       >
                         {files.map((file) => (

@@ -157,8 +157,8 @@ const YoutubeDownloadPage = () => {
     ];
 
   return (
-    <div className="px-3 max-w-2xl mx-auto space-y-6 max-h-[calc(100vh-40px)] overflow-auto">
-      <div className="space-y-2">
+    <div className="px-2 max-w-2xl mx-auto space-y-3 max-h-[calc(100vh-40px)] overflow-auto">
+      <div className="space-y-1">
         <label className="text-sm font-medium">YouTube URL</label>
         <Input
           type="text"
@@ -169,9 +169,9 @@ const YoutubeDownloadPage = () => {
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         <label className="text-sm font-medium">Download Type</label>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Button
             variant={downloadType === "video" ? "default" : "outline"}
             onClick={() => setDownloadType("video")}
@@ -189,9 +189,9 @@ const YoutubeDownloadPage = () => {
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         <label className="text-sm font-medium">Quality</label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {qualityOptions.map((option) => (
             <Button
               key={option.value}
@@ -205,9 +205,9 @@ const YoutubeDownloadPage = () => {
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         <label className="text-sm font-medium">Format</label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {formatOptions.map((option) => (
             <Button
               key={option.value}
@@ -221,9 +221,9 @@ const YoutubeDownloadPage = () => {
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         <label className="text-sm font-medium">Download Destination</label>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Input
             type="text"
             placeholder="Select download folder..."
@@ -243,7 +243,7 @@ const YoutubeDownloadPage = () => {
       </div>
 
       {videoProgress > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-1">
           <div className="flex justify-between text-sm">
             <span>Download Progress</span>
             <span>{Math.round(videoProgress)}%</span>
@@ -257,7 +257,7 @@ const YoutubeDownloadPage = () => {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-3 gap-2 pt-4">
+      <div className="grid sm:grid-cols-3 gap-1.5 pt-3">
         <Button
           variant="default"
           onClick={downloadVideo}
