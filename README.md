@@ -4,7 +4,7 @@ Editon - Desktop Asset Manager for Audio, Video, and Images
 
 Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor: audio (SFX), video, dan gambar. Aplikasi ini memindai folder, menyimpan metadata ke database lokal, dan menyediakan UI cepat untuk pencarian, preview, tagging, dan manajemen file.
 
-## 🆕 Update Terbaru (v0.1.9)
+## 🆕 Update Terbaru (v0.2.0)
 
 - **Consistency Feature**: Tampilan dan perilaku konsisten di setiap tab.
 - **Settings & App Updates**: Halaman Settings untuk cek update dan instalasi update.

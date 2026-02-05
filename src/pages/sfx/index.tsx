@@ -70,7 +70,6 @@ type SfxAudioCardProps = {
 
 const SfxAudioCard = ({
   file,
-  waveHeight,
   minHeight,
   searchText,
   volume,
@@ -172,7 +171,6 @@ const SfxPage = () => {
     sfxSearchCount,
     isLoading,
     fetchSfxAssets,
-    updateAssetsCount,
     sfx,
   } = useAssetStore((state) => state);
 
@@ -400,11 +398,6 @@ const SfxPage = () => {
       setTagsDialogCurrentTags(null);
     }
   };
-
-  const refreshAssets = useCallback(async () => {
-    await updateAssetsCount();
-    await fetchSfxAssets(1, pageSize, true);
-  }, [updateAssetsCount, fetchSfxAssets, pageSize]);
 
   const parseTags = (tags: string | null | undefined) =>
     tags
