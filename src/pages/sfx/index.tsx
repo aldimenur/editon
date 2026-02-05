@@ -523,15 +523,15 @@ const SfxPage = () => {
   };
 
   return (
-    <div className="px-1 py-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
-      <div className="flex items-center gap-1 h-6">
+    <div className="px-1 py-0.5 flex flex-col gap-0.5 h-[calc(100vh-32px)]">
+      <div className="flex items-center gap-0.5 h-5">
         {/* View Mode Switcher - Desktop */}
-        <div className="hidden md:flex items-center gap-0.5 h-6 shrink-0">
+        <div className="hidden md:flex items-center gap-0.5 h-5 shrink-0">
           <Button
             variant={viewModeAudio === "list" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("list")}
-            className="h-6 w-6"
+            className="h-5 w-5"
           >
             <LayoutList className="h-3.5 w-3.5" />
           </Button>
@@ -539,7 +539,7 @@ const SfxPage = () => {
             variant={viewModeAudio === "grid" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("grid")}
-            className="h-6 w-6"
+            className="h-5 w-5"
           >
             <LayoutGrid className="h-3.5 w-3.5" />
           </Button>
@@ -547,14 +547,14 @@ const SfxPage = () => {
             variant={viewModeAudio === "large" ? "default" : "outline"}
             size="icon"
             onClick={() => setViewModeAudio("large")}
-            className="h-6 w-6"
+            className="h-5 w-5"
           >
             <Maximize2 className="h-3.5 w-3.5" />
           </Button>
         </div>
 
         {/* Volume Control - Desktop */}
-        <div className="hidden md:flex w-24 items-center gap-1 h-6 shrink-0">
+        <div className="hidden md:flex w-24 items-center gap-0.5 h-5 shrink-0">
           <Volume2 className="h-4 w-4" />
           <Slider
             defaultValue={[sliderValue]}
@@ -563,15 +563,15 @@ const SfxPage = () => {
             step={0.1}
             value={[sliderValue]}
             onValueChange={(value) => setSliderValue(value[0])}
-            className="h-4"
+            className="h-3.5"
           />
         </div>
 
         {/* Mobile Popup Menu */}
-        <div className="md:hidden h-6 flex items-center shrink-0">
+        <div className="h-5 flex items-center shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-6 w-6">
+              <Button variant="outline" size="icon" className="h-5 w-5">
                 <Settings2 className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -589,7 +589,7 @@ const SfxPage = () => {
                     variant={viewModeAudio === "list" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("list")}
-                    className="flex-1 h-6 text-[11px]"
+                    className="flex-1 h-5 text-[10px]"
                   >
                     <LayoutList className="h-3.5 w-3.5 mr-1" />
                     List
@@ -598,7 +598,7 @@ const SfxPage = () => {
                     variant={viewModeAudio === "grid" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("grid")}
-                    className="flex-1 h-6 text-[11px]"
+                    className="flex-1 h-5 text-[10px]"
                   >
                     <LayoutGrid className="h-3.5 w-3.5 mr-1" />
                     Grid
@@ -607,7 +607,7 @@ const SfxPage = () => {
                     variant={viewModeAudio === "large" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewModeAudio("large")}
-                    className="flex-1 h-6 text-[11px]"
+                    className="flex-1 h-5 text-[10px]"
                   >
                     <Maximize2 className="h-3.5 w-3.5 mr-1" />
                     Large
@@ -615,11 +615,57 @@ const SfxPage = () => {
                 </div>
               </div>
 
+              {(filteredAssetIds.length > 0 || selectedAssetIds.length > 0) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1">
+                    <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                      Selection
+                    </p>
+                    <div className="flex items-center gap-0.5">
+                      {filteredAssetIds.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={selectAllFiltered}
+                          disabled={allFilteredSelected}
+                          className="h-5 px-1.5 text-[10px]"
+                        >
+                          Select All
+                        </Button>
+                      )}
+                      {selectedAssetIds.length > 0 && (
+                        <>
+                          <span className="text-[10px] text-muted-foreground">
+                            {selectedAssetIds.length}
+                          </span>
+                          <Button
+                            size="sm"
+                            onClick={openBulkTagsDialog}
+                            className="h-5 px-1.5 text-[10px]"
+                          >
+                            Edit Tags
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedAssetIds([])}
+                            className="h-5 px-1.5 text-[10px]"
+                          >
+                            Clear
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <DropdownMenuSeparator />
 
               {/* Volume Section */}
               <div className="px-2 py-1">
-                <p className="text-[11px] font-medium text-muted-foreground mb-1">
+                <p className="text-[10px] font-medium text-muted-foreground mb-1">
                   Volume
                 </p>
                 <div className="flex items-center gap-1">
@@ -633,7 +679,7 @@ const SfxPage = () => {
                     onValueChange={(value) => setSliderValue(value[0])}
                     className="flex-1"
                   />
-                  <span className="text-[11px] w-8 text-right">
+                  <span className="text-[10px] w-8 text-right">
                     {Math.round(sliderValue * 100)}%
                   </span>
                 </div>
@@ -642,8 +688,8 @@ const SfxPage = () => {
           </DropdownMenu>
         </div>
 
-        <div className="relative flex-1 h-6 flex items-center min-w-[160px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
+        <div className="relative flex-1 h-5 flex items-center min-w-[140px]">
+          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
           <Input
             type="text"
             placeholder="Search..."
@@ -651,9 +697,9 @@ const SfxPage = () => {
             onChange={(e) =>
               setSfxSearch(e.target.value, { tags: tagFilter.join(" ") })
             }
-            className="pl-7 pr-8 text-[11px] h-6 py-0 leading-none"
+            className="pl-6 pr-7 text-[10px] h-5 py-0 leading-none"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground rounded px-1 py-0.5 text-[10px]">
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground rounded-[2px] px-1 py-0 text-[9px]">
             {sfxSearchCount}
           </div>
         </div>
@@ -665,12 +711,12 @@ const SfxPage = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1 h-6 px-2 text-[11px] shrink-0"
+                className="gap-0.5 h-5 px-1.5 text-[10px] shrink-0"
               >
                 <Tag className="h-3.5 w-3.5" />
                 {tagFilter.length > 0
                   ? `${tagFilter.length} selected`
-                  : "Filter by tag"}
+                  : "Filter"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -699,41 +745,6 @@ const SfxPage = () => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-
-        {filteredAssetIds.length > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={selectAllFiltered}
-            disabled={allFilteredSelected}
-            className="h-6 px-2 text-[11px] self-center shrink-0"
-          >
-            Select All
-          </Button>
-        )}
-
-        {selectedAssetIds.length > 0 && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            <span className="text-[11px] text-muted-foreground">
-              {selectedAssetIds.length} selected
-            </span>
-            <Button
-              size="sm"
-              onClick={openBulkTagsDialog}
-              className="h-6 px-2 text-[11px]"
-            >
-              Edit Tags
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setSelectedAssetIds([])}
-              className="h-6 px-2 text-[11px]"
-            >
-              Clear
-            </Button>
-          </div>
         )}
       </div>
       <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
