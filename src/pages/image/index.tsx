@@ -7,7 +7,6 @@ import {
     LayoutList,
     LayoutGrid,
     Maximize2,
-    ZoomIn,
     Settings2,
     Tag,
     PencilLine,
@@ -60,7 +59,6 @@ const ImagePage = () => {
     const [pageSize] = useState(30);
     const { viewModeImage, setViewModeImage } = useViewStore((state) => state);
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const [hoveredId, setHoveredId] = useState<number | null>(null);
     const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
     const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
     const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
@@ -354,8 +352,7 @@ const ImagePage = () => {
         );
     };
 
-    const renderImageCard = (file: Asset, imageHeight: string, minHeight: number) => {
-        const isHovered = hoveredId === file.id;
+    const renderImageCard = (file: Asset, minHeight: number) => {
         const imageSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
         const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
@@ -365,105 +362,79 @@ const ImagePage = () => {
                 className={`group relative border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
                 style={{ minHeight }}
             >
-                <div className="relative">
+                <div className="absolute inset-0">
+                    <img
+                        src={imageSrc}
+                        alt={file.filename}
+                        className="h-full w-full object-cover bg-muted cursor-pointer"
+                        loading="lazy"
+                        decoding="async"
+                        onClick={() => setSelectedImage(file)}
+                    />
+                </div>
+
+                <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+                    <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
+                    <div className="relative">
+                        <div className="text-xs font-medium truncate whitespace-nowrap">
+                            {highlightText(file.filename, imageSearchText)}
+                        </div>
+                        <div className="max-h-7 overflow-hidden">
+                            {renderTags(file.tags)}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <Button
-                        variant={isSelected ? "default" : "outline"}
+                        variant={isSelected ? "default" : "ghost"}
                         size="icon-xs"
-                        className="absolute left-2 top-2 h-5 w-5 rounded-sm z-10"
+                        className="rounded-sm bg-background shadow-sm hover:bg-background"
                         onClick={(event) => {
                             event.stopPropagation();
                             if (file.id == null) return;
                             toggleSelection(file.id);
                         }}
                     >
-                        <Check className="h-3 w-3" />
+                        <Check className="h-2 w-2" />
                     </Button>
-                    {/* Image */}
-                    <img
-                        src={imageSrc}
-                        alt={file.filename}
-                        className={`w-full ${imageHeight} object-cover bg-muted`}
-                        loading="lazy"
-                        decoding="async"
-                    />
-
-                    {/* Hover Overlay */}
-                    <div
-                        onMouseEnter={() => setHoveredId(file.id ?? null)}
-                        onMouseLeave={() => setHoveredId(null)}
-                        onClick={() => setSelectedImage(file)}
-                        className={`absolute inset-0 bg-black/60 transition-opacity duration-300 flex items-center justify-center ${isHovered ? 'opacity-100' : 'opacity-0'
-                            }`}
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                        onClick={() => {
+                            if (file.id == null) return;
+                            handleTagsClick(file.id, file.tags);
+                        }}
                     >
-                        <div className="text-center space-y-2">
-                            <ZoomIn className="w-12 h-12 text-white mx-auto drop-shadow-lg" />
-                            <p className="text-white text-sm font-medium px-2">Click to view</p>
-                        </div>
-                    </div>
+                        <Tag className="h-2 w-2" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                        onClick={() => handleRenameClick(file.original_path, file.filename)}
+                    >
+                        <PencilLine className="h-2 w-2" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                        onClick={() => revealItemInDir(file.original_path)}
+                    >
+                        <FolderSearch className="h-2 w-2" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+                        onClick={() => handleDeleteClick(file.original_path)}
+                    >
+                        <Trash className="h-2 w-2" />
+                    </Button>
                 </div>
 
-                {/* Image Info */}
-                <div className="p-2 bg-accent">
-                    <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-medium text-ellipsis overflow-hidden whitespace-nowrap">
-                            {highlightText(file.filename, imageSearchText)}
-                        </p>
-                        <div className="flex items-center gap-1 rounded-md border bg-background/80 p-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                            <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="rounded-sm"
-                                onClick={() => {
-                                    if (file.id == null) return;
-                                    handleTagsClick(file.id, file.tags);
-                                }}
-                            >
-                                <Tag className="h-2 w-2" />
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="rounded-sm"
-                                onClick={() => handleRenameClick(file.original_path, file.filename)}
-                            >
-                                <PencilLine className="h-2 w-2" />
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="rounded-sm"
-                                onClick={() => revealItemInDir(file.original_path)}
-                            >
-                                <FolderSearch className="h-2 w-2" />
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="rounded-sm text-destructive hover:text-destructive"
-                                onClick={() => handleDeleteClick(file.original_path)}
-                            >
-                                <Trash className="h-2 w-2" />
-                            </Button>
-                        </div>
-                    </div>
-                    {renderTags(file.tags)}
-                    <div className="flex flex-col">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>
-                                {file.metadata?.width && file.metadata?.height
-                                    ? `${file.metadata.width}x${file.metadata.height}`
-                                    : "Unknown"}
-                            </span>
-                            <span>{formatFileSize(file.file_size)}</span>
-                            {file.metadata?.color_space && viewModeImage !== "grid" && (
-                                <span>{file.metadata.color_space}</span>
-                            )}
-                        </div>
-                        <span className="text-xs cursor-pointer truncate w-3/4 text-primary" onClick={() => revealItemInDir(file.original_path)}>
-                            {file.original_path}
-                        </span>
-                    </div>
-                </div>
             </div>
         );
     };
@@ -667,9 +638,9 @@ const ImagePage = () => {
                                                 className="grid grid-cols-3 gap-2"
                                                 style={{ minHeight: virtualRow.size }}
                                             >
-                                                {file1 && renderImageCard(file1, "h-52", virtualRow.size)}
-                                                {file2 && renderImageCard(file2, "h-52", virtualRow.size)}
-                                                {file3 && renderImageCard(file3, "h-52", virtualRow.size)}
+                                                {file1 && renderImageCard(file1, virtualRow.size)}
+                                                {file2 && renderImageCard(file2, virtualRow.size)}
+                                                {file3 && renderImageCard(file3, virtualRow.size)}
                                             </div>
                                         );
                                     } else {
@@ -677,8 +648,7 @@ const ImagePage = () => {
                                         const file = imageFiles[virtualRow.index];
                                         if (!file) return null;
 
-                                        const imageHeight = viewModeImage === "large" ? "h-80" : "h-48";
-                                        return renderImageCard(file, imageHeight, virtualRow.size);
+                                        return renderImageCard(file, virtualRow.size);
                                     }
                                 })}
                             </div>

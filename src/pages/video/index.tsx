@@ -20,7 +20,6 @@ import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { formatFileSize } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -358,11 +357,9 @@ const VideoPage = () => {
   // New VideoCard component to manage per-card playing state (thumbnail -> video)
   const VideoCard = ({
     file,
-    mediaClassName,
     minHeight = 0,
   }: {
     file: Asset;
-    mediaClassName: string;
     minHeight?: number;
   }) => {
     const [playing, setPlaying] = useState(false);
@@ -376,19 +373,7 @@ const VideoPage = () => {
         className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
         style={{ minHeight }}
       >
-        <Button
-          variant={isSelected ? "default" : "outline"}
-          size="icon-xs"
-          className="absolute left-2 top-2 h-5 w-5 rounded-sm z-10"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (file.id == null) return;
-            toggleSelection(file.id);
-          }}
-        >
-          <Check className="h-3 w-3" />
-        </Button>
-        <div className={`relative ${mediaClassName}`}>
+        <div className="absolute inset-0">
           {!playing && thumbSrc ? (
             <div className="relative h-full w-full cursor-pointer" onClick={() => setPlaying(true)}>
               <img
@@ -416,66 +401,76 @@ const VideoPage = () => {
           )}
         </div>
 
-        {/* Video Info */}
-        <div className="p-2 bg-accent">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium text-ellipsis overflow-hidden whitespace-nowrap">
+        <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+          <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
+          <div className="relative">
+            <div className="text-xs font-medium truncate whitespace-nowrap">
               {highlightText(file.filename, videoSearchText)}
-            </p>
-            <div className="flex items-center gap-1 rounded-md border bg-background/80 p-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm"
-                onClick={() => {
-                  if (file.id == null) return;
-                  handleTagsClick(file.id, file.tags);
-                }}
-              >
-                <Tag className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm"
-                onClick={() => handleRenameClick(file.original_path, file.filename)}
-              >
-                <PencilLine className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm"
-                onClick={() => setFullscreenVideo(file)}
-              >
-                <Maximize2 className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm"
-                onClick={() => revealItemInDir(file.original_path)}
-              >
-                <FolderSearch className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm text-destructive hover:text-destructive"
-                onClick={() => handleDeleteClick(file.original_path)}
-              >
-                <Trash className="h-2 w-2" />
-              </Button>
+            </div>
+            <div className="max-h-7 overflow-hidden">
+              {renderTags(file.tags)}
             </div>
           </div>
-          {renderTags(file.tags)}
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span className="cursor-pointer truncate w-1/2 text-primary" onClick={() => revealItemInDir(file.original_path)}>
-              {file.original_path}
-            </span>
-            <span>{formatFileSize(file.file_size)}</span>
-          </div>
         </div>
+
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button
+            variant={isSelected ? "default" : "ghost"}
+            size="icon-xs"
+            className="rounded-sm bg-background shadow-sm hover:bg-background"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (file.id == null) return;
+              toggleSelection(file.id);
+            }}
+          >
+            <Check className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => {
+              if (file.id == null) return;
+              handleTagsClick(file.id, file.tags);
+            }}
+          >
+            <Tag className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => handleRenameClick(file.original_path, file.filename)}
+          >
+            <PencilLine className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => setFullscreenVideo(file)}
+          >
+            <Maximize2 className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={() => revealItemInDir(file.original_path)}
+          >
+            <FolderSearch className="h-2 w-2" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+            onClick={() => handleDeleteClick(file.original_path)}
+          >
+            <Trash className="h-2 w-2" />
+          </Button>
+        </div>
+
       </div>
     );
   };
@@ -678,9 +673,9 @@ const VideoPage = () => {
                       }}
                     >
                       <div className="grid grid-cols-3 gap-2">
-                        {file1 && <VideoCard file={file1} mediaClassName="aspect-video" />}
-                        {file2 && <VideoCard file={file2} mediaClassName="aspect-video" />}
-                        {file3 && <VideoCard file={file3} mediaClassName="aspect-video" />}
+                        {file1 && <VideoCard file={file1} minHeight={ITEM_HEIGHTS.grid} />}
+                        {file2 && <VideoCard file={file2} minHeight={ITEM_HEIGHTS.grid} />}
+                        {file3 && <VideoCard file={file3} minHeight={ITEM_HEIGHTS.grid} />}
                       </div>
                     </div>
                   );
@@ -690,7 +685,6 @@ const VideoPage = () => {
                 const file = videoFiles[virtualRow.index];
                 if (!file) return null;
 
-                const mediaClassName = viewModeVideo === "large" ? "aspect-video" : "h-48";
                 return (
                   <div
                     key={virtualRow.key}
@@ -701,7 +695,7 @@ const VideoPage = () => {
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    <VideoCard file={file} mediaClassName={mediaClassName} minHeight={ITEM_HEIGHTS[viewModeVideo]} />
+                    <VideoCard file={file} minHeight={ITEM_HEIGHTS[viewModeVideo]} />
                   </div>
                 );
               })}
