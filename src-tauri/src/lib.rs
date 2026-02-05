@@ -11,6 +11,7 @@ mod db_lib;
 mod ffmpeg;
 mod folder_lib;
 mod image_lib;
+mod media_lib;
 mod models;
 mod sound_lib;
 mod utils;
@@ -267,7 +268,7 @@ pub fn run() {
             db_lib::update_assets_tags,
             db_lib::get_available_tags,
             sound_lib::generate_missing_waveforms,
-            sound_lib::trim_audio,
+            media_lib::trim_media,
             image_lib::generate_missing_thumbnails,
             video_lib::generate_missing_video_thumbnails,
             folder_lib::scan_and_import_folder,
