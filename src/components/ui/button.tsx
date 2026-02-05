@@ -28,6 +28,7 @@ const buttonVariants = cva(
         "icon-sm": "size-7",
         "icon-lg": "size-9",
         "icon-xs": "size-6",
+        "xs": "h-5 px-1 text-xs"
       },
     },
     defaultVariants: {
@@ -40,11 +41,11 @@ const buttonVariants = cva(
 const Button = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button"> &
-    VariantProps<typeof buttonVariants> & {
-      asChild?: boolean
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
     loading?: boolean
-    }
-  >(({ className, variant = "default", size = "default", asChild = false, loading = false, children, disabled, ...props }, ref) => {
+  }
+>(({ className, variant = "default", size = "default", asChild = false, loading = false, children, disabled, ...props }, ref) => {
   const Comp = asChild ? Slot : "button"
 
   return (

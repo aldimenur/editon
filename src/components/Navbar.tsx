@@ -2,40 +2,49 @@ import useAssetStore from "@/stores/asset-store";
 import useEventListenerStore from "@/stores/event-listener-store";
 import useNavStore from "@/stores/nav-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
+import {
+  faFolderOpen,
+  faGear,
+  faImage,
+  faMusic,
+  faVideo,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronLeft, ChevronRight, FolderOpen, Image, Loader2, Music, Settings, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
 
 const sidebarItems = [
   {
-    icon: <Music size={14} />,
+    icon: <FontAwesomeIcon icon={faMusic} className="text-[12px]" />,
     label: "Sound",
     path: "/sound",
     type: "sfx",
   },
   {
-    icon: <Video size={14} />,
+    icon: <FontAwesomeIcon icon={faVideo} className="text-[12px]" />,
     label: "Video",
     path: "/video",
     type: "video",
   },
   {
-    icon: <Image size={14} />,
+    icon: <FontAwesomeIcon icon={faImage} className="text-[12px]" />,
     label: "Image",
     path: "/image",
     type: "image",
   },
   {
-    icon: <FontAwesomeIcon icon={faYoutube} style={{ color: "#ff0000", }} size="sm" className="min-h-0 h-1 max-h-3 p-0 m-0" />,
+    icon: (
+      <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
+    ),
     label: "Download",
     path: "/youtube-download",
     type: "youtube",
   },
   {
-    icon: <Settings size={14} />,
+    icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
     label: "Settings",
     path: "/settings",
     type: "settings",
@@ -43,9 +52,11 @@ const sidebarItems = [
 ];
 
 const Navbar = () => {
-  const { activeItem, setActiveItem, isMinimized, toggleMinimized } = useNavStore((state) => state);
+  const { activeItem, setActiveItem, isMinimized, toggleMinimized } =
+    useNavStore((state) => state);
   const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
-  const { progressSound, progressImage, countingTotal, setCountingTotal } = useEventListenerStore((state) => state);
+  const { progressSound, progressImage, countingTotal, setCountingTotal } =
+    useEventListenerStore((state) => state);
   const [progressVideo] = useState<any>(null);
 
   const handleSetPath = async () => {
@@ -73,16 +84,18 @@ const Navbar = () => {
 
   return (
     <aside
-      className={`flex flex-col bg-sidebar text-sidebar-foreground transition-[width] duration-200 border-r border-sidebar-border ${isMinimized ? "w-[44px]" : "w-[164px]"}`}
+      className={`flex flex-col bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out border-r border-sidebar-border/70 ${isMinimized ? "w-[52px]" : "w-[180px]"}`}
     >
       {/* Header / App chrome (Premiere-ish) */}
-      <div className="h-10 px-2 flex items-center gap-2 select-none">
+      <div className="h-9 px-2.5 flex items-center gap-2 select-none">
         {!isMinimized && (
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-semibold tracking-wide uppercase text-muted-foreground">
-              Project
+            <div className="text-[9px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+              Workspace
             </div>
-            <div className="text-xs font-medium leading-tight truncate">Editon</div>
+            <div className="text-[12px] font-semibold leading-none truncate">
+              Editon
+            </div>
           </div>
         )}
 
@@ -90,7 +103,7 @@ const Navbar = () => {
           onClick={toggleMinimized}
           variant="ghost"
           size="icon-xs"
-          className="ml-auto rounded-sm hover:bg-sidebar-accent/40 active:bg-sidebar-accent/60"
+          className="ml-auto h-6 w-6 rounded-[4px] hover:bg-sidebar-accent/40 active:bg-sidebar-accent/60"
           aria-label={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
           title={isMinimized ? "Expand" : "Minimize"}
         >
@@ -100,13 +113,13 @@ const Navbar = () => {
 
       {/* Section label */}
       {!isMinimized && (
-        <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
           Panels
         </div>
       )}
 
       {/* Items */}
-      <nav className="flex-1 px-1 pb-2 select-none overflow-y-auto">
+      <nav className="flex-1 px-1.5 pb-2 select-none overflow-y-auto">
         {sidebarItems.map((item) => {
           const isActive = activeItem === item.path;
           const count = getCount(item.type);
@@ -118,11 +131,12 @@ const Navbar = () => {
               tabIndex={0}
               onClick={() => setActiveItem(item.path)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setActiveItem(item.path);
+                if (e.key === "Enter" || e.key === " ")
+                  setActiveItem(item.path);
               }}
               title={isMinimized ? item.label : undefined}
               className={
-                `group relative flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded-sm ` +
+                `group relative flex h-8 items-center gap-2.5 px-2.5 cursor-pointer rounded-[4px] ` +
                 `hover:bg-sidebar-accent/35 active:bg-sidebar-accent/50 ` +
                 (isActive ? "bg-sidebar-accent/45" : "") +
                 (isMinimized ? " justify-center" : "")
@@ -131,63 +145,87 @@ const Navbar = () => {
               {/* Active indicator bar */}
               <div
                 className={
-                  "absolute left-0 top-1 bottom-1 w-[3px] rounded-r-sm " +
-                  (isActive ? "bg-primary" : "bg-transparent group-hover:bg-primary/40")
+                  "absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-sm " +
+                  (isActive
+                    ? "bg-primary"
+                    : "bg-transparent group-hover:bg-primary/40")
                 }
               />
 
-              <div className={`max-h-5 flex justify-center items-center ${isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}>
+              <div
+                className={
+                  `flex h-5 w-5 items-center justify-center ` +
+                  (isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground group-hover:text-foreground")
+                }
+              >
                 {item.icon}
               </div>
 
-              {
-                !isMinimized && (
-                  <div className="flex items-center justify-between w-full min-w-0">
-                    <span className={"text-xs truncate " + (isActive ? "text-foreground" : "text-sidebar-foreground")}>
-                      {item.label}
-                    </span>
+              {!isMinimized && (
+                <div className="flex items-center justify-between w-full min-w-0">
+                  <span
+                    className={
+                      "text-[12px] font-medium truncate " +
+                      (isActive ? "text-foreground" : "text-sidebar-foreground")
+                    }
+                  >
+                    {item.label}
+                  </span>
 
-                    <span className="ml-2 text-[10px] text-muted-foreground flex items-center">
-                      {countingTotal ? (
-                        <Loader2 className="animate-spin" size={12} />
-                      ) : count !== null ? (
-                        <span className="px-1.5 py-0.5 rounded-sm bg-muted/30 border border-border">
-                          {count}
-                        </span>
-                      ) : null}
-                </span>
-              </div>
-                )
-              }
+                  <span className="ml-2 text-[10px] text-muted-foreground flex items-center">
+                    {countingTotal ? (
+                      <Loader2 className="animate-spin" size={12} />
+                    ) : count !== null ? (
+                      <span className="px-1.5 py-0.5 rounded-[4px] bg-muted/30 border border-border/70">
+                        {count}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
       </nav>
 
       {/* Bottom dock: progress + toolbar */}
-      <div className="border-t border-sidebar-border">
+      <div className="border-t border-sidebar-border/70">
         {!isMinimized && (progressSound || progressVideo || progressImage) && (
           <div className="animate-in slide-in-from-bottom-2 fade-in duration-200 p-2">
-            <div className="bg-card/40 border border-border rounded-sm p-2 space-y-1">
+            <div className="bg-card/40 border border-border/70 rounded-[4px] p-2 space-y-1">
               <div className="text-[11px] font-semibold">Background tasks</div>
 
               <div className="flex flex-col text-[10px] text-muted-foreground truncate">
                 {progressSound && (
                   <div className="flex justify-between gap-2">
-                    <span className="truncate">{progressSound?.name?.toString()}</span>
-                    <span className="shrink-0">{progressSound?.current} / {progressSound?.total}</span>
+                    <span className="truncate">
+                      {progressSound?.name?.toString()}
+                    </span>
+                    <span className="shrink-0">
+                      {progressSound?.current} / {progressSound?.total}
+                    </span>
                   </div>
                 )}
                 {progressVideo && (
                   <div className="flex justify-between gap-2">
-                    <span className="truncate">{progressVideo?.name?.toString()}</span>
-                    <span className="shrink-0">{progressVideo?.current} / {progressVideo?.total}</span>
-              </div>
+                    <span className="truncate">
+                      {progressVideo?.name?.toString()}
+                    </span>
+                    <span className="shrink-0">
+                      {progressVideo?.current} / {progressVideo?.total}
+                    </span>
+                  </div>
                 )}
                 {progressImage && (
                   <div className="flex justify-between gap-2">
-                    <span className="truncate">{progressImage?.name?.toString()}</span>
-                    <span className="shrink-0">{progressImage?.current} / {progressImage?.total}</span>
+                    <span className="truncate">
+                      {progressImage?.name?.toString()}
+                    </span>
+                    <span className="shrink-0">
+                      {progressImage?.current} / {progressImage?.total}
+                    </span>
                   </div>
                 )}
               </div>
@@ -195,7 +233,9 @@ const Navbar = () => {
           </div>
         )}
 
-        <div className={`p-2 flex gap-2 ${isMinimized ? "flex-col items-center" : "items-center justify-between"}`}>
+        <div
+          className={`p-2 flex gap-2 ${isMinimized ? "flex-col items-center" : "items-center justify-between"}`}
+        >
           <ModeToggle />
 
           {!isMinimized ? (
@@ -203,10 +243,10 @@ const Navbar = () => {
               onClick={handleSetPath}
               variant="outline"
               size="sm"
-              className="h-7 px-2 text-xs rounded-sm"
+              className="h-6 px-2 text-[11px] rounded-[4px]"
               title="Import media folder"
             >
-              <FolderOpen size={14} />
+              <FontAwesomeIcon icon={faFolderOpen} className="text-[12px]" />
               Import
             </Button>
           ) : (
@@ -215,14 +255,14 @@ const Navbar = () => {
               variant="outline"
               size="icon-xs"
               title="Import media folder"
-              className="rounded-sm"
+              className="h-6 w-6 rounded-[4px]"
             >
-              <FolderOpen size={14} />
+              <FontAwesomeIcon icon={faFolderOpen} className="text-[12px]" />
             </Button>
           )}
         </div>
       </div>
-    </aside >
+    </aside>
   );
 };
 

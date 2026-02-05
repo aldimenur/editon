@@ -14,11 +14,13 @@ import { check } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startWatcher } from "./lib/utils";
 import SettingsPage from "./pages/settings";
-
+import { Button } from "./components/ui/button";
 
 function App() {
-  const { activeItem } = useNavStore((state) => state);
-  const { parentPath } = useAssetStore((state) => state)
+  const { activeItem, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
+    (state) => state,
+  );
+  const { parentPath } = useAssetStore((state) => state);
   const initialized = useRef(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [appVersion, setAppVersion] = useState("Unknown");
@@ -99,16 +101,15 @@ function App() {
   };
 
   useEffect(() => {
-
     if (initialized.current) return;
     initialized.current = true;
 
     const getAppVersion = async () => {
       const version = await getVersion();
       setAppVersion(version);
-    }
+    };
 
-    startWatcher(parentPath)
+    startWatcher(parentPath);
     checkForUpdates();
     getAppVersion();
   }, []);
@@ -116,9 +117,33 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <div className="bg-background text-foreground w-screen h-screen flex">
-        <Navbar />
-        <main className="flex-1 max-h-screen overflow-y-hidden">
-          <TitleBar window={{ appWindow, isAlwaysOnTop, isMaximized, setIsAlwaysOnTop, setIsMaximized }} />
+        {!isZenMode && <Navbar />}
+        <main className="flex-1 max-h-screen overflow-y-hidden relative">
+          {!isZenMode && (
+            <TitleBar
+              window={{
+                appWindow,
+                isAlwaysOnTop,
+                isMaximized,
+                setIsAlwaysOnTop,
+                setIsMaximized,
+              }}
+              isZenMode={isZenMode}
+              onToggleZen={toggleZenMode}
+            />
+          )}
+          {isZenMode && (
+            <div className="absolute top-1 left-1 z-50">
+              <Button
+                onClick={() => setIsZenMode(false)}
+                size="xs"
+                title="Exit Zen"
+                variant="outline"
+              >
+                Exit Zen
+              </Button>
+            </div>
+          )}
           {renderContent()}
         </main>
       </div>
