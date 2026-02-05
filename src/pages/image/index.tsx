@@ -71,6 +71,8 @@ const ImagePage = () => {
     const [tagFilter, setTagFilter] = useState<string[]>([]);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
     const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+    const [gridColumns, setGridColumns] = useState(3);
+    const [gridItemHeight, setGridItemHeight] = useState(160);
     const filteredAssetIds = imageFiles
         .map((file) => file.id)
         .filter((id): id is number => typeof id === "number");
@@ -86,6 +88,39 @@ const ImagePage = () => {
         typeof rawImageSearch === "string"
             ? rawImageSearch
             : rawImageSearch?.search ?? "";
+
+    // Track container width and update columns + row height responsively
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const updateGrid = () => {
+            if (!containerRef.current) return;
+            const width = containerRef.current.clientWidth;
+
+            let columns = 2;
+            if (width >= 1600) {
+                columns = 5;
+            } else if (width >= 1200) {
+                columns = 4;
+            } else if (width >= 768) {
+                columns = 3;
+            }
+
+            const gap = 8;
+            const totalGap = gap * (columns - 1);
+            const cardWidth = Math.max(1, (width - totalGap) / columns);
+            const cardHeight = Math.round((cardWidth * 9) / 16);
+
+            setGridColumns(columns);
+            setGridItemHeight(cardHeight);
+        };
+
+        const resizeObserver = new ResizeObserver(updateGrid);
+        resizeObserver.observe(containerRef.current);
+        updateGrid();
+
+        return () => resizeObserver.disconnect();
+    }, []);
 
     // initial load / path change
     useEffect(() => {
@@ -128,16 +163,18 @@ const ImagePage = () => {
     // Calculate row count based on view mode
     const getRowCount = () => {
         if (viewModeImage === "grid") {
-            return Math.ceil(imageFiles.length / 3); // 3 columns for grid
+            return Math.ceil(imageFiles.length / gridColumns);
         }
         return imageFiles.length;
     };
 
+    const rowHeight = viewModeImage === "grid" ? gridItemHeight : ITEM_HEIGHTS[viewModeImage];
+
     const rowVirtualizer = useVirtualizer({
         count: getRowCount(),
         getScrollElement: () => containerRef.current,
-        estimateSize: () => ITEM_HEIGHTS[viewModeImage],
-        getItemKey: (index) => `${viewModeImage}-${index}`, // reset size cache when mode changes
+        estimateSize: () => rowHeight,
+        getItemKey: (index) => `${viewModeImage}-${gridColumns}-${index}`, // reset size cache when mode or columns change
         overscan: 10,
     });
 
@@ -153,7 +190,7 @@ const ImagePage = () => {
 
         // Calculate actual file index based on view mode
         const actualLastIndex = viewModeImage === "grid"
-            ? (lastItem.index * 3) + 2  // In grid mode, each row has 3 items
+            ? lastItem.index * gridColumns + (gridColumns - 1)
             : lastItem.index;
 
         // when we scroll within a few items of the end, load next page
@@ -161,7 +198,7 @@ const ImagePage = () => {
             const nextPage = Math.floor(imageFiles.length / pageSize) + 1;
             fetchImageAssets(nextPage, pageSize);
         }
-    }, [virtualItems.length, imageFiles.length, hasMore, isLoading, pageSize, viewModeImage]);
+    }, [virtualItems.length, imageFiles.length, hasMore, isLoading, pageSize, viewModeImage, gridColumns]);
 
     // Reset scroll position when view mode changes
     useEffect(() => {
@@ -169,7 +206,7 @@ const ImagePage = () => {
         if (containerRef.current) {
             containerRef.current.scrollTop = 0;
         }
-    }, [viewModeImage]);
+    }, [viewModeImage, gridColumns]);
 
     const closeModal = () => {
         setSelectedImage(null);
@@ -352,7 +389,7 @@ const ImagePage = () => {
         );
     };
 
-    const renderImageCard = (file: Asset, minHeight: number) => {
+    const renderImageCard = (file: Asset, minHeight: number, isGrid: boolean) => {
         const imageSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
         const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
@@ -360,7 +397,11 @@ const ImagePage = () => {
             <div
                 key={file.id}
                 className={`group relative border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
-                style={{ minHeight }}
+                style={
+                    isGrid
+                        ? { height: gridItemHeight, aspectRatio: "16 / 9" }
+                        : { minHeight }
+                }
             >
                 <div className="absolute inset-0">
                     <img
@@ -616,7 +657,7 @@ const ImagePage = () => {
                 ) : (
                     <div
                         className="relative w-full"
-                        style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeImage] : 0) }}
+                        style={{ height: totalHeight || (isLoading ? rowHeight : 0) }}
                     >
                         {!!virtualItems.length && (
                             <div
@@ -627,20 +668,30 @@ const ImagePage = () => {
                             >
                                 {virtualItems.map((virtualRow) => {
                                     if (viewModeImage === "grid") {
-                                        // Grid mode: 3 columns
-                                        const file1 = imageFiles[virtualRow.index * 3];
-                                        const file2 = imageFiles[virtualRow.index * 3 + 1];
-                                        const file3 = imageFiles[virtualRow.index * 3 + 2];
+                                        const startIndex = virtualRow.index * gridColumns;
+                                        const files = Array.from(
+                                            { length: gridColumns },
+                                            (_, i) => imageFiles[startIndex + i],
+                                        ).filter(Boolean);
+
+                                        const gridColsClass =
+                                            gridColumns === 5
+                                                ? "grid-cols-5"
+                                                : gridColumns === 4
+                                                    ? "grid-cols-4"
+                                                    : gridColumns === 3
+                                                        ? "grid-cols-3"
+                                                        : "grid-cols-2";
 
                                         return (
                                             <div
                                                 key={virtualRow.index}
-                                                className="grid grid-cols-3 gap-2"
+                                                className={`grid ${gridColsClass} gap-2`}
                                                 style={{ minHeight: virtualRow.size }}
                                             >
-                                                {file1 && renderImageCard(file1, virtualRow.size)}
-                                                {file2 && renderImageCard(file2, virtualRow.size)}
-                                                {file3 && renderImageCard(file3, virtualRow.size)}
+                                                {files.map((file) =>
+                                                    renderImageCard(file, rowHeight, true),
+                                                )}
                                             </div>
                                         );
                                     } else {
@@ -648,7 +699,7 @@ const ImagePage = () => {
                                         const file = imageFiles[virtualRow.index];
                                         if (!file) return null;
 
-                                        return renderImageCard(file, virtualRow.size);
+                                        return renderImageCard(file, virtualRow.size, false);
                                     }
                                 })}
                             </div>

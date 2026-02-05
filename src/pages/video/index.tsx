@@ -13,6 +13,7 @@ import {
   PencilLine,
   Trash,
   FolderSearch,
+  MoreHorizontal,
   Check,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -25,6 +26,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -40,7 +42,7 @@ import {
 
 const ITEM_HEIGHTS = {
   list: 240,
-  grid: 280,
+  grid: 100,
   large: 400,
 };
 
@@ -71,6 +73,8 @@ const VideoPage = () => {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [gridColumns, setGridColumns] = useState(3);
+  const [gridItemHeight, setGridItemHeight] = useState(160);
   const filteredAssetIds = videoFiles
     .map((file) => file.id)
     .filter((id): id is number => typeof id === "number");
@@ -86,6 +90,39 @@ const VideoPage = () => {
     typeof rawVideoSearch === "string"
       ? rawVideoSearch
       : rawVideoSearch?.search ?? "";
+
+  // Track container width and update columns + row height responsively
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateGrid = () => {
+      if (!containerRef.current) return;
+      const width = containerRef.current.clientWidth;
+
+      let columns = 2;
+      if (width >= 1600) {
+        columns = 5;
+      } else if (width >= 1200) {
+        columns = 4;
+      } else if (width >= 768) {
+        columns = 3;
+      }
+
+      const gap = 8;
+      const totalGap = gap * (columns - 1);
+      const cardWidth = Math.max(1, (width - totalGap) / columns);
+      const cardHeight = Math.round((cardWidth * 9) / 16);
+
+      setGridColumns(columns);
+      setGridItemHeight(cardHeight);
+    };
+
+    const resizeObserver = new ResizeObserver(updateGrid);
+    resizeObserver.observe(containerRef.current);
+    updateGrid();
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // initial load / path change
   useEffect(() => {
@@ -128,16 +165,18 @@ const VideoPage = () => {
   // Calculate row count based on view mode
   const getRowCount = () => {
     if (viewModeVideo === "grid") {
-      return Math.ceil(videoFiles.length / 3); // 3 columns for grid
+      return Math.ceil(videoFiles.length / gridColumns);
     }
     return videoFiles.length;
   };
 
+  const rowHeight = viewModeVideo === "grid" ? gridItemHeight : ITEM_HEIGHTS[viewModeVideo];
+
   const rowVirtualizer = useVirtualizer({
     count: getRowCount(),
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ITEM_HEIGHTS[viewModeVideo],
-    getItemKey: (index) => `${viewModeVideo}-${index}`, // reset size cache when mode changes
+    estimateSize: () => rowHeight,
+    getItemKey: (index) => `${viewModeVideo}-${gridColumns}-${index}`, // reset size cache when mode or columns change
     overscan: 2,
   });
 
@@ -154,7 +193,7 @@ const VideoPage = () => {
 
     // Calculate actual file index based on view mode
     const actualLastIndex = viewModeVideo === "grid"
-      ? (lastItem.index * 3) + 2  // In grid mode, each row has 3 items
+      ? lastItem.index * gridColumns + (gridColumns - 1)
       : lastItem.index;
 
     // when we scroll within a few items of the end, load next page
@@ -163,7 +202,7 @@ const VideoPage = () => {
       console.log("Loading next page:", nextPage);
       fetchVideoAssets(nextPage, pageSize);
     }
-  }, [virtualItems.length, videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo]);
+  }, [virtualItems.length, videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo, gridColumns]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {
@@ -171,7 +210,7 @@ const VideoPage = () => {
     if (containerRef.current) {
       containerRef.current.scrollTop = 0;
     }
-  }, [viewModeVideo]);
+  }, [viewModeVideo, gridColumns]);
 
   const highlightText = (text: string, search: string) => {
     if (typeof search !== "string" || !search.trim()) return text;
@@ -367,11 +406,17 @@ const VideoPage = () => {
     const thumbSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
     const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
+    const isGrid = viewModeVideo === "grid";
+
     return (
       <div
         key={file.id}
         className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
-        style={{ minHeight }}
+        style={
+          isGrid
+            ? { height: gridItemHeight, aspectRatio: "16 / 9" }
+            : { minHeight }
+        }
       >
         <div className="absolute inset-0">
           {!playing && thumbSrc ? (
@@ -441,34 +486,70 @@ const VideoPage = () => {
             variant="ghost"
             size="icon-xs"
             className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => handleRenameClick(file.original_path, file.filename)}
-          >
-            <PencilLine className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
             onClick={() => setFullscreenVideo(file)}
           >
             <Maximize2 className="h-2 w-2" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => revealItemInDir(file.original_path)}
-          >
-            <FolderSearch className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
-            onClick={() => handleDeleteClick(file.original_path)}
-          >
-            <Trash className="h-2 w-2" />
-          </Button>
+          {viewModeVideo === "grid" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <MoreHorizontal className="h-2 w-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                <DropdownMenuItem
+                  onClick={() => handleRenameClick(file.original_path, file.filename)}
+                >
+                  <PencilLine />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => revealItemInDir(file.original_path)}>
+                  <FolderSearch />
+                  Open in folder
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => handleDeleteClick(file.original_path)}
+                >
+                  <Trash />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                onClick={() => handleRenameClick(file.original_path, file.filename)}
+              >
+                <PencilLine className="h-2 w-2" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+                onClick={() => revealItemInDir(file.original_path)}
+              >
+                <FolderSearch className="h-2 w-2" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
+                onClick={() => handleDeleteClick(file.original_path)}
+              >
+                <Trash className="h-2 w-2" />
+              </Button>
+            </>
+          )}
         </div>
 
       </div>
@@ -652,15 +733,25 @@ const VideoPage = () => {
         ) : (
           <div
             className="relative w-full"
-            style={{ height: totalHeight || (isLoading ? ITEM_HEIGHTS[viewModeVideo] : 0) }}
+            style={{ height: totalHeight || (isLoading ? rowHeight : 0) }}
           >
             {!!virtualItems.length &&
               virtualItems.map((virtualRow) => {
                 if (viewModeVideo === "grid") {
-                  // Grid mode: 3 columns
-                  const file1 = videoFiles[virtualRow.index * 3];
-                  const file2 = videoFiles[virtualRow.index * 3 + 1];
-                  const file3 = videoFiles[virtualRow.index * 3 + 2];
+                  const startIndex = virtualRow.index * gridColumns;
+                  const files = Array.from(
+                    { length: gridColumns },
+                    (_, i) => videoFiles[startIndex + i],
+                  ).filter(Boolean);
+
+                  const gridColsClass =
+                    gridColumns === 5
+                      ? "grid-cols-5"
+                      : gridColumns === 4
+                        ? "grid-cols-4"
+                        : gridColumns === 3
+                          ? "grid-cols-3"
+                          : "grid-cols-2";
 
                   return (
                     <div
@@ -672,10 +763,10 @@ const VideoPage = () => {
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <div className="grid grid-cols-3 gap-2">
-                        {file1 && <VideoCard file={file1} minHeight={ITEM_HEIGHTS.grid} />}
-                        {file2 && <VideoCard file={file2} minHeight={ITEM_HEIGHTS.grid} />}
-                        {file3 && <VideoCard file={file3} minHeight={ITEM_HEIGHTS.grid} />}
+                      <div className={`grid ${gridColsClass} gap-2`}>
+                        {files.map((file) => (
+                          <VideoCard key={file.id} file={file} minHeight={rowHeight} />
+                        ))}
                       </div>
                     </div>
                   );
