@@ -47,9 +47,9 @@ import TagsDialog from "@/components/TagsDialog";
 import type { Asset } from "@/types/tauri";
 
 const ITEM_HEIGHTS = {
-  list: 110,
-  grid: 110,
-  large: 140,
+  list: 68,
+  grid: 78,
+  large: 110,
 };
 
 type SfxAudioCardProps = {
@@ -90,39 +90,42 @@ const SfxAudioCard = ({
 
   return (
     <div
-      className={`group relative border-2 rounded-lg flex ${isSelectedClass}`}
-      style={{ minHeight, width: "100%" }}
+      className={`group relative border-2 flex overflow-hidden bg-background rounded-md transition-shadow hover:shadow-sm ${isSelectedClass}`}
+      style={{ minHeight, height: minHeight, width: "100%" }}
     >
-      <Button
-        variant={isSelected ? "default" : "outline"}
-        size="icon-xs"
-        className="absolute right-2 top-2 h-5 w-5 rounded-sm z-10 bg-background/80 shadow-sm"
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleSelect(fileId);
-        }}
-      >
-        <Check className="h-3 w-3" />
-      </Button>
-      <div className="flex flex-col flex-1 bg-accent">
-        <div className="grid grid-cols-1">
-          <div className="text-xs font-medium p-1 flex-1 truncate whitespace-nowrap pb-2 my-auto">
-            <div>{highlightText(file.filename, searchText)}</div>
+      <div className="flex flex-col flex-1 h-full">
+        <WavesurferRender
+          src={file.original_path}
+          waveform={file.waveform_data || []}
+          volume={volume}
+          height="100%"
+          width={"100%"}
+          enableDrag
+        />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
+        <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
+        <div className="relative">
+          <div className="text-xs font-medium truncate whitespace-nowrap">
+            {highlightText(file.filename, searchText)}
+          </div>
+          <div className="max-h-7 overflow-hidden">
             {renderTags(file.tags ?? null)}
           </div>
         </div>
-        <div className="flex justify-center items-center bg-background px-1 py-1">
-          <WavesurferRender
-            src={file.original_path}
-            waveform={file.waveform_data || []}
-            volume={volume}
-            height={waveHeight}
-            width={"100%"}
-            enableDrag
-          />
-        </div>
       </div>
-      <div className="absolute right-8 top-1 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute right-2 top-1 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <Button
+          variant={isSelected ? "default" : "ghost"}
+          size="icon-xs"
+          className="rounded-sm bg-background shadow-sm hover:bg-background transition-opacity"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSelect(fileId);
+          }}
+        >
+          <Check className="h-2 w-2" />
+        </Button>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -490,17 +493,17 @@ const SfxPage = () => {
     if (tagArray.length === 0) return null;
 
     return (
-      <div className="flex flex-wrap gap-1 mt-1">
+      <div className="flex flex-wrap gap-1 mt-0.5">
         {tagArray.slice(0, 3).map((tag, index) => (
           <span
             key={index}
-            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
+            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-[10px]"
           >
             {tag}
           </span>
         ))}
         {tagArray.length > 3 && (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-[10px]">
             +{tagArray.length - 3}
           </span>
         )}
@@ -509,7 +512,7 @@ const SfxPage = () => {
   };
 
   return (
-    <div className="px-2 flex flex-col gap-2 h-[calc(100vh-80px)]">
+    <div className="px-2 flex flex-col gap-2 h-[calc(100vh-40px)]">
       <div className="flex items-center justify-between gap-2">
         {/* View Mode Switcher - Desktop */}
         <div className="hidden md:flex gap-1 mr-2">
@@ -763,7 +766,7 @@ const SfxPage = () => {
                           <SfxAudioCard
                             key={file.id}
                             file={file}
-                            waveHeight={60}
+                            waveHeight={36}
                             minHeight={ITEM_HEIGHTS[viewModeAudio]}
                             searchText={sfxSearch.search}
                             volume={sliderValue}
@@ -784,7 +787,7 @@ const SfxPage = () => {
                     const file = sfxFiles[virtualRow.index];
                     if (!file) return null;
 
-                    const waveHeight = viewModeAudio === "large" ? 80 : 40;
+                    const waveHeight = viewModeAudio === "large" ? 56 : 32;
                     return (
                       <div
                         key={file.id}

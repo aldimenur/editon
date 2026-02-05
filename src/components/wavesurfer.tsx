@@ -8,7 +8,7 @@ import { globalAudioPlayer } from "@/lib/global-audio-player";
 const WavesurferRender = (props: {
   src: string;
   width: number | string;
-  height: number | "auto";
+  height: number | string;
   waveform: number[];
   volume: number;
   enableDrag?: boolean;
@@ -19,21 +19,28 @@ const WavesurferRender = (props: {
   const [isLoading, setIsLoading] = useState(false);
   const isLoadedRef = useRef(false);
   const { theme } = useTheme();
-  const isDark = theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const isDark =
+    theme === "dark" ||
+    (theme === "system" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
 
+    const resolvedWaveHeight =
+      typeof height === "number"
+        ? height
+        : containerRef.current.parentElement?.clientHeight ?? 64;
+
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
-      waveColor: "#3b82f6",
-      progressColor: isDark ? "#374151" : "#d1d5db",
+      waveColor: isDark ? "#60a5fa" : "#3b82f6",
+      progressColor: isDark ? "#1f2937" : "#e5e7eb",
       width: width,
-      height: height,
-      cursorColor: "#ffffff55",
+      height: resolvedWaveHeight,
+      cursorColor: isDark ? "#ffffff55" : "#00000033",
       backend: "MediaElement",
       peaks: [placeholderPeaks],
       duration: 1,
@@ -128,6 +135,13 @@ const WavesurferRender = (props: {
     wavesurferRef.current.play();
   };
 
+  const resolvedHeight =
+    height === "auto"
+      ? undefined
+      : typeof height === "number"
+        ? `${height}px`
+        : height;
+
   return (
     <div
       className="cursor-pointer active:cursor-grabbing w-full relative"
@@ -136,21 +150,21 @@ const WavesurferRender = (props: {
       onDragEnd={handleDragEnd}
       onClick={handleClick}
       onMouseLeave={() => wavesurferRef.current?.pause()}
-      style={{ height: height }}
+      style={{ height: resolvedHeight }}
     >
       <div
         ref={containerRef}
-        className="w-full overflow-hidden h-fit"
+        className="w-full h-full overflow-hidden bg-accent/60 rounded-md border border-border/60"
         style={{
           visibility: isLoading ? "hidden" : "visible",
-          height: height,
-          minHeight: height
+          height: resolvedHeight,
+          minHeight: resolvedHeight,
         }}
       />
       {isLoading && (
         <div
           className="absolute inset-0 flex items-center justify-center z-10 bg-background/50"
-          style={{ height: height }}
+          style={{ height: resolvedHeight }}
         >
           <div className="flex flex-col items-center gap-2">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
