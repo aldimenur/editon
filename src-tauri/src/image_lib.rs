@@ -170,7 +170,7 @@ pub fn generate_missing_thumbnails(
                 if extension.to_lowercase() == "svg" {
                     if let Ok(conn) = db_arc.lock() {
                         let _ = conn.execute(
-                            "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
+                            "UPDATE assets SET thumbnail_path = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",
                             rusqlite::params![path, id],
                         );
                     };
@@ -188,7 +188,7 @@ pub fn generate_missing_thumbnails(
                             // Update database: simpan path-nya dan hapus blob untuk menghemat space DB
                             if let Ok(conn) = db_arc.lock() {
                                 let _ = conn.execute(
-                                    "UPDATE assets SET thumbnail_path = ?1, metadata = ?2 WHERE id = ?3",
+                                    "UPDATE assets SET thumbnail_path = ?1, metadata = ?2, date_modified = CURRENT_TIMESTAMP WHERE id = ?3",
                                     rusqlite::params![thumb_path_str, metadata_json, id],
                                 );
                             }

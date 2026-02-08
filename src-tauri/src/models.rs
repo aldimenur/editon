@@ -3,6 +3,16 @@ use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AssetQueryParams {
+    pub search: Option<String>,
+    pub asset_type: Option<String>,
+    pub tags: Vec<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)] // Biar otomatis deteksi varian berdasarkan isi field-nya
 pub enum AssetMetadata {
@@ -54,6 +64,9 @@ pub struct Asset {
 
     // Tags untuk asset
     pub tags: Option<String>,
+
+    pub date_created: String,
+    pub date_modified: String,
 }
 
 #[derive(Debug, Serialize)]

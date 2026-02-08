@@ -17,7 +17,6 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::{models::ProgressEvent, DbState};
 
-
 pub fn get_audio_waveform(
     path: &str,
     num_bars: usize,
@@ -179,7 +178,7 @@ pub fn generate_missing_waveforms(
                     // C. Update DB (Hanya lock sebentar saat update row ini saja)
                     if let Ok(conn) = db_arc.lock() {
                         let _ = conn.execute(
-                            "UPDATE assets SET waveform_data = ?1 WHERE id = ?2",
+                            "UPDATE assets SET waveform_data = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",
                             rusqlite::params![json_data, id],
                         );
                     }

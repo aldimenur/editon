@@ -195,7 +195,7 @@ pub fn generate_missing_video_thumbnails(
                     if let Ok(_) = std::fs::write(&thumb_path, &blob) {
                         if let Ok(conn) = db_arc.lock() {
                             let _ = conn.execute(
-                                "UPDATE assets SET thumbnail_path = ?1 WHERE id = ?2",
+                                "UPDATE assets SET thumbnail_path = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",
                                 rusqlite::params![thumb_path_str, id],
                             );
                         }
@@ -206,7 +206,7 @@ pub fn generate_missing_video_thumbnails(
                     // Mark as failed to avoid infinite reprocessing loops.
                     if let Ok(conn) = db_arc.lock() {
                         let _ = conn.execute(
-                            "UPDATE assets SET thumbnail_path = '' WHERE id = ?1",
+                            "UPDATE assets SET thumbnail_path = '', date_modified = CURRENT_TIMESTAMP WHERE id = ?1",
                             rusqlite::params![id],
                         );
                     }

@@ -78,18 +78,7 @@ const VideoPage = () => {
     filteredAssetIds.length > 0 &&
     filteredAssetIds.every((id) => selectedAssetIds.includes(id));
   const hasMore = videoFiles.length < videoSearchCount;
-  const rawVideoSearch = videoSearch as unknown as
-    | {
-      search?: string;
-      filter?: { tags?: string };
-    }
-    | string
-    | null
-    | undefined;
-  const videoSearchText =
-    typeof rawVideoSearch === "string"
-      ? rawVideoSearch
-      : (rawVideoSearch?.search ?? "");
+  const videoSearchText = videoSearch.search;
 
   // Track container width and update columns + row height responsively
   useEffect(() => {
@@ -155,7 +144,7 @@ const VideoPage = () => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
-      setVideoSearch(videoSearchText, { tags: tagFilter.join(" ") });
+      setVideoSearch(videoSearchText, tagFilter);
       fetchVideoAssets(1, pageSize, true);
     }, 500);
 
@@ -288,9 +277,9 @@ const VideoPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -593,9 +582,7 @@ const VideoPage = () => {
         viewMode={viewModeVideo}
         onViewModeChange={setViewModeVideo}
         searchValue={videoSearchText}
-        onSearchChange={(value) =>
-          setVideoSearch(value, { tags: tagFilter.join(" ") })
-        }
+        onSearchChange={(value) => setVideoSearch(value, tagFilter)}
         availableTags={availableTags}
         selectedTags={tagFilter}
         onSelectedTagsChange={setTagFilter}

@@ -33,6 +33,23 @@ export interface Asset {
 
   // Tags for organizing assets
   tags?: string | null;
+
+  date_created: string;
+  date_modified: string;
+}
+
+export interface AssetQueryParams {
+  search?: string;
+  assetType?: string;
+  tags?: string[];
+  sortBy?:
+    | "filename"
+    | "file_size"
+    | "duration"
+    | "duration_sec"
+    | "date_created"
+    | "date_modified";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface PaginatedResponse {

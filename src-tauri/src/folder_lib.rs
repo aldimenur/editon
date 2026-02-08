@@ -563,7 +563,7 @@ fn add_or_update_file_in_db(
         {
             // File already exists, update it
             tx.execute(
-                "UPDATE assets SET file_size = ?1, duration_sec = ?2 WHERE original_path = ?3",
+                "UPDATE assets SET file_size = ?1, duration_sec = ?2, date_modified = CURRENT_TIMESTAMP WHERE original_path = ?3",
                 rusqlite::params![size as i64, duration_sec, path],
             )
             .map_err(|e| e.to_string())?;
@@ -613,7 +613,7 @@ fn replace_file_in_db(
     if exists {
         // File exists, replace the row with new data
         conn.execute(
-            "UPDATE assets SET filename = ?1, extension = ?2, type = ?3, file_size = ?4, duration_sec = ?5 
+            "UPDATE assets SET filename = ?1, extension = ?2, type = ?3, file_size = ?4, duration_sec = ?5, date_modified = CURRENT_TIMESTAMP 
              WHERE original_path = ?6",
             rusqlite::params![filename, ext, media_type, size as i64, duration_sec, path],
         )
@@ -661,7 +661,7 @@ fn handle_rename_in_db(
     if exists {
         // Update existing record with new path and name
         conn.execute(
-            "UPDATE assets SET filename = ?1, extension = ?2, original_path = ?3, type = ?4, file_size = ?5, duration_sec = ?6 
+            "UPDATE assets SET filename = ?1, extension = ?2, original_path = ?3, type = ?4, file_size = ?5, duration_sec = ?6, date_modified = CURRENT_TIMESTAMP 
              WHERE original_path = ?7",
             rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, duration_sec, old_path],
         )

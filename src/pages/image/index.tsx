@@ -64,18 +64,7 @@ const ImagePage = () => {
     filteredAssetIds.length > 0 &&
     filteredAssetIds.every((id) => selectedAssetIds.includes(id));
   const hasMore = imageFiles.length < imageSearchCount;
-  const rawImageSearch = imageSearch as unknown as
-    | {
-      search?: string;
-      filter?: { tags?: string };
-    }
-    | string
-    | null
-    | undefined;
-  const imageSearchText =
-    typeof rawImageSearch === "string"
-      ? rawImageSearch
-      : (rawImageSearch?.search ?? "");
+  const imageSearchText = imageSearch.search;
 
   // Track container width and update columns + row height responsively
   useEffect(() => {
@@ -141,7 +130,7 @@ const ImagePage = () => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
-      setImageSearch(imageSearchText, { tags: tagFilter.join(" ") });
+      setImageSearch(imageSearchText, tagFilter);
       fetchImageAssets(1, pageSize, true);
     }, 500);
 
@@ -276,9 +265,9 @@ const ImagePage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -493,9 +482,7 @@ const ImagePage = () => {
         viewMode={viewModeImage}
         onViewModeChange={setViewModeImage}
         searchValue={imageSearchText}
-        onSearchChange={(value) =>
-          setImageSearch(value, { tags: tagFilter.join(" ") })
-        }
+        onSearchChange={(value) => setImageSearch(value, tagFilter)}
         availableTags={availableTags}
         selectedTags={tagFilter}
         onSelectedTagsChange={setTagFilter}
@@ -600,7 +587,7 @@ const ImagePage = () => {
               <div className="flex gap-3 text-sm text-gray-300">
                 <span>
                   {selectedImage.metadata?.width &&
-                    selectedImage.metadata?.height
+                  selectedImage.metadata?.height
                     ? `${selectedImage.metadata.width} × ${selectedImage.metadata.height}`
                     : "Unknown resolution"}
                 </span>

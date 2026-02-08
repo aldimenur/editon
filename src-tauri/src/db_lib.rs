@@ -21,6 +21,8 @@ pub fn is_schema_valid(conn: &Connection) -> bool {
             ("waveform_data", "TEXT"),
             ("metadata", "TEXT"),
             ("tags", "TEXT"),
+            ("date_created", "TEXT"),
+            ("date_modified", "TEXT"),
         ],
     );
 
@@ -122,7 +124,7 @@ pub fn update_asset_tags(
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
     conn.execute(
-        "UPDATE assets SET tags = ?1 WHERE id = ?2",
+        "UPDATE assets SET tags = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",
         rusqlite::params![tags, asset_id],
     )
     .map_err(|e| e.to_string())?;
@@ -144,7 +146,7 @@ pub fn update_assets_tags(
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     let mut stmt = tx
-        .prepare("UPDATE assets SET tags = ?1 WHERE id = ?2")
+        .prepare("UPDATE assets SET tags = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2")
         .map_err(|e| e.to_string())?;
 
     for asset_id in asset_ids {

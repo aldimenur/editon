@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::{
     db_lib::is_schema_valid,
     ffmpeg::download_ffmpeg,
-    models::{Asset, AssetMetadata, DbState, PaginatedResponse},
+    models::{Asset, AssetMetadata, AssetQueryParams, DbState, PaginatedResponse},
 };
 mod db_lib;
 mod ffmpeg;
@@ -42,17 +42,46 @@ fn get_assets_paginated(
     state: State<'_, DbState>,
     page: u32,
     page_size: u32,
-    query: String,      // Search keyword (kosong string jika tidak search)
-    asset_type: String, // Filter: 'all', 'audio', 'video', 'image', 'sfx'
+    query_params: Option<AssetQueryParams>,
+    query: Option<String>,      // Backward-compat search keyword
+    asset_type: Option<String>, // Backward-compat filter: 'all', 'audio', 'video', 'image', 'sfx'
 ) -> Result<PaginatedResponse, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
+    let safe_page = page.max(1);
+    let safe_page_size = page_size.clamp(1, 200);
+
+    let mut params = query_params.unwrap_or_default();
+    if params.search.is_none() {
+        params.search = query;
+    }
+    if params.asset_type.is_none() {
+        params.asset_type = asset_type;
+    }
+
+    let search = params.search.unwrap_or_default();
+    let asset_type = params.asset_type.unwrap_or_else(|| "all".to_string());
+
+    let sort_column = match params.sort_by.as_deref() {
+        Some("filename") => "filename",
+        Some("file_size") => "file_size",
+        Some("duration") | Some("duration_sec") => "duration_sec",
+        Some("date_created") => "date_created",
+        Some("date_modified") => "date_modified",
+        _ => "date_modified",
+    };
+    let sort_order = match params.sort_order.as_deref() {
+        Some("asc") | Some("ASC") => "ASC",
+        Some("desc") | Some("DESC") => "DESC",
+        _ => "DESC",
+    };
+
     let mut sql_base = "FROM assets WHERE 1=1".to_string();
-    let mut params_values: Vec<Box<dyn ToSql>> = Vec::new(); // Penampung parameter
+    let mut params_values: Vec<Box<dyn ToSql>> = Vec::new();
 
     // Tokenized search: split query into words and match all of them
-    if !query.trim().is_empty() {
-        let tokens: Vec<&str> = query.split_whitespace().filter(|s| !s.is_empty()).collect();
+    if !search.trim().is_empty() {
+        let tokens: Vec<&str> = search.split_whitespace().filter(|s| !s.is_empty()).collect();
 
         if !tokens.is_empty() {
             // Build search condition for each token across filename, original_path, and tags
@@ -79,6 +108,17 @@ fn get_assets_paginated(
         params_values.push(Box::new(asset_type));
     }
 
+    if !params.tags.is_empty() {
+        for tag in &params.tags {
+            let normalized_tag = tag.trim();
+            if normalized_tag.is_empty() {
+                continue;
+            }
+            sql_base.push_str(" AND tags LIKE ?");
+            params_values.push(Box::new(format!("%{}%", normalized_tag)));
+        }
+    }
+
     let sql_count = format!("SELECT COUNT(*) {}", sql_base);
 
     let params_refs: Vec<&dyn ToSql> = params_values.iter().map(|p| p.as_ref()).collect();
@@ -89,17 +129,18 @@ fn get_assets_paginated(
         })
         .map_err(|e| format!("Gagal hitung total: {}", e))?;
 
-    let total_pages = (total_items as f64 / page_size as f64).ceil() as u64;
+    let total_pages = (total_items as f64 / safe_page_size as f64).ceil() as u64;
 
-    let offset = (page.max(1) - 1) * page_size;
+    let offset = (safe_page - 1) * safe_page_size;
 
     let sql_data = format!(
         "SELECT id, filename, extension, original_path, type, 
-                thumbnail_path, duration_sec, file_size, waveform_data, metadata, tags
+                thumbnail_path, duration_sec, file_size, waveform_data, metadata, tags,
+                date_created, date_modified
          {} 
-         ORDER BY id ASC 
+         ORDER BY {} {} , id DESC
          LIMIT {} OFFSET {}",
-        sql_base, page_size, offset
+        sql_base, sort_column, sort_order, safe_page_size, offset
     );
 
     let mut stmt = conn.prepare(&sql_data).map_err(|e| e.to_string())?;
@@ -121,6 +162,8 @@ fn get_assets_paginated(
                 waveform_data: serde_json::from_str(&waveform_str).unwrap_or_default(),
                 metadata: serde_json::from_str(&metadata_str).unwrap_or(AssetMetadata::None),
                 tags: row.get("tags")?,
+                date_created: row.get("date_created")?,
+                date_modified: row.get("date_modified")?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -134,7 +177,7 @@ fn get_assets_paginated(
         data,
         total_items,
         total_pages,
-        current_page: page,
+        current_page: safe_page,
     })
 }
 
@@ -237,7 +280,9 @@ pub fn run() {
                     file_size       INTEGER NOT NULL,
                     waveform_data   TEXT,
                     metadata        TEXT,
-                    tags            TEXT
+                    tags            TEXT,
+                    date_created    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    date_modified   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )",
                 [],
             )?;
@@ -245,6 +290,12 @@ pub fn run() {
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_path_type
                  ON assets(original_path, type)",
+                [],
+            )?;
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_assets_type_date_modified
+                 ON assets(type, date_modified DESC)",
                 [],
             )?;
 

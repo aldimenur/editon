@@ -484,7 +484,7 @@ const SfxPage = () => {
     if (!parentPath) return;
 
     const timeout = setTimeout(() => {
-      setSfxSearch(sfxSearch.search, { tags: tagFilter.join(" ") });
+      setSfxSearch(sfxSearch.search, tagFilter);
       fetchSfxAssets(1, pageSize, true);
     }, 500);
 
@@ -629,9 +629,9 @@ const SfxPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -791,9 +791,7 @@ const SfxPage = () => {
         viewMode={viewModeAudio}
         onViewModeChange={setViewModeAudio}
         searchValue={sfxSearch.search}
-        onSearchChange={(value) =>
-          setSfxSearch(value, { tags: tagFilter.join(" ") })
-        }
+        onSearchChange={(value) => setSfxSearch(value, tagFilter)}
         availableTags={availableTags}
         selectedTags={tagFilter}
         onSelectedTagsChange={setTagFilter}
