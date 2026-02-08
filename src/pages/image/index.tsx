@@ -48,7 +48,7 @@ const ImagePage = () => {
     string | null
   >(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<string[]>([]);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
@@ -303,16 +303,49 @@ const ImagePage = () => {
   };
 
   const handleDeleteClick = (path: string) => {
-    setFileToDelete(path);
+    setDeleteTargets([path]);
     setDeleteDialogOpen(true);
   };
 
+  const handleBulkDeleteClick = () => {
+    const selectedPaths = imageFiles
+      .filter((file) =>
+        typeof file.id === "number"
+          ? selectedAssetIds.includes(file.id)
+          : false,
+      )
+      .map((file) => file.original_path);
+
+    if (selectedPaths.length === 0) return;
+
+    setDeleteTargets(selectedPaths);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteDialogChange = (open: boolean) => {
+    setDeleteDialogOpen(open);
+    if (!open) {
+      setDeleteTargets([]);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
-    if (fileToDelete) {
-      await invoke("delete_file", { path: fileToDelete });
+    if (deleteTargets.length === 0) return;
+
+    try {
+      for (const path of deleteTargets) {
+        await invoke("delete_file", { path });
+      }
+
+      if (deleteTargets.length > 1) {
+        setSelectedAssetIds([]);
+      }
+
       setDeleteDialogOpen(false);
-      setFileToDelete(null);
+      setDeleteTargets([]);
       fetchImageAssets(1, pageSize, true);
+    } catch (error) {
+      console.error("Failed to delete file(s):", error);
     }
   };
 
@@ -491,6 +524,7 @@ const ImagePage = () => {
         allFilteredSelected={allFilteredSelected}
         onSelectAll={selectAllFiltered}
         onEditSelected={openBulkTagsDialog}
+        onDeleteSelected={handleBulkDeleteClick}
         onClearSelected={() => setSelectedAssetIds([])}
       />
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
@@ -613,19 +647,25 @@ const ImagePage = () => {
         onTagsUpdated={handleTagsUpdated}
       />
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={handleDeleteDialogChange}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              file from your system.
+              This action cannot be undone. This will permanently delete
+              {deleteTargets.length > 1
+                ? ` ${deleteTargets.length} files`
+                : " the file"}{" "}
+              from your system.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
+              onClick={() => handleDeleteDialogChange(false)}
             >
               Cancel
             </Button>

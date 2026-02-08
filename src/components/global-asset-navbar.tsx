@@ -26,6 +26,7 @@ type GlobalAssetNavbarProps = {
   allFilteredSelected: boolean;
   onSelectAll: () => void;
   onEditSelected: () => void;
+  onDeleteSelected: () => void;
   onClearSelected: () => void;
   className?: string;
   hint?: string;
@@ -45,13 +46,16 @@ export default function GlobalAssetNavbar({
   allFilteredSelected,
   onSelectAll,
   onEditSelected,
+  onDeleteSelected,
   onClearSelected,
   settingsExtra,
 }: GlobalAssetNavbarProps) {
   const { isZenMode } = useNavStore();
 
   return (
-    <div className={`${isZenMode ? "pl-16" : ""} flex items-center gap-1 h-8 mt-1`}>
+    <div
+      className={`${isZenMode ? "pl-16" : ""} flex items-center gap-1 h-8 mt-1`}
+    >
       <div className="flex items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -96,6 +100,14 @@ export default function GlobalAssetNavbar({
                           className="h-5 px-1.5 text-[10px]"
                         >
                           Edit Tags
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={onDeleteSelected}
+                          className="h-5 px-1.5 text-[10px]"
+                        >
+                          Delete
                         </Button>
                         <Button
                           size="sm"
