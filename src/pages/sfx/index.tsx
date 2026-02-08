@@ -5,38 +5,25 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import WavesurferRender from "@/components/wavesurfer";
 import { Input } from "@/components/ui/input";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faCheck,
-  faFolderOpen,
-  faList,
-  faMagnifyingGlass,
-  faPenToSquare,
-  faSliders,
-  faTag,
-  faTableCells,
-  faTags,
-  faTrashCan,
   faVolumeHigh,
-  faExpand,
+  faEllipsisVertical,
 } from "@fortawesome/free-solid-svg-icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalPosition } from "@tauri-apps/api/dpi";
+import { Menu } from "@tauri-apps/api/menu";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -47,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import TagsDialog from "@/components/TagsDialog";
 import type { Asset } from "@/types/tauri";
-import useNavStore from "@/stores/nav-store";
+import GlobalAssetNavbar from "@/components/global-asset-navbar";
 
 const ITEM_HEIGHTS = {
   list: 42,
@@ -59,14 +46,11 @@ type SfxAudioCardProps = {
   file: Asset;
   waveHeight: number;
   minHeight: number;
+  showFileName: boolean;
   searchText: string;
   volume: number;
   isSelected: boolean;
-  onToggleSelect: (id: number) => void;
-  onTagsClick: (id: number, tags: string | null) => void;
-  onRenameClick: (path: string, currentName: string) => void;
-  onDeleteClick: (path: string) => void;
-  onReveal: (path: string) => void;
+  onOpenContextMenu: (file: Asset, x: number, y: number) => void;
   renderTags: (tags: string | null) => ReactNode;
   highlightText: (text: string, search: string) => ReactNode;
 };
@@ -74,26 +58,38 @@ type SfxAudioCardProps = {
 const SfxAudioCard = ({
   file,
   minHeight,
+  showFileName,
   searchText,
   volume,
   isSelected,
-  onToggleSelect,
-  onTagsClick,
-  onRenameClick,
-  onDeleteClick,
-  onReveal,
+  onOpenContextMenu,
   renderTags,
   highlightText,
 }: SfxAudioCardProps) => {
-  const fileId = file.id as number;
   const isSelectedClass = isSelected
     ? "border-primary ring-1 ring-primary/30"
     : "border-border/60";
 
   return (
     <div
-      className={`group relative border flex bg-background/70 rounded-[6px] transition-shadow hover:shadow-md ${isSelectedClass}`}
+      className={`group relative border flex bg-background/70 rounded-[6px] transition-shadow ${isSelectedClass}`}
       style={{ minHeight, height: minHeight, width: "100%" }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenContextMenu(file, event.clientX, event.clientY);
+      }}
+      onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        ) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onOpenContextMenu(file, rect.left + rect.width / 2, rect.top + 20);
+        }
+      }}
+      title="Right-click or use Shift+F10 for actions"
+      tabIndex={0}
     >
       <div className="flex flex-col flex-1 h-full">
         <WavesurferRender
@@ -105,69 +101,32 @@ const SfxAudioCard = ({
           enableDrag
         />
       </div>
-      <div className="absolute inset-x-0 bottom-0 z-10 pb-2 pt-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
-        <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/80 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 z-10 pb-2 pl-2 pt-1.5 group-focus-within:opacity-100 pointer-events-none opacity-0 group-hover:opacity-100">
         <div className="relative">
-          <div className="text-[12px] font-semibold truncate whitespace-nowrap leading-none">
-            {highlightText(file.filename, searchText)}
-          </div>
+          {showFileName && (
+            <div className="text-[12px] font-semibold truncate whitespace-nowrap leading-none">
+              {highlightText(file.filename, searchText)}
+            </div>
+          )}
           <div className="max-h-5 overflow-hidden">
             {renderTags(file.tags ?? null)}
           </div>
         </div>
       </div>
-      <div className="absolute right-0 top-0 z-10 flex items-center gap-0.5 rounded-[6px] bg-background/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute right-0 top-0 z-10 flex items-center rounded-[6px] bg-background/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <Button
-          variant={isSelected ? "default" : "ghost"}
+          variant="ghost"
           size="icon"
           className="h-6 w-6 rounded-[6px] bg-transparent p-0 shadow-none hover:bg-background/70 transition-opacity"
-          onClick={(event) => {
+          onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
-            onToggleSelect(fileId);
+            const rect = event.currentTarget.getBoundingClientRect();
+            onOpenContextMenu(file, rect.right - 8, rect.bottom + 2);
           }}
-        >
-          <FontAwesomeIcon icon={faCheck} className="text-[10px]" fixedWidth />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-[6px] bg-transparent p-0 shadow-none hover:bg-background/70"
-          onClick={() => onTagsClick(fileId, file.tags ?? null)}
-        >
-          <FontAwesomeIcon icon={faTag} className="text-[10px]" fixedWidth />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-[6px] bg-transparent p-0 shadow-none hover:bg-background/70"
-          onClick={() => onRenameClick(file.original_path, file.filename)}
+          title="More actions"
         >
           <FontAwesomeIcon
-            icon={faPenToSquare}
-            className="text-[10px]"
-            fixedWidth
-          />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-[6px] bg-transparent p-0 shadow-none hover:bg-background/70"
-          onClick={() => onReveal(file.original_path)}
-        >
-          <FontAwesomeIcon
-            icon={faFolderOpen}
-            className="text-[10px]"
-            fixedWidth
-          />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 rounded-[6px] bg-transparent p-0 shadow-none text-destructive hover:text-destructive hover:bg-background/70"
-          onClick={() => onDeleteClick(file.original_path)}
-        >
-          <FontAwesomeIcon
-            icon={faTrashCan}
+            icon={faEllipsisVertical}
             className="text-[10px]"
             fixedWidth
           />
@@ -188,7 +147,6 @@ const SfxPage = () => {
     fetchSfxAssets,
     sfx,
   } = useAssetStore((state) => state);
-  const { isZenMode } = useNavStore()
   const [pageSize] = useState(40);
   const [sliderValue, setSliderValue] = useState(0.5);
   const [gridColumns, setGridColumns] = useState(2);
@@ -206,6 +164,7 @@ const SfxPage = () => {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const appWindow = getCurrentWindow();
   const { viewModeAudio, setViewModeAudio } = useViewStore((state) => state);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasMore = sfxFiles.length < sfxSearchCount;
@@ -456,6 +415,60 @@ const SfxPage = () => {
     setSelectedAssetIds(filteredAssetIds);
   };
 
+  const openContextMenu = useCallback(
+    async (file: Asset, x: number, y: number) => {
+      const fileId = file.id as number;
+      const isSelected = selectedAssetIds.includes(fileId);
+
+      const menu = await Menu.new({
+        items: [
+          {
+            text: isSelected ? "Deselect" : "Select",
+            accelerator: "S",
+            action: () => toggleSelection(fileId),
+          },
+          {
+            text: "Edit tags",
+            accelerator: "T",
+            action: () => handleTagsClick(fileId, file.tags ?? null),
+          },
+          {
+            text: "Rename",
+            accelerator: "F2",
+            action: () => handleRenameClick(file.original_path, file.filename),
+          },
+          {
+            text: "Show in folder",
+            accelerator: "O",
+            action: () => {
+              void revealItemInDir(file.original_path);
+            },
+          },
+          { item: "Separator" },
+          {
+            text: "Delete",
+            accelerator: "Delete",
+            action: () => handleDeleteClick(file.original_path),
+          },
+        ],
+      });
+
+      try {
+        await menu.popup(new LogicalPosition(x, y), appWindow);
+      } finally {
+        await menu.close();
+      }
+    },
+    [
+      selectedAssetIds,
+      appWindow,
+      toggleSelection,
+      handleTagsClick,
+      handleRenameClick,
+      handleDeleteClick,
+    ],
+  );
+
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
 
@@ -523,209 +536,50 @@ const SfxPage = () => {
 
   return (
     <div className="px-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
-      <div className={`${isZenMode ? "ml-16 mt-1" : null} flex items-center gap-1 h-8`}>
-        <div className="flex items-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8">
-                <FontAwesomeIcon
-                  icon={faSliders}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuLabel>View Settings</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-
-              {/* View Mode Section */}
-              <div className="px-2 py-1">
-                <p className="text-[11px] font-medium text-muted-foreground mb-1">
-                  View Mode
-                </p>
-                <div className="flex gap-0.5">
-                  <Button
-                    variant={viewModeAudio === "list" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeAudio("list")}
-                    className="flex-1 h-5 text-[10px]"
-                  >
-                    <FontAwesomeIcon
-                      icon={faList}
-                      className="text-[10px] mr-1"
-                      fixedWidth
-                    />
-                    List
-                  </Button>
-                  <Button
-                    variant={viewModeAudio === "grid" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeAudio("grid")}
-                    className="flex-1 h-5 text-[10px]"
-                  >
-                    <FontAwesomeIcon
-                      icon={faTableCells}
-                      className="text-[10px] mr-1"
-                      fixedWidth
-                    />
-                    Grid
-                  </Button>
-                  <Button
-                    variant={viewModeAudio === "large" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeAudio("large")}
-                    className="flex-1 h-5 text-[10px]"
-                  >
-                    <FontAwesomeIcon
-                      icon={faExpand}
-                      className="text-[10px] mr-1"
-                      fixedWidth
-                    />
-                    Large
-                  </Button>
-                </div>
-              </div>
-
-              {(filteredAssetIds.length > 0 || selectedAssetIds.length > 0) && (
-                <>
-                  <DropdownMenuSeparator />
-                  <div className="px-2 py-1">
-                    <p className="text-[10px] font-medium text-muted-foreground mb-1">
-                      Selection
-                    </p>
-                    <div className="flex items-center gap-0.5">
-                      {filteredAssetIds.length > 0 && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={selectAllFiltered}
-                          disabled={allFilteredSelected}
-                          className="h-5 px-1.5 text-[10px]"
-                        >
-                          Select All
-                        </Button>
-                      )}
-                      {selectedAssetIds.length > 0 && (
-                        <>
-                          <span className="text-[10px] text-muted-foreground">
-                            {selectedAssetIds.length}
-                          </span>
-                          <Button
-                            size="sm"
-                            onClick={openBulkTagsDialog}
-                            className="h-5 px-1.5 text-[10px]"
-                          >
-                            Edit Tags
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedAssetIds([])}
-                            className="h-5 px-1.5 text-[10px]"
-                          >
-                            Clear
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <DropdownMenuSeparator />
-
-              {/* Volume Section */}
-              <div className="px-2 py-1">
-                <p className="text-[10px] font-medium text-muted-foreground mb-1">
-                  Volume
-                </p>
-                <div className="flex items-center gap-1">
-                  <FontAwesomeIcon
-                    icon={faVolumeHigh}
-                    className="text-[10px]"
-                    fixedWidth
-                  />
-                  <Slider
-                    defaultValue={[sliderValue]}
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={[sliderValue]}
-                    onValueChange={(value) => setSliderValue(value[0])}
-                    className="flex-1"
-                  />
-                  <span className="text-[10px] w-8 text-right">
-                    {Math.round(sliderValue * 100)}%
-                  </span>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="relative flex-1 h-8 flex items-center min-w-[140px]">
-          <FontAwesomeIcon
-            icon={faMagnifyingGlass}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]"
-            fixedWidth
-          />
-          <Input
-            type="text"
-            placeholder="Search..."
-            value={sfxSearch.search}
-            onChange={(e) =>
-              setSfxSearch(e.target.value, { tags: tagFilter.join(" ") })
-            }
-            className="pl-6 pr-7 text-[11px] h-8 py-0 leading-none"
-          />
-        </div>
-
-        {/* Tag Filter */}
-        {availableTags.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-0.5 h-5 px-1.5 text-[10px] shrink-0"
-              >
-                <FontAwesomeIcon
-                  icon={faTags}
-                  className="text-[10px]"
-                  fixedWidth
-                />
-                {tagFilter.length > 0
-                  ? `${tagFilter.length} selected`
-                  : "Filter"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={tagFilter.length === 0}
-                onCheckedChange={() => setTagFilter([])}
-              >
-                All Tags
-              </DropdownMenuCheckboxItem>
-              {availableTags.map((tag) => (
-                <DropdownMenuCheckboxItem
-                  key={tag}
-                  checked={tagFilter.includes(tag)}
-                  onCheckedChange={() => {
-                    if (tagFilter.includes(tag)) {
-                      setTagFilter(tagFilter.filter((t) => t !== tag));
-                    } else {
-                      setTagFilter([...tagFilter, tag]);
-                    }
-                  }}
-                >
-                  {tag}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      <GlobalAssetNavbar
+        viewMode={viewModeAudio}
+        onViewModeChange={setViewModeAudio}
+        searchValue={sfxSearch.search}
+        onSearchChange={(value) =>
+          setSfxSearch(value, { tags: tagFilter.join(" ") })
+        }
+        availableTags={availableTags}
+        selectedTags={tagFilter}
+        onSelectedTagsChange={setTagFilter}
+        filteredCount={filteredAssetIds.length}
+        selectedCount={selectedAssetIds.length}
+        allFilteredSelected={allFilteredSelected}
+        onSelectAll={selectAllFiltered}
+        onEditSelected={openBulkTagsDialog}
+        onClearSelected={() => setSelectedAssetIds([])}
+        hint="Hint: Right-click an item or use Shift+F10"
+        settingsExtra={
+          <div className="px-2 py-1">
+            <p className="text-xs font-medium text-muted-foreground mb-1">
+              Volume
+            </p>
+            <div className="flex items-center gap-1">
+              <FontAwesomeIcon
+                icon={faVolumeHigh}
+                className="text-[10px]"
+                fixedWidth
+              />
+              <Slider
+                defaultValue={[sliderValue]}
+                min={0}
+                max={1}
+                step={0.1}
+                value={[sliderValue]}
+                onValueChange={(value) => setSliderValue(value[0])}
+                className="flex-1"
+              />
+              <span className="text-[10px] w-8 text-right">
+                {Math.round(sliderValue * 100)}%
+              </span>
+            </div>
+          </div>
+        }
+      />
       <div ref={containerRef} className="flex-1 overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-4 text-[11px] border border-dashed border-border/60 rounded-[6px] bg-muted/10">
@@ -780,16 +634,13 @@ const SfxPage = () => {
                             file={file}
                             waveHeight={36}
                             minHeight={ITEM_HEIGHTS[viewModeAudio]}
+                            showFileName={false}
                             searchText={sfxSearch.search}
                             volume={sliderValue}
                             isSelected={selectedAssetIds.includes(
                               file.id as number,
                             )}
-                            onToggleSelect={toggleSelection}
-                            onTagsClick={handleTagsClick}
-                            onRenameClick={handleRenameClick}
-                            onDeleteClick={handleDeleteClick}
-                            onReveal={revealItemInDir}
+                            onOpenContextMenu={openContextMenu}
                             renderTags={renderTags}
                             highlightText={highlightText}
                           />
@@ -812,16 +663,13 @@ const SfxPage = () => {
                           file={file}
                           waveHeight={waveHeight}
                           minHeight={ITEM_HEIGHTS[viewModeAudio]}
+                          showFileName={viewModeAudio === "large"}
                           searchText={sfxSearch.search}
                           volume={sliderValue}
                           isSelected={selectedAssetIds.includes(
                             file.id as number,
                           )}
-                          onToggleSelect={toggleSelection}
-                          onTagsClick={handleTagsClick}
-                          onRenameClick={handleRenameClick}
-                          onDeleteClick={handleDeleteClick}
-                          onReveal={revealItemInDir}
+                          onOpenContextMenu={openContextMenu}
                           renderTags={renderTags}
                           highlightText={highlightText}
                         />

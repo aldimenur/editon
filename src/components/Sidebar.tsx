@@ -84,17 +84,16 @@ const Navbar = () => {
 
   return (
     <aside
-      className={`flex flex-col bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out border-r border-sidebar-border/70 ${isMinimized ? "w-[52px]" : "w-[180px]"}`}
+      className={`flex flex-col border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground supports-backdrop-filter:bg-sidebar/80 supports-backdrop-filter:backdrop-blur-xl transition-[width] duration-200 ease-out ${isMinimized ? "w-[58px]" : "w-[220px]"}`}
     >
-      {/* Header / App chrome (Premiere-ish) */}
-      <div className="h-9 px-2.5 flex items-center gap-2 select-none">
+      <div className="h-11 px-3.5 flex items-center gap-2 border-b border-sidebar-border/90 select-none">
         {!isMinimized && (
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
-              Workspace
-            </div>
-            <div className="text-[12px] font-semibold leading-none truncate">
+            <div className="text-[13px] font-medium leading-none truncate tracking-[0.01em]">
               Editon
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              Workspace
             </div>
           </div>
         )}
@@ -103,7 +102,7 @@ const Navbar = () => {
           onClick={toggleMinimized}
           variant="ghost"
           size="icon-xs"
-          className="ml-auto h-6 w-6 rounded-[4px] hover:bg-sidebar-accent/40 active:bg-sidebar-accent/60"
+          className="ml-auto h-7 w-7 rounded-none border border-transparent hover:border-sidebar-border hover:bg-sidebar-accent/45 active:bg-sidebar-accent/60"
           aria-label={isMinimized ? "Expand sidebar" : "Minimize sidebar"}
           title={isMinimized ? "Expand" : "Minimize"}
         >
@@ -111,15 +110,13 @@ const Navbar = () => {
         </Button>
       </div>
 
-      {/* Section label */}
       {!isMinimized && (
-        <div className="px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
-          Panels
+        <div className="px-3.5 py-1.5 text-[10px] tracking-[0.04em] text-muted-foreground border-b border-sidebar-border/80">
+          Library
         </div>
       )}
 
-      {/* Items */}
-      <nav className="flex-1 px-1.5 pb-2 select-none overflow-y-auto">
+      <nav className="flex-1 py-2 select-none overflow-y-auto">
         {sidebarItems.map((item) => {
           const isActive = activeItem === item.path;
           const count = getCount(item.type);
@@ -136,25 +133,17 @@ const Navbar = () => {
               }}
               title={isMinimized ? item.label : undefined}
               className={
-                `group relative flex h-8 items-center gap-2.5 px-2.5 cursor-pointer rounded-[4px] ` +
-                `hover:bg-sidebar-accent/35 active:bg-sidebar-accent/50 ` +
-                (isActive ? "bg-sidebar-accent/45" : "") +
+                `group relative flex h-8 items-center gap-2.5 px-3.5 cursor-pointer border-y border-transparent ` +
+                `hover:bg-sidebar-accent/30 hover:border-sidebar-border/50 active:bg-sidebar-accent/45 ` +
+                (isActive
+                  ? "bg-sidebar-accent/60 border-sidebar-border/80"
+                  : "") +
                 (isMinimized ? " justify-center" : "")
               }
             >
-              {/* Active indicator bar */}
               <div
                 className={
-                  "absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-sm " +
-                  (isActive
-                    ? "bg-primary"
-                    : "bg-transparent group-hover:bg-primary/40")
-                }
-              />
-
-              <div
-                className={
-                  `flex h-5 w-5 items-center justify-center ` +
+                  `flex h-5 w-5 items-center justify-center shrink-0 ` +
                   (isActive
                     ? "text-foreground"
                     : "text-muted-foreground group-hover:text-foreground")
@@ -167,7 +156,7 @@ const Navbar = () => {
                 <div className="flex items-center justify-between w-full min-w-0">
                   <span
                     className={
-                      "text-[12px] font-medium truncate " +
+                      "text-[12px] truncate " +
                       (isActive ? "text-foreground" : "text-sidebar-foreground")
                     }
                   >
@@ -178,7 +167,7 @@ const Navbar = () => {
                     {countingTotal ? (
                       <Loader2 className="animate-spin" size={12} />
                     ) : count !== null ? (
-                      <span className="px-1.5 py-0.5 rounded-[4px] bg-muted/30 border border-border/70">
+                      <span className="px-1.5 py-0.5 bg-muted/30 border border-border/70 rounded-none min-w-5 text-center">
                         {count}
                       </span>
                     ) : null}
@@ -190,11 +179,10 @@ const Navbar = () => {
         })}
       </nav>
 
-      {/* Bottom dock: progress + toolbar */}
-      <div className="border-t border-sidebar-border/70">
+      <div className="border-t border-sidebar-border/90">
         {!isMinimized && (progressSound || progressVideo || progressImage) && (
           <div className="animate-in slide-in-from-bottom-2 fade-in duration-200 p-2">
-            <div className="bg-card/40 border border-border/70 rounded-[4px] p-2 space-y-1">
+            <div className="bg-card/40 border border-border/70 rounded-none p-2 space-y-1">
               <div className="text-[11px] font-semibold">Background tasks</div>
 
               <div className="flex flex-col text-[10px] text-muted-foreground truncate">
@@ -243,7 +231,7 @@ const Navbar = () => {
               onClick={handleSetPath}
               variant="outline"
               size="sm"
-              className="h-6 px-2 text-[11px] rounded-[4px]"
+              className="h-6 px-2 text-[11px] rounded-none"
               title="Import media folder"
             >
               <FontAwesomeIcon icon={faFolderOpen} className="text-[12px]" />
@@ -255,7 +243,7 @@ const Navbar = () => {
               variant="outline"
               size="icon-xs"
               title="Import media folder"
-              className="h-6 w-6 rounded-[4px]"
+              className="h-6 w-6 rounded-none"
             >
               <FontAwesomeIcon icon={faFolderOpen} className="text-[12px]" />
             </Button>

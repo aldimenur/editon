@@ -4,6 +4,7 @@ import WaveSurfer from "wavesurfer.js";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { useTheme } from "./theme-provider";
 import { globalAudioPlayer } from "@/lib/global-audio-player";
+import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 
 const WavesurferRender = (props: {
   src: string;
@@ -27,20 +28,24 @@ const WavesurferRender = (props: {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const placeholderPeaks = waveform.length > 0 ? waveform : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
+    const placeholderPeaks =
+      waveform.length > 0
+        ? waveform
+        : [0, 0, 0.2, 0.3, 0.5, 0.3, 0.5, 0.6, -1, -0.5, 0, -0.2, 1, 0.5, 0];
 
     const resolvedWaveHeight =
       typeof height === "number"
         ? height
-        : containerRef.current.parentElement?.clientHeight ?? 64;
+        : (containerRef.current.parentElement?.clientHeight ?? 64);
 
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
       waveColor: isDark ? "#60a5fa" : "#3b82f6",
       progressColor: isDark ? "#1f2937" : "#e5e7eb",
+      cursorWidth: 4,
       width: width,
       height: resolvedWaveHeight,
-      cursorColor: isDark ? "#ffffff55" : "#00000033",
+      cursorColor: "#ff000080",
       backend: "MediaElement",
       peaks: [placeholderPeaks],
       duration: 1,
@@ -54,7 +59,6 @@ const WavesurferRender = (props: {
     };
   }, [width, height, isDark]);
 
-
   const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -64,10 +68,15 @@ const WavesurferRender = (props: {
     if (!enableDrag) return;
     e.preventDefault();
     wavesurferRef.current?.pause();
+
+    const dragPreview = getDragPreviewIcon(src, "Dragging audio");
+    applyDragImage(e.dataTransfer, dragPreview, src);
+
     try {
       startDrag({
         item: [src],
-        icon: src,
+        icon: dragPreview || src,
+        mode: "copy",
       });
     } catch (error) {
       console.error(error);
@@ -79,7 +88,6 @@ const WavesurferRender = (props: {
       wavesurferRef.current.setVolume(volume);
     }
   }, [volume]);
-
 
   useEffect(() => {
     isLoadedRef.current = false;
@@ -93,13 +101,12 @@ const WavesurferRender = (props: {
     const wavesurfer = wavesurferRef.current;
     if (!wavesurfer) return;
 
-    const handleFinish = () => {
-    };
+    const handleFinish = () => {};
 
-    wavesurfer.on('finish', handleFinish);
+    wavesurfer.on("finish", handleFinish);
 
     return () => {
-      wavesurfer.un('finish', handleFinish);
+      wavesurfer.un("finish", handleFinish);
     };
   }, []);
 
@@ -113,7 +120,6 @@ const WavesurferRender = (props: {
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickPosition = clickX / rect.width;
-
 
     // Load audio if not loaded
     if (!isLoadedRef.current) {

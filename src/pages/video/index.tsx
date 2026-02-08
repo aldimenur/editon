@@ -3,11 +3,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
-  Search,
-  LayoutList,
-  LayoutGrid,
   Maximize2,
-  Settings2,
   Play,
   Tag,
   PencilLine,
@@ -23,14 +19,12 @@ import useViewStore from "@/stores/view-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuLabel,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import TagsDialog from "@/components/TagsDialog";
+import GlobalAssetNavbar from "@/components/global-asset-navbar";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -55,7 +49,7 @@ const VideoPage = () => {
     videoSearchCount,
     isLoading,
     fetchVideoAssets,
-    video
+    video,
   } = useAssetStore((state) => state);
 
   const [pageSize] = useState(10);
@@ -63,7 +57,9 @@ const VideoPage = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
-  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<string | null>(null);
+  const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<
+    string | null
+  >(null);
   const [fullscreenVideo, setFullscreenVideo] = useState<Asset | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<string | null>(null);
@@ -82,14 +78,18 @@ const VideoPage = () => {
     filteredAssetIds.length > 0 &&
     filteredAssetIds.every((id) => selectedAssetIds.includes(id));
   const hasMore = videoFiles.length < videoSearchCount;
-  const rawVideoSearch = videoSearch as unknown as {
-    search?: string;
-    filter?: { tags?: string };
-  } | string | null | undefined;
+  const rawVideoSearch = videoSearch as unknown as
+    | {
+      search?: string;
+      filter?: { tags?: string };
+    }
+    | string
+    | null
+    | undefined;
   const videoSearchText =
     typeof rawVideoSearch === "string"
       ? rawVideoSearch
-      : rawVideoSearch?.search ?? "";
+      : (rawVideoSearch?.search ?? "");
 
   // Track container width and update columns + row height responsively
   useEffect(() => {
@@ -170,7 +170,8 @@ const VideoPage = () => {
     return videoFiles.length;
   };
 
-  const rowHeight = viewModeVideo === "grid" ? gridItemHeight : ITEM_HEIGHTS[viewModeVideo];
+  const rowHeight =
+    viewModeVideo === "grid" ? gridItemHeight : ITEM_HEIGHTS[viewModeVideo];
 
   const rowVirtualizer = useVirtualizer({
     count: getRowCount(),
@@ -192,9 +193,10 @@ const VideoPage = () => {
     const lastItem = virtualItems[virtualItems.length - 1];
 
     // Calculate actual file index based on view mode
-    const actualLastIndex = viewModeVideo === "grid"
-      ? lastItem.index * gridColumns + (gridColumns - 1)
-      : lastItem.index;
+    const actualLastIndex =
+      viewModeVideo === "grid"
+        ? lastItem.index * gridColumns + (gridColumns - 1)
+        : lastItem.index;
 
     // when we scroll within a few items of the end, load next page
     if (actualLastIndex >= videoFiles.length - 5) {
@@ -202,7 +204,15 @@ const VideoPage = () => {
       console.log("Loading next page:", nextPage);
       fetchVideoAssets(nextPage, pageSize);
     }
-  }, [virtualItems.length, videoFiles.length, hasMore, isLoading, pageSize, viewModeVideo, gridColumns]);
+  }, [
+    virtualItems.length,
+    videoFiles.length,
+    hasMore,
+    isLoading,
+    pageSize,
+    viewModeVideo,
+    gridColumns,
+  ]);
 
   // Reset scroll position when view mode changes
   useEffect(() => {
@@ -218,13 +228,13 @@ const VideoPage = () => {
     // Tokenize search query: split by whitespace
     const tokens = search
       .split(/\s+/)
-      .filter(token => token.trim().length > 0)
-      .map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); // Escape regex special chars
+      .filter((token) => token.trim().length > 0)
+      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); // Escape regex special chars
 
     if (tokens.length === 0) return text;
 
     // Create regex pattern that matches any token
-    const pattern = new RegExp(`(${tokens.join('|')})`, 'gi');
+    const pattern = new RegExp(`(${tokens.join("|")})`, "gi");
     const parts = text.split(pattern);
 
     return (
@@ -232,11 +242,14 @@ const VideoPage = () => {
         {parts.map((part, index) => {
           // Check if this part matches any of the search tokens
           const isMatch = tokens.some(
-            token => part.toLowerCase() === token.toLowerCase()
+            (token) => part.toLowerCase() === token.toLowerCase(),
           );
 
           return isMatch ? (
-            <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 text-foreground">
+            <mark
+              key={index}
+              className="bg-yellow-300 dark:bg-yellow-600 text-foreground"
+            >
               {part}
             </mark>
           ) : (
@@ -247,7 +260,10 @@ const VideoPage = () => {
     );
   };
 
-  const handleTagsClick = (assetId: number, tags: string | null | undefined) => {
+  const handleTagsClick = (
+    assetId: number,
+    tags: string | null | undefined,
+  ) => {
     setTagsDialogAssetIds([assetId]);
     setTagsDialogCurrentTags(tags ?? null);
     setTagsDialogOpen(true);
@@ -272,9 +288,9 @@ const VideoPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -403,7 +419,9 @@ const VideoPage = () => {
   }) => {
     const [playing, setPlaying] = useState(false);
     const videoSrc = convertFileSrc(file.original_path);
-    const thumbSrc = file.thumbnail_path ? convertFileSrc(file.thumbnail_path) : "";
+    const thumbSrc = file.thumbnail_path
+      ? convertFileSrc(file.thumbnail_path)
+      : "";
     const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
     const isGrid = viewModeVideo === "grid";
@@ -420,7 +438,10 @@ const VideoPage = () => {
       >
         <div className="absolute inset-0">
           {!playing && thumbSrc ? (
-            <div className="relative h-full w-full cursor-pointer" onClick={() => setPlaying(true)}>
+            <div
+              className="relative h-full w-full cursor-pointer"
+              onClick={() => setPlaying(true)}
+            >
               <img
                 src={thumbSrc}
                 className="absolute inset-0 h-full w-full object-cover bg-muted"
@@ -502,14 +523,21 @@ const VideoPage = () => {
                   <MoreHorizontal className="h-2 w-2" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+              <DropdownMenuContent
+                align="end"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <DropdownMenuItem
-                  onClick={() => handleRenameClick(file.original_path, file.filename)}
+                  onClick={() =>
+                    handleRenameClick(file.original_path, file.filename)
+                  }
                 >
                   <PencilLine />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => revealItemInDir(file.original_path)}>
+                <DropdownMenuItem
+                  onClick={() => revealItemInDir(file.original_path)}
+                >
                   <FolderSearch />
                   Open in folder
                 </DropdownMenuItem>
@@ -528,7 +556,9 @@ const VideoPage = () => {
                 variant="ghost"
                 size="icon-xs"
                 className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-                onClick={() => handleRenameClick(file.original_path, file.filename)}
+                onClick={() =>
+                  handleRenameClick(file.original_path, file.filename)
+                }
               >
                 <PencilLine className="h-2 w-2" />
               </Button>
@@ -551,178 +581,31 @@ const VideoPage = () => {
             </>
           )}
         </div>
-
       </div>
     );
   };
 
-
   const showEmptyState = !isLoading && videoFiles.length === 0;
 
   return (
-    <div className="px-2 flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-1">
-        {/* View Mode Switcher - Desktop */}
-        <div className="hidden md:flex gap-1 mr-1">
-          <Button
-            variant={viewModeVideo === "list" ? "default" : "outline"}
-            size="icon"
-            onClick={() => setViewModeVideo("list")}
-            className="h-7 w-7"
-          >
-            <LayoutList className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewModeVideo === "grid" ? "default" : "outline"}
-            size="icon"
-            onClick={() => setViewModeVideo("grid")}
-            className="h-7 w-7"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewModeVideo === "large" ? "default" : "outline"}
-            size="icon"
-            onClick={() => setViewModeVideo("large")}
-            className="h-7 w-7"
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Mobile Popup Menu */}
-        <div className="md:hidden mr-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-7 w-7">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuLabel>View Settings</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-
-              {/* View Mode Section */}
-              <div className="px-2 py-1">
-                <p className="text-xs font-medium text-muted-foreground mb-1">View Mode</p>
-                <div className="flex gap-1">
-                  <Button
-                    variant={viewModeVideo === "list" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeVideo("list")}
-                    className="flex-1"
-                  >
-                    <LayoutList className="h-4 w-4 mr-1" />
-                    List
-                  </Button>
-                  <Button
-                    variant={viewModeVideo === "grid" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeVideo("grid")}
-                    className="flex-1"
-                  >
-                    <LayoutGrid className="h-4 w-4 mr-1" />
-                    Grid
-                  </Button>
-                  <Button
-                    variant={viewModeVideo === "large" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewModeVideo("large")}
-                    className="flex-1"
-                  >
-                    <Maximize2 className="h-4 w-4 mr-1" />
-                    Large
-                  </Button>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            type="text"
-            placeholder="Search..."
-            value={videoSearchText}
-            onChange={(e) =>
-              setVideoSearch(e.target.value, { tags: tagFilter.join(" ") })
-            }
-            className="pl-8 pr-8 text-sm"
-          />
-          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-lg px-1.5 py-0.5 text-xs">
-            {videoSearchCount}
-          </div>
-        </div>
-
-        {/* Tag Filter */}
-        {availableTags.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Tag className="h-4 w-4" />
-                {tagFilter.length > 0
-                  ? `${tagFilter.length} selected`
-                  : "Filter by tag"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={tagFilter.length === 0}
-                onCheckedChange={() => setTagFilter([])}
-              >
-                All Tags
-              </DropdownMenuCheckboxItem>
-              {availableTags.map((tag) => (
-                <DropdownMenuCheckboxItem
-                  key={tag}
-                  checked={tagFilter.includes(tag)}
-                  onCheckedChange={() => {
-                    if (tagFilter.includes(tag)) {
-                      setTagFilter(tagFilter.filter((t) => t !== tag));
-                    } else {
-                      setTagFilter([...tagFilter, tag]);
-                    }
-                  }}
-                >
-                  {tag}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {filteredAssetIds.length > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={selectAllFiltered}
-            disabled={allFilteredSelected}
-          >
-            Select All
-          </Button>
-        )}
-
-        {selectedAssetIds.length > 0 && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">
-              {selectedAssetIds.length} selected
-            </span>
-            <Button size="sm" onClick={openBulkTagsDialog}>
-              Edit Tags
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setSelectedAssetIds([])}
-            >
-              Clear
-            </Button>
-          </div>
-        )}
-      </div>
+    <div className="px-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
+      <GlobalAssetNavbar
+        viewMode={viewModeVideo}
+        onViewModeChange={setViewModeVideo}
+        searchValue={videoSearchText}
+        onSearchChange={(value) =>
+          setVideoSearch(value, { tags: tagFilter.join(" ") })
+        }
+        availableTags={availableTags}
+        selectedTags={tagFilter}
+        onSelectedTagsChange={setTagFilter}
+        filteredCount={filteredAssetIds.length}
+        selectedCount={selectedAssetIds.length}
+        allFilteredSelected={allFilteredSelected}
+        onSelectAll={selectAllFiltered}
+        onEditSelected={openBulkTagsDialog}
+        onClearSelected={() => setSelectedAssetIds([])}
+      />
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
           <div className="text-center text-muted-foreground py-8 text-sm">
@@ -765,7 +648,11 @@ const VideoPage = () => {
                     >
                       <div className={`grid ${gridColsClass} gap-1`}>
                         {files.map((file) => (
-                          <VideoCard key={file.id} file={file} minHeight={rowHeight} />
+                          <VideoCard
+                            key={file.id}
+                            file={file}
+                            minHeight={rowHeight}
+                          />
                         ))}
                       </div>
                     </div>
@@ -786,7 +673,10 @@ const VideoPage = () => {
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    <VideoCard file={file} minHeight={ITEM_HEIGHTS[viewModeVideo]} />
+                    <VideoCard
+                      file={file}
+                      minHeight={ITEM_HEIGHTS[viewModeVideo]}
+                    />
                   </div>
                 );
               })}
@@ -800,7 +690,10 @@ const VideoPage = () => {
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3"
           onClick={closeFullscreen}
         >
-          <div className="relative w-full max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative w-full max-w-6xl max-h-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Button
               variant="ghost"
               size="icon"

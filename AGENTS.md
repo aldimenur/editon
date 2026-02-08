@@ -1,173 +1,168 @@
 # AGENTS.md
 
-# Guidance for agentic coding in this repo
+## Purpose
 
-## Repository snapshot
+Guide for agentic coding in `E:\Dev\editon`.
+Prefer minimal, targeted changes that match local file conventions.
 
-- App: Editon (Tauri desktop app)
-- Frontend: React + TypeScript + Vite + Tailwind CSS
-- Backend: Rust (Tauri commands, SQLite, media tooling)
-- Workspace roots:
-  - Frontend: `src/`
-  - Backend: `src-tauri/`
+## Repo overview
 
-## Commands: build / lint / test
+- App: Editon (Tauri v2 desktop app)
+- Frontend: React 18 + TypeScript + Vite + Tailwind CSS v4
+- Backend: Rust + Tauri commands + SQLite (`rusqlite`)
+- Roots:
+  - `src/` frontend
+  - `src-tauri/` backend
 
-### Frontend (root)
+## Cursor/Copilot instruction files
+
+- `.cursor/rules/`: not found
+- `.cursorrules`: not found
+- `.github/copilot-instructions.md`: not found
+- If added later, follow them as repo-level instructions.
+
+## Build, test, lint, format commands
+
+### Frontend (repo root)
 
 - Install deps: `npm install`
-- Dev (Tauri): `npm run tauri dev`
-- Build (web assets): `npm run build`
-- Preview (web): `npm run preview`
+- Dev server: `npm run dev`
+- Tauri dev app: `npm run tauri dev`
+- Build (includes TypeScript check): `npm run build`
+- Preview static build: `npm run preview`
 
-### Backend (Rust, from `src-tauri/`)
+### Backend (`src-tauri/`)
 
 - Build: `cargo build`
-- Run tests: `cargo test`
+- Run all tests: `cargo test`
 
-### Tauri packaging (root)
+### Packaging (repo root)
 
-- Build app bundle: `npm run tauri build`
+- Build desktop bundle: `npm run tauri build`
 
-### Lint / format
+### Single-test commands (Rust)
 
-- No ESLint or lint script is configured in `package.json`.
-- Prettier is listed as a dev dependency, but no config file is present.
-  - If formatting is needed, use default Prettier:
-    `npx prettier --write "src/**/*.{ts,tsx,css}"`
-  - Prefer minimal formatting and follow existing file style.
+- By test name: `cargo test test_name`
+- By module path: `cargo test module_name::`
+- Show println output: `cargo test test_name -- --nocapture`
+- Require exact match: `cargo test test_name -- --exact`
 
-## Running a single test
+### Lint/format status
 
-### Rust (preferred single-test workflow)
+- No `lint` script in `package.json`.
+- No ESLint config detected.
+- Prettier is installed without checked-in config.
+- Optional TS/React formatting: `npx prettier --write "src/**/*.{ts,tsx,css}"`
+- Optional Rust formatting/lint:
+  - `cargo fmt`
+  - `cargo clippy --all-targets --all-features`
 
-- Run a single test by name:
-  `cargo test test_name`
-- Run tests in a specific module:
-  `cargo test module_name::`
-- Show stdout while testing:
-  `cargo test test_name -- --nocapture`
+### Frontend testing status
 
-### Frontend
+- No frontend test runner is configured (no Vitest/Jest scripts).
+- If tests are added, update this file with single-test commands.
 
-- No test runner is configured (no Vitest/Jest scripts).
-- If tests are added later, document the runner and single-test command here.
+## Validation recommendations
 
-## Cursor / Copilot rules
-
-- No Cursor rules found in `.cursor/rules/` or `.cursorrules`.
-- No Copilot rules found in `.github/copilot-instructions.md`.
+- Frontend-only edits: run `npm run build`
+- Rust-only edits: run `cargo test` in `src-tauri/`
+- Cross-layer edits: run both commands above
+- Run `npm run tauri build` only for packaging validation
 
 ## Code style guidelines
 
 ### General
 
-- Follow the existing style in each file. This repo mixes semicolons/no-semicolons.
-- Use ASCII text unless the file already contains localized strings.
-- Keep changes scoped; avoid refactors without a direct task requirement.
-- Prefer atomic changes: small, focused edits that are easy to review and revert.
-- When adding UI, extract new components into their own files for maintainability.
+- Follow surrounding style in the file you edit.
+- Keep scope tight; avoid unrelated refactors.
+- Prefer ASCII unless non-ASCII is already required by the file.
+- Do not edit generated outputs in `src-tauri/target/` or `src-tauri/gen/`.
+- Add comments only when logic is non-obvious.
 
-### TypeScript / React
+### TypeScript/React
 
 #### Imports
 
-- Prefer absolute imports via the `@/` alias (see `tsconfig.json`).
-- Group imports roughly as:
-  1. External libraries
-  2. Internal modules (`@/`)
-  3. Relative imports (`./`)
-- Type-only imports use `import type { ... }` where appropriate.
+- `@/*` alias is configured in `tsconfig.json`.
+- Prefer alias imports for internal modules when practical.
+- Many files still use relative imports; keep consistency with nearby code.
+- Preferred order:
+  1. third-party packages
+  2. internal alias imports (`@/`)
+  3. relative imports
+- Use `import type { ... }` for type-only imports where useful.
 
-#### Components and hooks
+#### Components, hooks, and state
 
-- Components are function components using `const Name = () => { ... }`.
-- Component names are `PascalCase` (e.g., `Navbar`, `TagsDialog`).
-- Custom hooks, if introduced, should use the `useX` naming pattern.
+- Prefer function components (`function Name() {}` is common here).
+- Naming:
+  - components/types/interfaces: `PascalCase`
+  - functions/variables: `camelCase`
+  - constants: `SCREAMING_SNAKE_CASE` for true constants
+- Hook/store names should follow `useX`.
+- Shared app state uses Zustand (`src/stores/*`).
+- Store actions should be verb-based (`setX`, `fetchX`, `updateX`, `toggleX`).
+- Persisted stores use `persist` + `createJSONStorage(() => localStorage)`.
 
-#### State and stores
+#### Types and contracts
 
-- Zustand is used for shared state (see `src/stores/*`).
-- Store setters use verbs (`setX`, `updateX`, `fetchX`).
-- Persisted state uses `zustand/middleware` with `createJSONStorage`.
+- TS compiler is strict (`strict`, `noUnusedLocals`, `noUnusedParameters`).
+- Prefer explicit types on exported APIs and store contracts.
+- Avoid `any`; if necessary, keep it narrow and temporary.
+- Keep frontend command types aligned with `src/types/tauri.ts`.
+- Preserve external payload field names (often snake_case).
 
-#### Types
+#### Error handling and formatting
 
-- TypeScript is `strict` with `noUnusedLocals` and `noUnusedParameters`.
-- Prefer explicit types for exported functions and public store interfaces.
-- Use `type` for object shapes and `interface` for public contracts,
-  but follow the local file pattern.
+- Wrap async Tauri/API calls in `try/catch`.
+- Log context with `console.error("Context...", error)`.
+- In UI code, prefer safe fallbacks over throwing.
+- Semicolon/quote style is mixed; do not normalize entire files.
+- Format only touched lines/blocks unless asked for full formatting.
 
-#### Naming
+### Rust/Tauri backend
 
-- Variables and functions: `camelCase`.
-- Constants: `camelCase` or `SCREAMING_SNAKE_CASE` for true constants.
-- Files and folders use a mix of `kebab-case` and `camelCase`; keep existing.
+#### Structure and wiring
 
-#### Error handling
+- Entrypoints: `src-tauri/src/main.rs` and `src-tauri/src/lib.rs`.
+- Add new logic in focused modules under `src-tauri/src/`.
+- Register commands in `tauri::generate_handler!`.
 
-- Use `try/catch` around async Tauri calls.
-- Log errors with `console.error` and include context.
-- Prefer returning safe defaults over throwing in UI code.
+#### Naming and signatures
 
-#### Tauri invoke usage
+- variables/functions: `snake_case`
+- structs/enums/traits: `PascalCase`
+- constants: `SCREAMING_SNAKE_CASE`
+- Tauri commands should return `Result<T, String>`.
 
-- Use `invoke` from `@tauri-apps/api/core`.
-- Keep command names in sync with Rust `#[tauri::command]` functions.
-- Types for Tauri payloads live in `src/types/tauri.ts`.
+#### Errors, concurrency, and DB
 
-### Rust (Tauri backend)
+- Convert internal errors with `map_err(|e| e.to_string())` or contextual messages.
+- Avoid `unwrap()`/`expect()` in runtime code paths.
+- Keep existing English/Indonesian tone for user-facing error strings.
+- Shared DB state uses `Arc<Mutex<Connection>>` via `DbState`.
+- Use transactions for multi-step DB mutations.
+- Use bound SQL parameters (not interpolated SQL).
+- Respect long-running control flags like `cancel_scan` and `is_busy`.
 
-#### Module organization
+## Practical map
 
-- Command handlers are in `src-tauri/src/*.rs` and wired in `lib.rs`.
-- Keep new commands in a focused module and add to `generate_handler!`.
+- Frontend entry: `src/main.tsx`, `src/App.tsx`
+- Utilities: `src/lib/utils.ts`
+- UI components: `src/components/`, primitives in `src/components/ui/`
+- Pages: `src/pages/`
+- Stores: `src/stores/`
+- Tauri config: `src-tauri/tauri.conf.json`
 
-#### Naming
+## When changing Tauri commands
 
-- Functions and variables: `snake_case`.
-- Types and structs: `PascalCase`.
-- Constants: `SCREAMING_SNAKE_CASE`.
+- Implement/update command in the right Rust module.
+- Add it to `generate_handler!` in `src-tauri/src/lib.rs`.
+- Keep frontend `invoke` names and payload keys in sync.
+- Update `src/types/tauri.ts` for payload/result shape changes.
 
-#### Error handling
+## Agent workflow
 
-- Public Tauri commands return `Result<T, String>`.
-- Convert internal errors with `map_err(|e| e.to_string())` or
-  contextual messages (some are Indonesian).
-- Avoid `unwrap()` in runtime paths; it is currently used mostly at startup.
-
-#### Concurrency and state
-
-- Shared DB connection is stored in `DbState` with `Arc<Mutex<Connection>>`.
-- Long-running tasks should respect `is_busy` and `cancel_scan` flags
-  where applicable.
-
-#### Database access
-
-- SQLite schema is created in `lib.rs` setup.
-- Use prepared statements and pass parameters via `ToSql`.
-- Prefer transactions for multi-step mutations.
-
-## Project structure tips
-
-- Frontend entry: `src/main.tsx` and `src/App.tsx`.
-- Global utilities: `src/lib/utils.ts`.
-- UI components: `src/components/` and `src/components/ui/`.
-- Backend entry: `src-tauri/src/lib.rs` and `src-tauri/src/main.rs`.
-
-## When adding new commands or types
-
-- Add the Rust command in the relevant module and export it via `lib.rs`.
-- Update TypeScript types in `src/types/tauri.ts` if payloads change.
-- Update the frontend invoke usage to match payload shape.
-
-## Build artifacts
-
-- The repo contains `src-tauri/target/` outputs.
-- Do not edit generated files under `src-tauri/target/` or `src-tauri/gen/`.
-
-## Quick sanity checks before PR
-
-- `npm run build` (typecheck + Vite build)
-- `cargo test` in `src-tauri/` if Rust changes are involved
-- `npm run tauri build` only when packaging validation is needed
+- Read nearby files before editing to mirror patterns.
+- Make the smallest viable change, then verify with relevant commands.
+- In handoff notes, state what was run and what was not run.

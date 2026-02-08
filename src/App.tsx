@@ -1,5 +1,5 @@
 import "./App.css";
-import Navbar from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
 import { ThemeProvider } from "./components/theme-provider";
 import SfxPage from "./pages/sfx";
 import useNavStore from "./stores/nav-store";
@@ -117,7 +117,7 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <div className="bg-background text-foreground w-screen h-screen flex">
-        {!isZenMode && <Navbar />}
+        {!isZenMode && <Sidebar />}
         <main className="flex-1 max-h-screen overflow-y-hidden relative">
           {!isZenMode && (
             <TitleBar
@@ -138,7 +138,7 @@ function App() {
                 onClick={() => setIsZenMode(false)}
                 size="xs"
                 title="Exit Zen"
-                variant="outline"
+                variant="destructive"
               >
                 Exit Zen
               </Button>
