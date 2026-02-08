@@ -1,5 +1,6 @@
 import useAssetStore from "@/stores/asset-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import {
   useCallback,
   useEffect,
@@ -35,6 +36,8 @@ import {
 import TagsDialog from "@/components/TagsDialog";
 import type { Asset } from "@/types/tauri";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
+import { trimMediaAction } from "@/lib/actions/trim-media";
+import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 
 const ITEM_HEIGHTS = {
   list: 42,
@@ -51,8 +54,14 @@ type SfxAudioCardProps = {
   volume: number;
   isSelected: boolean;
   onOpenContextMenu: (file: Asset, x: number, y: number) => void;
+  onDeleteTrimmed: (path: string) => void;
   renderTags: (tags: string | null) => ReactNode;
   highlightText: (text: string, search: string) => ReactNode;
+};
+
+type TrimRange = {
+  start: number;
+  end: number;
 };
 
 const SfxAudioCard = ({
@@ -63,9 +72,141 @@ const SfxAudioCard = ({
   volume,
   isSelected,
   onOpenContextMenu,
+  onDeleteTrimmed,
   renderTags,
   highlightText,
 }: SfxAudioCardProps) => {
+  const trimBarRef = useRef<HTMLDivElement | null>(null);
+  const [trimRange, setTrimRange] = useState<TrimRange>({ start: 0, end: 1 });
+  const [appliedTrimRange, setAppliedTrimRange] = useState<TrimRange>({
+    start: 0,
+    end: 1,
+  });
+  const [isTrimming, setIsTrimming] = useState(false);
+  const [trimError, setTrimError] = useState<string | null>(null);
+  const [trimmedOutputPath, setTrimmedOutputPath] = useState<string | null>(
+    null,
+  );
+
+  const MIN_TRIM_WIDTH = 0.02;
+  const durationSec = file.duration_sec > 0 ? file.duration_sec : 0;
+  const hasTrimChanges =
+    Math.abs(trimRange.start - appliedTrimRange.start) > 0.0001 ||
+    Math.abs(trimRange.end - appliedTrimRange.end) > 0.0001;
+
+  useEffect(() => {
+    setTrimRange({ start: 0, end: 1 });
+    setAppliedTrimRange({ start: 0, end: 1 });
+    setTrimError(null);
+    setIsTrimming(false);
+    setTrimmedOutputPath(null);
+  }, [file.original_path]);
+
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
+  const startTrimDrag = (
+    mode: "start" | "end" | "range",
+    event: ReactMouseEvent,
+  ) => {
+    if (!trimBarRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = trimBarRef.current.getBoundingClientRect();
+    const initial = { ...trimRange };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = (moveEvent.clientX - event.clientX) / rect.width;
+      let nextStart = initial.start;
+      let nextEnd = initial.end;
+
+      if (mode === "start") {
+        nextStart = clamp(
+          initial.start + delta,
+          0,
+          initial.end - MIN_TRIM_WIDTH,
+        );
+      } else if (mode === "end") {
+        nextEnd = clamp(initial.end + delta, initial.start + MIN_TRIM_WIDTH, 1);
+      } else {
+        const width = initial.end - initial.start;
+        nextStart = clamp(initial.start + delta, 0, 1 - width);
+        nextEnd = nextStart + width;
+      }
+
+      setTrimRange({ start: nextStart, end: nextEnd });
+      setTrimError(null);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleTrimApply = async (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (durationSec <= 0) {
+      setTrimError("Cannot trim media with unknown duration.");
+      return;
+    }
+
+    setIsTrimming(true);
+    setTrimError(null);
+
+    try {
+      const outputPath = await trimMediaAction({
+        input_path: file.original_path,
+        start_sec: trimRange.start * durationSec,
+        end_sec: trimRange.end * durationSec,
+      });
+      setAppliedTrimRange(trimRange);
+      setTrimmedOutputPath(outputPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTrimError(message);
+      console.error("Failed to trim media:", error);
+    } finally {
+      setIsTrimming(false);
+    }
+  };
+
+  const handleTrimCancel = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setTrimRange(appliedTrimRange);
+    setTrimError(null);
+  };
+
+  const handleTrimmedDragStart = (
+    event: React.DragEvent<HTMLButtonElement>,
+  ) => {
+    if (!trimmedOutputPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dragPreview = getDragPreviewIcon(trimmedOutputPath, "Dragging trim");
+    applyDragImage(event.dataTransfer, dragPreview, trimmedOutputPath);
+
+    try {
+      startDrag({
+        item: [trimmedOutputPath],
+        icon: dragPreview || trimmedOutputPath,
+        mode: "copy",
+      });
+    } catch (error) {
+      console.error("Failed to drag trimmed media:", error);
+    }
+  };
+
+  const handleTrimmedDragEnd = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   const isSelectedClass = isSelected
     ? "border-primary ring-1 ring-primary/30"
     : "border-border/60";
@@ -101,6 +242,116 @@ const SfxAudioCard = ({
           enableDrag
         />
       </div>
+      {hasTrimChanges && (
+        <div
+          className="absolute left-2 top-2 z-20 flex items-center gap-1"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Button
+            size="sm"
+            className="h-6 rounded-[6px] px-2 text-[10px]"
+            disabled={isTrimming}
+            onClick={handleTrimApply}
+          >
+            {isTrimming ? "Applying..." : "Apply"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 rounded-[6px] px-2 text-[10px]"
+            disabled={isTrimming}
+            onClick={handleTrimCancel}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+      {trimmedOutputPath && (
+        <div
+          className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-[6px] bg-background/90 p-1"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            draggable
+            className="h-6 rounded-[6px] px-2 text-[10px]"
+            onDragStart={handleTrimmedDragStart}
+            onDragEnd={handleTrimmedDragEnd}
+            title="Drag trimmed media"
+          >
+            Drag
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 rounded-[6px] px-2 text-[10px]"
+            onClick={() => void revealItemInDir(trimmedOutputPath)}
+          >
+            Show
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 rounded-[6px] px-2 text-[10px] text-destructive hover:text-destructive"
+            onClick={() => onDeleteTrimmed(trimmedOutputPath)}
+          >
+            Delete
+          </Button>
+        </div>
+      )}
+      <div
+        className="absolute inset-x-2 bottom-0.5 z-20"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <div
+          ref={trimBarRef}
+          className="relative h-[3px] rounded-full bg-background/80"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <div
+            className="absolute bottom-0 top-0 rounded-full bg-primary/90 active:cursor-grabbing"
+            style={{
+              left: `${trimRange.start * 100}%`,
+              width: `${(trimRange.end - trimRange.start) * 100}%`,
+            }}
+            onMouseDown={(event) => startTrimDrag("range", event)}
+          />
+          <button
+            type="button"
+            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+            style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
+            onMouseDown={(event) => startTrimDrag("start", event)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            aria-label="Trim start handle"
+          />
+          <button
+            type="button"
+            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+            style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
+            onMouseDown={(event) => startTrimDrag("end", event)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            aria-label="Trim end handle"
+          />
+        </div>
+      </div>
+      {trimError && (
+        <div className="absolute bottom-2 left-2 z-20 max-w-[70%] truncate rounded-[6px] bg-destructive/85 px-2 py-0.5 text-[10px] text-destructive-foreground">
+          {trimError}
+        </div>
+      )}
       <div className="absolute inset-x-0 bottom-0 z-10 pb-2 pl-2 pt-1.5 group-focus-within:opacity-100 pointer-events-none opacity-0 group-hover:opacity-100">
         <div className="relative">
           {showFileName && (
@@ -641,6 +892,7 @@ const SfxPage = () => {
                               file.id as number,
                             )}
                             onOpenContextMenu={openContextMenu}
+                            onDeleteTrimmed={handleDeleteClick}
                             renderTags={renderTags}
                             highlightText={highlightText}
                           />
@@ -670,6 +922,7 @@ const SfxPage = () => {
                             file.id as number,
                           )}
                           onOpenContextMenu={openContextMenu}
+                          onDeleteTrimmed={handleDeleteClick}
                           renderTags={renderTags}
                           highlightText={highlightText}
                         />

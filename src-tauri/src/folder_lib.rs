@@ -1,12 +1,79 @@
 use notify::{Event, EventKind, RecursiveMode, Result as NotifyResult, Watcher};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tauri::{AppHandle, Emitter, State};
 use tokio::fs;
 use walkdir::WalkDir;
 
-use crate::{models::DbState, utils::get_media_type};
+use crate::{
+    models::DbState,
+    utils::{get_app_data_dir, get_media_type},
+};
+
+#[derive(serde::Deserialize)]
+struct FFProbeOutput {
+    format: FFProbeFormat,
+}
+
+#[derive(serde::Deserialize)]
+struct FFProbeFormat {
+    duration: Option<String>,
+}
+
+fn resolve_ffprobe_path(app: &AppHandle) -> String {
+    if let Ok(bin_dir) = get_app_data_dir(app) {
+        let exe = bin_dir.join("ffprobe.exe");
+        if exe.exists() {
+            return exe.to_string_lossy().to_string();
+        }
+    }
+    "ffprobe".to_string()
+}
+
+fn detect_media_duration_sec(app: &AppHandle, path: &str) -> f64 {
+    let ffprobe_path = resolve_ffprobe_path(app);
+    let mut cmd = Command::new(ffprobe_path);
+    cmd.args(["-v", "error", "-print_format", "json", "-show_format", path]);
+
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+
+    let output = match cmd.output() {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("Failed to run ffprobe for {}: {}", path, error);
+            return 0.0;
+        }
+    };
+
+    if !output.status.success() {
+        eprintln!(
+            "ffprobe failed for {}: {}",
+            path,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return 0.0;
+    }
+
+    let parsed: FFProbeOutput = match serde_json::from_slice(&output.stdout) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("Failed to parse ffprobe output for {}: {}", path, error);
+            return 0.0;
+        }
+    };
+
+    parsed
+        .format
+        .duration
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(0.0)
+}
 
 // Global state to manage the active watcher
 lazy_static::lazy_static! {
@@ -107,6 +174,7 @@ pub fn scan_and_import_folder(
                         &path_str,
                         &media_type,
                         file_size,
+                        &app,
                     ) {
                         eprintln!("Error saving file {}: {}", path_str, e);
                     } else {
@@ -371,6 +439,7 @@ fn handle_rename_to(
                 &ext_str,
                 &media_type,
                 file_size,
+                app,
             ) {
                 eprintln!("Error handling rename in DB: {}", e);
             } else {
@@ -390,6 +459,7 @@ fn handle_rename_to(
                 &new_path_str,
                 &media_type,
                 file_size,
+                app,
             );
         }
         return;
@@ -416,6 +486,7 @@ fn handle_create(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app:
             &path_str,
             &media_type,
             file_size,
+            app,
         ) {
             eprintln!("Error updating DB for {}: {}", path_str, e);
         } else {
@@ -437,6 +508,7 @@ fn handle_modify(event: &Event, db_conn: &Arc<Mutex<rusqlite::Connection>>, app:
             &path_str,
             &media_type,
             file_size,
+            app,
         ) {
             eprintln!("Error updating DB for {}: {}", path_str, e);
         } else {
@@ -463,7 +535,14 @@ fn add_or_update_file_in_db(
     path: &str,
     media_type: &str,
     size: u64,
+    app: &AppHandle,
 ) -> Result<(), String> {
+    let duration_sec = if media_type == "audio" || media_type == "video" {
+        detect_media_duration_sec(app, path)
+    } else {
+        0.0
+    };
+
     let mut conn = conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -471,7 +550,7 @@ fn add_or_update_file_in_db(
     let result = tx.execute(
         "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0, None::<String>],
+        rusqlite::params![filename, ext, path, media_type, size as i64, "{}", duration_sec, None::<String>],
     );
 
     match result {
@@ -484,8 +563,8 @@ fn add_or_update_file_in_db(
         {
             // File already exists, update it
             tx.execute(
-                "UPDATE assets SET file_size = ?1 WHERE original_path = ?2",
-                rusqlite::params![size as i64, path],
+                "UPDATE assets SET file_size = ?1, duration_sec = ?2 WHERE original_path = ?3",
+                rusqlite::params![size as i64, duration_sec, path],
             )
             .map_err(|e| e.to_string())?;
             tx.commit().map_err(|e| e.to_string())?;
@@ -512,7 +591,14 @@ fn replace_file_in_db(
     path: &str,
     media_type: &str,
     size: u64,
+    app: &AppHandle,
 ) -> Result<(), String> {
+    let duration_sec = if media_type == "audio" || media_type == "video" {
+        detect_media_duration_sec(app, path)
+    } else {
+        0.0
+    };
+
     let conn = conn.lock().map_err(|e| e.to_string())?;
 
     // Check if file exists in database with the current path
@@ -527,9 +613,9 @@ fn replace_file_in_db(
     if exists {
         // File exists, replace the row with new data
         conn.execute(
-            "UPDATE assets SET filename = ?1, extension = ?2, type = ?3, file_size = ?4 
-             WHERE original_path = ?5",
-            rusqlite::params![filename, ext, media_type, size as i64, path],
+            "UPDATE assets SET filename = ?1, extension = ?2, type = ?3, file_size = ?4, duration_sec = ?5 
+             WHERE original_path = ?6",
+            rusqlite::params![filename, ext, media_type, size as i64, duration_sec, path],
         )
         .map_err(|e| e.to_string())?;
     } else {
@@ -537,7 +623,7 @@ fn replace_file_in_db(
         conn.execute(
             "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![filename, ext, path, media_type, size as i64, "{}", 0.0, None::<String>],
+            rusqlite::params![filename, ext, path, media_type, size as i64, "{}", duration_sec, None::<String>],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -553,7 +639,14 @@ fn handle_rename_in_db(
     new_ext: &str,
     media_type: &str,
     size: u64,
+    app: &AppHandle,
 ) -> Result<(), String> {
+    let duration_sec = if media_type == "audio" || media_type == "video" {
+        detect_media_duration_sec(app, new_path)
+    } else {
+        0.0
+    };
+
     let conn = conn.lock().map_err(|e| e.to_string())?;
 
     // Check if old path exists in database
@@ -568,9 +661,9 @@ fn handle_rename_in_db(
     if exists {
         // Update existing record with new path and name
         conn.execute(
-            "UPDATE assets SET filename = ?1, extension = ?2, original_path = ?3, type = ?4, file_size = ?5 
-             WHERE original_path = ?6",
-            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, old_path],
+            "UPDATE assets SET filename = ?1, extension = ?2, original_path = ?3, type = ?4, file_size = ?5, duration_sec = ?6 
+             WHERE original_path = ?7",
+            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, duration_sec, old_path],
         )
         .map_err(|e| e.to_string())?;
     } else {
@@ -578,7 +671,7 @@ fn handle_rename_in_db(
         conn.execute(
             "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", 0.0, None::<String>],
+            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", duration_sec, None::<String>],
         )
         .map_err(|e| e.to_string())?;
     }

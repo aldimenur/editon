@@ -1,6 +1,4 @@
 import { type ReactNode } from "react";
-import { faSliders } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,7 +9,7 @@ import {
 import SearchTagFilter from "@/components/search-tag-filter";
 import ViewModeSelector from "@/components/view-mode-selector";
 import useNavStore from "@/stores/nav-store";
-import { SlidersHorizontal, SlidersIcon } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 
 type ViewMode = "list" | "grid" | "large";
 

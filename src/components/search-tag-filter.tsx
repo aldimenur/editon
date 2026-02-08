@@ -1,6 +1,5 @@
-import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass, faTags } from "@fortawesome/free-solid-svg-icons";
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tags } from "lucide-react";
 
 type SearchTagFilterProps = {
   searchValue: string;
@@ -27,19 +27,12 @@ export default function SearchTagFilter({
   selectedTags,
   onSelectedTagsChange,
 }: SearchTagFilterProps) {
-  const selectedTagText = useMemo(
-    () =>
-      selectedTags.length > 0 ? `${selectedTags.length} selected` : "Filter",
-    [selectedTags.length],
-  );
-
   return (
     <>
       <div className="relative flex-1 h-8 flex items-center min-w-[140px]">
         <FontAwesomeIcon
           icon={faMagnifyingGlass}
           className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px]"
-          fixedWidth
         />
         <Input
           type="text"
@@ -56,27 +49,30 @@ export default function SearchTagFilter({
             <Button
               variant="outline"
               size="sm"
-              className="gap-0.5 h-5 px-1.5 text-[10px] shrink-0"
+              className="gap-0.5 px-1.5 text-[10px] relative h-8 w-8"
             >
-              <FontAwesomeIcon
-                icon={faTags}
-                className="text-[10px]"
-                fixedWidth
+              {selectedTags.length !== 0 &&
+                <div className="absolute top-[-8px] left-[-4px] bg-red-400 w-4 h-4 rounded-full text-white">
+                  {selectedTags.length}
+                </div>
+              }
+              <Tags size="lg"
               />
-              {selectedTagText}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Filter by Tags</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Filter by Tags</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem
               checked={selectedTags.length === 0}
               onCheckedChange={() => onSelectedTagsChange([])}
+              className="text-[10px]"
             >
               All Tags
             </DropdownMenuCheckboxItem>
             {availableTags.map((tag) => (
               <DropdownMenuCheckboxItem
+                className="text-[10px]"
                 key={tag}
                 checked={selectedTags.includes(tag)}
                 onCheckedChange={() => {

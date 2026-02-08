@@ -48,3 +48,12 @@ export interface SyncResult {
   removed: number;
   total: number;
 }
+
+export interface TrimMediaInput {
+  input_path: string;
+  start_sec: number;
+  end_sec: number;
+  output_path?: string | null;
+}
+
+export type TrimMediaResult = string;
