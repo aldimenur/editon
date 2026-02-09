@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Input } from "@/components/ui/input";
-import { Play, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 import TagsDialog from "@/components/TagsDialog";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
+import { trimMediaAction } from "@/lib/actions/trim-media";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -37,6 +38,14 @@ const ITEM_HEIGHTS = {
   grid: 100,
   large: 400,
 };
+
+function formatVideoTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const whole = Math.floor(seconds);
+  const mins = Math.floor(whole / 60);
+  const secs = whole % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 const VideoPage = () => {
   const {
@@ -59,6 +68,26 @@ const VideoPage = () => {
     string | null
   >(null);
   const [fullscreenVideo, setFullscreenVideo] = useState<Asset | null>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fullscreenTrimBarRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreenPlaying, setIsFullscreenPlaying] = useState(false);
+  const [isFullscreenMuted, setIsFullscreenMuted] = useState(true);
+  const [fullscreenCurrentTime, setFullscreenCurrentTime] = useState(0);
+  const [fullscreenDuration, setFullscreenDuration] = useState(0);
+  const [fullscreenTrimRange, setFullscreenTrimRange] = useState({
+    start: 0,
+    end: 1,
+  });
+  const [fullscreenAppliedTrimRange, setFullscreenAppliedTrimRange] = useState({
+    start: 0,
+    end: 1,
+  });
+  const [isFullscreenTrimming, setIsFullscreenTrimming] = useState(false);
+  const [fullscreenTrimError, setFullscreenTrimError] = useState<string | null>(
+    null,
+  );
+  const [fullscreenTrimmedOutputPath, setFullscreenTrimmedOutputPath] =
+    useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<string[]>([]);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -78,6 +107,10 @@ const VideoPage = () => {
     filteredAssetIds.every((id) => selectedAssetIds.includes(id));
   const hasMore = videoFiles.length < videoSearchCount;
   const videoSearchText = videoSearch.search;
+  const hasFullscreenTrimChanges =
+    Math.abs(fullscreenTrimRange.start - fullscreenAppliedTrimRange.start) >
+    0.0001 ||
+    Math.abs(fullscreenTrimRange.end - fullscreenAppliedTrimRange.end) > 0.0001;
 
   // Track container width and update columns + row height responsively
   useEffect(() => {
@@ -276,9 +309,9 @@ const VideoPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -300,8 +333,213 @@ const VideoPage = () => {
     );
   };
 
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
+  const FULLSCREEN_MIN_TRIM_WIDTH = 0.02;
+
+  useEffect(() => {
+    if (!fullscreenVideo) return;
+
+    setIsFullscreenPlaying(false);
+    setIsFullscreenMuted(true);
+    setFullscreenCurrentTime(0);
+    setFullscreenDuration(0);
+    setFullscreenTrimRange({ start: 0, end: 1 });
+    setFullscreenAppliedTrimRange({ start: 0, end: 1 });
+    setIsFullscreenTrimming(false);
+    setFullscreenTrimError(null);
+    setFullscreenTrimmedOutputPath(null);
+  }, [fullscreenVideo?.original_path]);
+
   const closeFullscreen = () => {
     setFullscreenVideo(null);
+    setFullscreenTrimError(null);
+  };
+
+  const handleFullscreenTogglePlayback = () => {
+    const node = fullscreenVideoRef.current;
+    if (!node) return;
+
+    if (node.paused) {
+      void node.play();
+    } else {
+      node.pause();
+    }
+  };
+
+  const handleFullscreenToggleMute = () => {
+    const nextMuted = !isFullscreenMuted;
+    setIsFullscreenMuted(nextMuted);
+    if (fullscreenVideoRef.current) {
+      fullscreenVideoRef.current.muted = nextMuted;
+    }
+  };
+
+  const seekFullscreenTo = (nextTime: number) => {
+    if (fullscreenVideoRef.current) {
+      fullscreenVideoRef.current.currentTime = nextTime;
+    }
+    setFullscreenCurrentTime(nextTime);
+  };
+
+  const handleFullscreenVideoClick = (
+    event: ReactMouseEvent<HTMLVideoElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleFullscreenTogglePlayback();
+  };
+
+  const handleFullscreenTrimBarClick = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!fullscreenTrimBarRef.current) return;
+    const rect = fullscreenTrimBarRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    setFullscreenTrimRange((prev) => {
+      const distToStart = Math.abs(ratio - prev.start);
+      const distToEnd = Math.abs(ratio - prev.end);
+
+      if (distToStart <= distToEnd) {
+        const nextStart = clamp(ratio, 0, prev.end - FULLSCREEN_MIN_TRIM_WIDTH);
+        return { ...prev, start: nextStart };
+      }
+
+      const nextEnd = clamp(ratio, prev.start + FULLSCREEN_MIN_TRIM_WIDTH, 1);
+      return { ...prev, end: nextEnd };
+    });
+    setFullscreenTrimError(null);
+  };
+
+  const startFullscreenTrimDrag = (
+    mode: "start" | "end",
+    event: ReactMouseEvent,
+  ) => {
+    if (!fullscreenTrimBarRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = fullscreenTrimBarRef.current.getBoundingClientRect();
+    const initial = { ...fullscreenTrimRange };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = (moveEvent.clientX - event.clientX) / rect.width;
+      let nextStart = initial.start;
+      let nextEnd = initial.end;
+
+      if (mode === "start") {
+        nextStart = clamp(
+          initial.start + delta,
+          0,
+          initial.end - FULLSCREEN_MIN_TRIM_WIDTH,
+        );
+      } else {
+        nextEnd = clamp(
+          initial.end + delta,
+          initial.start + FULLSCREEN_MIN_TRIM_WIDTH,
+          1,
+        );
+      }
+
+      setFullscreenTrimRange({ start: nextStart, end: nextEnd });
+      setFullscreenTrimError(null);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleFullscreenTrimApply = async () => {
+    if (!fullscreenVideo) return;
+    const durationSec =
+      fullscreenDuration > 0
+        ? fullscreenDuration
+        : fullscreenVideo.duration_sec;
+
+    if (durationSec <= 0) {
+      setFullscreenTrimError("Cannot trim media with unknown duration.");
+      return;
+    }
+
+    setIsFullscreenTrimming(true);
+    setFullscreenTrimError(null);
+
+    try {
+      const outputPath = await trimMediaAction({
+        input_path: fullscreenVideo.original_path,
+        start_sec: fullscreenTrimRange.start * durationSec,
+        end_sec: fullscreenTrimRange.end * durationSec,
+      });
+      setFullscreenAppliedTrimRange(fullscreenTrimRange);
+      setFullscreenTrimmedOutputPath(outputPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFullscreenTrimError(message);
+      console.error("Failed to trim media in fullscreen:", error);
+    } finally {
+      setIsFullscreenTrimming(false);
+    }
+  };
+
+  const handleFullscreenTrimCancel = () => {
+    setFullscreenTrimRange(fullscreenAppliedTrimRange);
+    setFullscreenTrimError(null);
+  };
+
+  const handleFullscreenTrimmedDragStart = (
+    event: ReactDragEvent<HTMLButtonElement>,
+  ) => {
+    if (!fullscreenTrimmedOutputPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dragPreview = getDragPreviewIcon(
+      fullscreenTrimmedOutputPath,
+      "Dragging trim",
+    );
+    applyDragImage(
+      event.dataTransfer,
+      dragPreview,
+      fullscreenTrimmedOutputPath,
+    );
+
+    try {
+      startDrag({
+        item: [fullscreenTrimmedOutputPath],
+        icon: dragPreview || fullscreenTrimmedOutputPath,
+        mode: "copy",
+      });
+    } catch (error) {
+      console.error("Failed to drag fullscreen trimmed media:", error);
+    }
+  };
+
+  const handleFullscreenTrimmedDragEnd = (
+    event: ReactDragEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDeleteFullscreenTrimmed = async () => {
+    if (!fullscreenTrimmedOutputPath) return;
+    try {
+      await invoke("delete_file", { path: fullscreenTrimmedOutputPath });
+      setFullscreenTrimmedOutputPath(null);
+    } catch (error) {
+      console.error("Failed to delete fullscreen trimmed media:", error);
+    }
   };
 
   const openBulkTagsDialog = () => {
@@ -493,6 +731,13 @@ const VideoPage = () => {
     event: ReactDragEvent<HTMLDivElement>,
     file: Asset,
   ) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('[data-no-card-drag="true"]')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
 
@@ -518,7 +763,6 @@ const VideoPage = () => {
     event.stopPropagation();
   };
 
-  // New VideoCard component to manage per-card playing state (thumbnail -> video)
   const VideoCard = ({
     file,
     minHeight = 0,
@@ -526,14 +770,249 @@ const VideoPage = () => {
     file: Asset;
     minHeight?: number;
   }) => {
+    const trimBarRef = useRef<HTMLDivElement | null>(null);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
     const [playing, setPlaying] = useState(false);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [isMuted, setIsMuted] = useState(true);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [videoDuration, setVideoDuration] = useState(0);
+    const [trimRange, setTrimRange] = useState({ start: 0, end: 1 });
+    const [appliedTrimRange, setAppliedTrimRange] = useState({
+      start: 0,
+      end: 1,
+    });
+    const [isTrimming, setIsTrimming] = useState(false);
+    const [trimError, setTrimError] = useState<string | null>(null);
+    const [trimmedOutputPath, setTrimmedOutputPath] = useState<string | null>(
+      null,
+    );
     const videoSrc = convertFileSrc(file.original_path);
     const thumbSrc = file.thumbnail_path
       ? convertFileSrc(file.thumbnail_path)
       : "";
     const isSelected = selectedAssetIds.includes(file.id ?? -1);
-
+    const durationSec = file.duration_sec > 0 ? file.duration_sec : 0;
+    const MIN_TRIM_WIDTH = 0.02;
+    const hasTrimChanges =
+      Math.abs(trimRange.start - appliedTrimRange.start) > 0.0001 ||
+      Math.abs(trimRange.end - appliedTrimRange.end) > 0.0001;
     const isGrid = viewModeVideo === "grid";
+    const showVideo = playing || !thumbSrc;
+
+    useEffect(() => {
+      setTrimRange({ start: 0, end: 1 });
+      setAppliedTrimRange({ start: 0, end: 1 });
+      setTrimError(null);
+      setIsTrimming(false);
+      setTrimmedOutputPath(null);
+      setPlaying(false);
+      setIsVideoPlaying(false);
+      setIsMuted(true);
+      setCurrentTime(0);
+      setVideoDuration(0);
+    }, [file.original_path]);
+
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(max, Math.max(min, value));
+
+    const startTrimDrag = (mode: "start" | "end", event: ReactMouseEvent) => {
+      if (!trimBarRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = trimBarRef.current.getBoundingClientRect();
+      const initial = { ...trimRange };
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const delta = (moveEvent.clientX - event.clientX) / rect.width;
+        let nextStart = initial.start;
+        let nextEnd = initial.end;
+
+        if (mode === "start") {
+          nextStart = clamp(
+            initial.start + delta,
+            0,
+            initial.end - MIN_TRIM_WIDTH,
+          );
+        } else {
+          nextEnd = clamp(
+            initial.end + delta,
+            initial.start + MIN_TRIM_WIDTH,
+            1,
+          );
+        }
+
+        setTrimRange({ start: nextStart, end: nextEnd });
+        setTrimError(null);
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    };
+
+    const handleTrimApply = async (
+      event: ReactMouseEvent<HTMLButtonElement>,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (durationSec <= 0) {
+        setTrimError("Cannot trim media with unknown duration.");
+        return;
+      }
+
+      setIsTrimming(true);
+      setTrimError(null);
+
+      try {
+        const outputPath = await trimMediaAction({
+          input_path: file.original_path,
+          start_sec: trimRange.start * durationSec,
+          end_sec: trimRange.end * durationSec,
+        });
+        setAppliedTrimRange(trimRange);
+        setTrimmedOutputPath(outputPath);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setTrimError(message);
+        console.error("Failed to trim media:", error);
+      } finally {
+        setIsTrimming(false);
+      }
+    };
+
+    const handleTrimCancel = (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setTrimRange(appliedTrimRange);
+      setTrimError(null);
+    };
+
+    const handleTrimmedDragStart = (
+      event: ReactDragEvent<HTMLButtonElement>,
+    ) => {
+      if (!trimmedOutputPath) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const dragPreview = getDragPreviewIcon(
+        trimmedOutputPath,
+        "Dragging trim",
+      );
+      applyDragImage(event.dataTransfer, dragPreview, trimmedOutputPath);
+
+      try {
+        startDrag({
+          item: [trimmedOutputPath],
+          icon: dragPreview || trimmedOutputPath,
+          mode: "copy",
+        });
+      } catch (error) {
+        console.error("Failed to drag trimmed media:", error);
+      }
+    };
+
+    const handleTrimmedDragEnd = (event: ReactDragEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleStartPlayback = () => {
+      setPlaying(true);
+      const node = videoRef.current;
+      if (!node) return;
+      void node.play().catch(() => {
+        // Ignore autoplay restrictions and let user press play button.
+      });
+    };
+
+    const handleSeek = (event: ReactMouseEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+    };
+
+    const handleTogglePlayback = (
+      event: ReactMouseEvent<HTMLButtonElement>,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const node = videoRef.current;
+      if (!node) {
+        handleStartPlayback();
+        return;
+      }
+
+      if (node.paused) {
+        void node.play();
+      } else {
+        node.pause();
+      }
+    };
+
+    const handleToggleMute = (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nextMuted = !isMuted;
+      setIsMuted(nextMuted);
+      if (videoRef.current) {
+        videoRef.current.muted = nextMuted;
+      }
+    };
+
+    const seekTo = (nextTime: number) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = nextTime;
+      }
+      setCurrentTime(nextTime);
+    };
+
+    const toggleVideoPlayback = () => {
+      const node = videoRef.current;
+      if (!node) return;
+
+      if (node.paused) {
+        void node.play();
+      } else {
+        node.pause();
+      }
+    };
+
+    const handleVideoClick = (event: ReactMouseEvent<HTMLVideoElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleVideoPlayback();
+    };
+
+    const handleTrimBarClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!trimBarRef.current) return;
+      const rect = trimBarRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      setTrimRange((prev) => {
+        const distToStart = Math.abs(ratio - prev.start);
+        const distToEnd = Math.abs(ratio - prev.end);
+
+        if (distToStart <= distToEnd) {
+          const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
+          return { ...prev, start: nextStart };
+        }
+
+        const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
+        return { ...prev, end: nextEnd };
+      });
+      setTrimError(null);
+    };
 
     return (
       <div
@@ -572,10 +1051,10 @@ const VideoPage = () => {
         }
       >
         <div className="absolute inset-0">
-          {!playing && thumbSrc ? (
+          {!showVideo ? (
             <div
               className="relative h-full w-full cursor-pointer"
-              onClick={() => setPlaying(true)}
+              onClick={handleStartPlayback}
             >
               <img
                 src={thumbSrc}
@@ -584,34 +1063,224 @@ const VideoPage = () => {
                 decoding="async"
               />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/40 rounded-full p-2">
-                  <Play className="w-6 h-6 text-white" />
+                <div className="rounded-full border border-white/50 bg-black/45 p-3 backdrop-blur-sm">
+                  <Play className="h-7 w-7 text-white" />
                 </div>
               </div>
             </div>
           ) : (
             <video
+              ref={videoRef}
               src={videoSrc}
               className="absolute inset-0 h-full w-full object-cover bg-muted"
-              controls
               playsInline
               disablePictureInPicture
               controlsList="nofullscreen"
               autoPlay={playing}
+              muted={isMuted}
+              onPlay={() => setIsVideoPlaying(true)}
+              onPause={() => setIsVideoPlaying(false)}
+              onLoadedMetadata={(event) => {
+                setVideoDuration(event.currentTarget.duration || 0);
+              }}
+              onTimeUpdate={(event) => {
+                setCurrentTime(event.currentTarget.currentTime || 0);
+              }}
+              onClick={handleVideoClick}
             />
           )}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
-          <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
-          <div className="relative">
-            <div className="text-xs font-medium truncate whitespace-nowrap">
-              {highlightText(file.filename, videoSearchText)}
+        {showVideo && (
+          <div
+            className="absolute inset-x-2 bottom-8 z-20 flex items-center justify-between"
+            data-no-card-drag="true"
+          >
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon-xs"
+                variant="outline"
+                className="h-6 w-6 rounded-sm bg-background/80"
+                onClick={handleTogglePlayback}
+                title={isVideoPlaying ? "Pause" : "Play"}
+              >
+                {isVideoPlaying ? (
+                  <Pause className="h-3 w-3" />
+                ) : (
+                  <Play className="h-3 w-3" />
+                )}
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="outline"
+                className="h-6 w-6 rounded-sm bg-background/80"
+                onClick={handleToggleMute}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? (
+                  <VolumeX className="h-3 w-3" />
+                ) : (
+                  <Volume2 className="h-3 w-3" />
+                )}
+              </Button>
             </div>
-            <div className="max-h-7 overflow-hidden">
-              {renderTags(file.tags)}
+            <div className="rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] text-foreground/90">
+              {formatVideoTime(currentTime)} / {formatVideoTime(videoDuration)}
             </div>
           </div>
+        )}
+
+        {showVideo && (
+          <div
+            className="absolute inset-x-2 bottom-4 z-20"
+            data-no-card-drag="true"
+          >
+            <input
+              type="range"
+              min={0}
+              max={videoDuration || 0}
+              step={0.1}
+              value={Math.min(currentTime, videoDuration || 0)}
+              onMouseDown={handleSeek}
+              onPointerDown={(event) => event.stopPropagation()}
+              onInput={(event) => {
+                event.stopPropagation();
+                const nextTime = Number(event.currentTarget.value);
+                seekTo(nextTime);
+              }}
+              onChange={(event) => {
+                event.stopPropagation();
+                const nextTime = Number(event.currentTarget.value);
+                seekTo(nextTime);
+              }}
+              className="h-[3px] w-full accent-primary"
+            />
+          </div>
+        )}
+
+        {hasTrimChanges && (
+          <div
+            className="absolute left-2 top-2 z-20 flex items-center gap-1"
+            data-no-card-drag="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Button
+              size="sm"
+              className="h-6 rounded-[6px] px-2 text-[10px]"
+              disabled={isTrimming}
+              onClick={handleTrimApply}
+            >
+              {isTrimming ? "Applying..." : "Apply"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 rounded-[6px] px-2 text-[10px]"
+              disabled={isTrimming}
+              onClick={handleTrimCancel}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {trimmedOutputPath && (
+          <div
+            className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-[6px] bg-background/90 p-1"
+            data-no-card-drag="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              draggable
+              className="h-6 rounded-[6px] px-2 text-[10px]"
+              onDragStart={handleTrimmedDragStart}
+              onDragEnd={handleTrimmedDragEnd}
+              title="Drag trimmed media"
+            >
+              Drag
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 rounded-[6px] px-2 text-[10px]"
+              onClick={() => void revealItemInDir(trimmedOutputPath)}
+            >
+              Show
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 rounded-[6px] px-2 text-[10px] text-destructive hover:text-destructive"
+              onClick={() => handleDeleteClick(trimmedOutputPath)}
+            >
+              Delete
+            </Button>
+          </div>
+        )}
+
+        <div
+          className="absolute inset-x-2 bottom-0.5 z-20"
+          data-no-card-drag="true"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <div
+            ref={trimBarRef}
+            className="relative h-[3px] rounded-full bg-background/80"
+            onClick={handleTrimBarClick}
+          >
+            <div
+              className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
+              style={{
+                left: `${trimRange.start * 100}%`,
+                width: `${(trimRange.end - trimRange.start) * 100}%`,
+              }}
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("start", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim start handle"
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("end", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim end handle"
+            />
+          </div>
+        </div>
+
+        {trimError && (
+          <div className="absolute bottom-4 left-2 z-20 max-w-[70%] truncate rounded-[6px] bg-destructive/85 px-2 py-0.5 text-[10px] text-destructive-foreground">
+            {trimError}
+          </div>
+        )}
+
+        <div
+          className={`pointer-events-none absolute left-2 z-20 max-w-[70%] truncate rounded-sm bg-black/35 px-2 py-0.5 text-xs font-medium text-white ${hasTrimChanges ? "top-10" : "top-2"}`}
+        >
+          {highlightText(file.filename, videoSearchText)}
+        </div>
+
+        <div
+          className={`pointer-events-none absolute inset-x-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${showVideo ? "bottom-16" : "bottom-12"}`}
+        >
+          <div className="max-h-7 overflow-hidden">{renderTags(file.tags)}</div>
         </div>
 
         <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -736,28 +1405,200 @@ const VideoPage = () => {
       {/* Fullscreen Video Modal */}
       {fullscreenVideo && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3"
+          className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.4),rgba(0,0,0,0.95))] flex items-center justify-center p-1.5 sm:p-3"
           onClick={closeFullscreen}
         >
           <div
-            className="relative w-full max-w-6xl max-h-full"
+            className="relative w-full max-w-6xl max-h-[calc(100vh-0.75rem)] overflow-y-auto rounded-xl border border-white/15 bg-black/40 p-2 sm:max-h-[calc(100vh-1.5rem)] sm:p-3 shadow-2xl backdrop-blur"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="mb-2 flex items-center justify-between gap-2 pr-10 sm:pr-12">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-white sm:text-sm">
+                  {fullscreenVideo.filename}
+                </p>
+                <p className="text-[10px] text-white/70 sm:text-xs">
+                  {formatVideoTime(fullscreenVideo.duration_sec)}
+                </p>
+              </div>
+            </div>
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-2 right-2 h-10 w-10 text-white hover:bg-white/20 z-10"
+              className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full text-white hover:bg-white/20 sm:top-3 sm:right-3 sm:h-9 sm:w-9"
               onClick={closeFullscreen}
             >
-              <span className="text-2xl">×</span>
+              <span className="text-lg sm:text-xl">×</span>
             </Button>
             <video
+              ref={fullscreenVideoRef}
               src={convertFileSrc(fullscreenVideo.original_path)}
-              className="w-full max-h-[90vh] object-contain bg-black"
-              controls
+              className="w-full max-h-[52vh] rounded-lg object-contain bg-black sm:max-h-[64vh] lg:max-h-[72vh]"
               autoPlay
               playsInline
+              muted={isFullscreenMuted}
+              onPlay={() => setIsFullscreenPlaying(true)}
+              onPause={() => setIsFullscreenPlaying(false)}
+              onLoadedMetadata={(event) => {
+                const duration = event.currentTarget.duration || 0;
+                setFullscreenDuration(duration);
+              }}
+              onTimeUpdate={(event) => {
+                setFullscreenCurrentTime(event.currentTarget.currentTime || 0);
+              }}
+              onClick={handleFullscreenVideoClick}
             />
+
+            <div className="mt-2 rounded-lg border border-white/15 bg-black/35 p-1.5 sm:mt-3 sm:p-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon-xs"
+                    variant="outline"
+                    className="h-6 w-6 rounded-sm bg-background/80 sm:h-7 sm:w-7"
+                    onClick={handleFullscreenTogglePlayback}
+                    title={isFullscreenPlaying ? "Pause" : "Play"}
+                  >
+                    {isFullscreenPlaying ? (
+                      <Pause className="h-3 w-3" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Button
+                    size="icon-xs"
+                    variant="outline"
+                    className="h-6 w-6 rounded-sm bg-background/80 sm:h-7 sm:w-7"
+                    onClick={handleFullscreenToggleMute}
+                    title={isFullscreenMuted ? "Unmute" : "Mute"}
+                  >
+                    {isFullscreenMuted ? (
+                      <VolumeX className="h-3 w-3" />
+                    ) : (
+                      <Volume2 className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+                <div className="rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] text-foreground/90 sm:text-[11px]">
+                  {formatVideoTime(fullscreenCurrentTime)} /{" "}
+                  {formatVideoTime(fullscreenDuration)}
+                </div>
+              </div>
+
+              <div className="mb-1.5">
+                <input
+                  type="range"
+                  min={0}
+                  max={fullscreenDuration || 0}
+                  step={0.1}
+                  value={Math.min(
+                    fullscreenCurrentTime,
+                    fullscreenDuration || 0,
+                  )}
+                  onChange={(event) =>
+                    seekFullscreenTo(Number(event.currentTarget.value))
+                  }
+                  className="h-[3px] w-full accent-primary"
+                />
+              </div>
+
+              <div
+                ref={fullscreenTrimBarRef}
+                className="relative h-[3px] rounded-full bg-background/80"
+                onClick={handleFullscreenTrimBarClick}
+              >
+                <div
+                  className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
+                  style={{
+                    left: `${fullscreenTrimRange.start * 100}%`,
+                    width: `${(fullscreenTrimRange.end - fullscreenTrimRange.start) * 100}%`,
+                  }}
+                />
+                <button
+                  type="button"
+                  className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+                  style={{
+                    left: `calc(${fullscreenTrimRange.start * 100}% - 6px)`,
+                  }}
+                  onMouseDown={(event) =>
+                    startFullscreenTrimDrag("start", event)
+                  }
+                  aria-label="Fullscreen trim start handle"
+                />
+                <button
+                  type="button"
+                  className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+                  style={{
+                    left: `calc(${fullscreenTrimRange.end * 100}% - 6px)`,
+                  }}
+                  onMouseDown={(event) => startFullscreenTrimDrag("end", event)}
+                  aria-label="Fullscreen trim end handle"
+                />
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                {hasFullscreenTrimChanges && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="h-7 rounded-[6px] px-2 text-[11px]"
+                      disabled={isFullscreenTrimming}
+                      onClick={handleFullscreenTrimApply}
+                    >
+                      {isFullscreenTrimming ? "Applying..." : "Apply"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-[6px] px-2 text-[11px]"
+                      disabled={isFullscreenTrimming}
+                      onClick={handleFullscreenTrimCancel}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+
+                {fullscreenTrimmedOutputPath && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      draggable
+                      className="h-7 rounded-[6px] px-2 text-[11px]"
+                      onDragStart={handleFullscreenTrimmedDragStart}
+                      onDragEnd={handleFullscreenTrimmedDragEnd}
+                    >
+                      Drag
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 rounded-[6px] px-2 text-[11px]"
+                      onClick={() =>
+                        void revealItemInDir(fullscreenTrimmedOutputPath)
+                      }
+                    >
+                      Show
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 rounded-[6px] px-2 text-[11px] text-destructive hover:text-destructive"
+                      onClick={() => void handleDeleteFullscreenTrimmed()}
+                    >
+                      Delete
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {fullscreenTrimError && (
+                <div className="mt-2 rounded-[6px] bg-destructive/85 px-2 py-1 text-[11px] text-destructive-foreground">
+                  {fullscreenTrimError}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

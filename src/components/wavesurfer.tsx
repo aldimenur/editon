@@ -41,7 +41,7 @@ const WavesurferRender = (props: {
     const wavesurfer = WaveSurfer.create({
       container: containerRef.current,
       waveColor: isDark ? "#60a5fa" : "#3b82f6",
-      progressColor: isDark ? "#1f2937" : "#e5e7eb",
+      progressColor: isDark ? "#555" : "#aaa",
       cursorWidth: 4,
       width: width,
       height: resolvedWaveHeight,
@@ -101,7 +101,7 @@ const WavesurferRender = (props: {
     const wavesurfer = wavesurferRef.current;
     if (!wavesurfer) return;
 
-    const handleFinish = () => {};
+    const handleFinish = () => { };
 
     wavesurfer.on("finish", handleFinish);
 

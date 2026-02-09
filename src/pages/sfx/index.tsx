@@ -105,10 +105,7 @@ const SfxAudioCard = ({
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
 
-  const startTrimDrag = (
-    mode: "start" | "end" | "range",
-    event: ReactMouseEvent,
-  ) => {
+  const startTrimDrag = (mode: "start" | "end", event: ReactMouseEvent) => {
     if (!trimBarRef.current) return;
     event.preventDefault();
     event.stopPropagation();
@@ -127,12 +124,8 @@ const SfxAudioCard = ({
           0,
           initial.end - MIN_TRIM_WIDTH,
         );
-      } else if (mode === "end") {
-        nextEnd = clamp(initial.end + delta, initial.start + MIN_TRIM_WIDTH, 1);
       } else {
-        const width = initial.end - initial.start;
-        nextStart = clamp(initial.start + delta, 0, 1 - width);
-        nextEnd = nextStart + width;
+        nextEnd = clamp(initial.end + delta, initial.start + MIN_TRIM_WIDTH, 1);
       }
 
       setTrimRange({ start: nextStart, end: nextEnd });
@@ -205,6 +198,30 @@ const SfxAudioCard = ({
   const handleTrimmedDragEnd = (event: React.DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+  };
+
+  const handleTrimBarClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!trimBarRef.current) return;
+    const rect = trimBarRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    setTrimRange((prev) => {
+      const distToStart = Math.abs(ratio - prev.start);
+      const distToEnd = Math.abs(ratio - prev.end);
+
+      if (distToStart <= distToEnd) {
+        const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
+        return { ...prev, start: nextStart };
+      }
+
+      const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
+      return { ...prev, end: nextEnd };
+    });
+    setTrimError(null);
   };
 
   const isSelectedClass = isSelected
@@ -310,18 +327,14 @@ const SfxAudioCard = ({
         <div
           ref={trimBarRef}
           className="relative h-[3px] rounded-full bg-background/80"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
+          onClick={handleTrimBarClick}
         >
           <div
-            className="absolute bottom-0 top-0 rounded-full bg-primary/90 active:cursor-grabbing"
+            className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
             style={{
               left: `${trimRange.start * 100}%`,
               width: `${(trimRange.end - trimRange.start) * 100}%`,
             }}
-            onMouseDown={(event) => startTrimDrag("range", event)}
           />
           <button
             type="button"

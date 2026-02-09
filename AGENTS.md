@@ -52,6 +52,7 @@ Prefer minimal, targeted changes that match local file conventions.
 - No `lint` script in `package.json`.
 - No ESLint config detected.
 - Prettier is installed without checked-in config.
+- Frontend quick check (lint-like): `npx prettier --check "src/**/*.{ts,tsx,css}"`
 - Optional TS/React formatting: `npx prettier --write "src/**/*.{ts,tsx,css}"`
 - Optional Rust formatting/lint:
   - `cargo fmt`
@@ -64,10 +65,11 @@ Prefer minimal, targeted changes that match local file conventions.
 
 ## Validation recommendations
 
-- Frontend-only edits: run `npm run build`
-- Rust-only edits: run `cargo test` in `src-tauri/`
-- Cross-layer edits: run both commands above
-- Run `npm run tauri build` only for packaging validation
+- Default for routine changes: run lint checks only (avoid full builds on every edit).
+- Frontend-only edits: run `npx prettier --check "src/**/*.{ts,tsx,css}"`
+- Rust-only edits: run `cargo clippy --all-targets --all-features`
+- Cross-layer edits: run both lint checks above
+- Run `npm run build`, `cargo test`, or `npm run tauri build` only when explicitly requested or for release/package validation
 
 ## Code style guidelines
 
