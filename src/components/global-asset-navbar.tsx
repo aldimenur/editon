@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -77,48 +78,49 @@ export default function GlobalAssetNavbar({
                   <p className="text-xs font-medium text-muted-foreground mb-1">
                     Selection
                   </p>
-                  <div className="flex items-center gap-0.5">
-                    {filteredCount > 0 && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={onSelectAll}
-                        disabled={allFilteredSelected}
-                        className="h-5 px-1.5 text-[10px]"
-                      >
-                        Select All
-                      </Button>
-                    )}
-                    {selectedCount > 0 && (
-                      <>
-                        <span className="text-[10px] text-muted-foreground">
-                          {selectedCount}
-                        </span>
-                        <Button
-                          size="sm"
-                          onClick={onEditSelected}
-                          className="h-5 px-1.5 text-[10px]"
-                        >
-                          Edit Tags
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={onDeleteSelected}
-                          className="h-5 px-1.5 text-[10px]"
-                        >
-                          Delete
-                        </Button>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground min-w-6 text-center">
+                      {selectedCount}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={onClearSelected}
                           className="h-5 px-1.5 text-[10px]"
                         >
-                          Clear
+                          Actions
                         </Button>
-                      </>
-                    )}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {filteredCount > 0 && (
+                          <DropdownMenuItem
+                            onClick={onSelectAll}
+                            disabled={allFilteredSelected}
+                          >
+                            Select all filtered
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={onEditSelected}
+                          disabled={selectedCount === 0}
+                        >
+                          Edit selected tags
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={onDeleteSelected}
+                          disabled={selectedCount === 0}
+                        >
+                          Delete selected
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={onClearSelected}
+                          disabled={selectedCount === 0}
+                        >
+                          Clear selection
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </>

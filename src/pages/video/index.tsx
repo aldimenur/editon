@@ -1,28 +1,26 @@
 import useAssetStore from "@/stores/asset-store";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Input } from "@/components/ui/input";
 import {
-  Maximize2,
-  Play,
-  Tag,
-  PencilLine,
-  Trash,
-  FolderSearch,
-  MoreHorizontal,
-  Check,
-} from "lucide-react";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { Input } from "@/components/ui/input";
+import { Play, MoreHorizontal } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
 import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { LogicalPosition } from "@tauri-apps/api/dpi";
+import { Menu } from "@tauri-apps/api/menu";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 import TagsDialog from "@/components/TagsDialog";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
 import {
@@ -71,6 +69,7 @@ const VideoPage = () => {
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [gridColumns, setGridColumns] = useState(3);
   const [gridItemHeight, setGridItemHeight] = useState(160);
+  const appWindow = getCurrentWindow();
   const filteredAssetIds = videoFiles
     .map((file) => file.id)
     .filter((id): id is number => typeof id === "number");
@@ -431,6 +430,94 @@ const VideoPage = () => {
     );
   };
 
+  const openContextMenu = useCallback(
+    async (file: Asset, x: number, y: number) => {
+      const fileId = file.id as number;
+      const isSelected = selectedAssetIds.includes(fileId);
+
+      const menu = await Menu.new({
+        items: [
+          {
+            text: isSelected ? "Deselect" : "Select",
+            accelerator: "S",
+            action: () => toggleSelection(fileId),
+          },
+          {
+            text: "Edit tags",
+            accelerator: "T",
+            action: () => handleTagsClick(fileId, file.tags ?? null),
+          },
+          {
+            text: "Preview fullscreen",
+            accelerator: "Enter",
+            action: () => setFullscreenVideo(file),
+          },
+          {
+            text: "Rename",
+            accelerator: "F2",
+            action: () => handleRenameClick(file.original_path, file.filename),
+          },
+          {
+            text: "Show in folder",
+            accelerator: "O",
+            action: () => {
+              void revealItemInDir(file.original_path);
+            },
+          },
+          { item: "Separator" },
+          {
+            text: "Delete",
+            accelerator: "Delete",
+            action: () => handleDeleteClick(file.original_path),
+          },
+        ],
+      });
+
+      try {
+        await menu.popup(new LogicalPosition(x, y), appWindow);
+      } finally {
+        await menu.close();
+      }
+    },
+    [
+      selectedAssetIds,
+      appWindow,
+      toggleSelection,
+      handleTagsClick,
+      handleRenameClick,
+      handleDeleteClick,
+    ],
+  );
+
+  const handleAssetDragStart = (
+    event: ReactDragEvent<HTMLDivElement>,
+    file: Asset,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dragPreview = getDragPreviewIcon(
+      file.original_path,
+      "Dragging video",
+    );
+    applyDragImage(event.dataTransfer, dragPreview, file.original_path);
+
+    try {
+      startDrag({
+        item: [file.original_path],
+        icon: dragPreview || file.original_path,
+        mode: "copy",
+      });
+    } catch (error) {
+      console.error("Failed to drag video:", error);
+    }
+  };
+
+  const handleAssetDragEnd = (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   // New VideoCard component to manage per-card playing state (thumbnail -> video)
   const VideoCard = ({
     file,
@@ -452,6 +539,32 @@ const VideoPage = () => {
       <div
         key={file.id}
         className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (file.id == null) return;
+          void openContextMenu(file, event.clientX, event.clientY);
+        }}
+        onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            if (file.id == null) return;
+            void openContextMenu(
+              file,
+              rect.left + rect.width / 2,
+              rect.top + 20,
+            );
+          }
+        }}
+        title="Right-click or use Shift+F10 for actions"
+        tabIndex={0}
+        draggable
+        onDragStart={(event) => handleAssetDragStart(event, file)}
+        onDragEnd={handleAssetDragEnd}
         style={
           isGrid
             ? { height: gridItemHeight, aspectRatio: "16 / 9" }
@@ -503,105 +616,19 @@ const VideoPage = () => {
 
         <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <Button
-            variant={isSelected ? "default" : "ghost"}
+            variant="ghost"
             size="icon-xs"
-            className="rounded-sm bg-background shadow-sm hover:bg-background"
-            onClick={(event) => {
+            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
+            onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
               event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
               if (file.id == null) return;
-              toggleSelection(file.id);
+              void openContextMenu(file, rect.right - 8, rect.bottom + 2);
             }}
+            title="More actions"
           >
-            <Check className="h-2 w-2" />
+            <MoreHorizontal className="h-2 w-2" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => {
-              if (file.id == null) return;
-              handleTagsClick(file.id, file.tags);
-            }}
-          >
-            <Tag className="h-2 w-2" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={() => setFullscreenVideo(file)}
-          >
-            <Maximize2 className="h-2 w-2" />
-          </Button>
-          {viewModeVideo === "grid" ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <MoreHorizontal className="h-2 w-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <DropdownMenuItem
-                  onClick={() =>
-                    handleRenameClick(file.original_path, file.filename)
-                  }
-                >
-                  <PencilLine />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => revealItemInDir(file.original_path)}
-                >
-                  <FolderSearch />
-                  Open in folder
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => handleDeleteClick(file.original_path)}
-                >
-                  <Trash />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-                onClick={() =>
-                  handleRenameClick(file.original_path, file.filename)
-                }
-              >
-                <PencilLine className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-                onClick={() => revealItemInDir(file.original_path)}
-              >
-                <FolderSearch className="h-2 w-2" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="rounded-sm bg-background/80 shadow-sm text-destructive hover:text-destructive hover:bg-background"
-                onClick={() => handleDeleteClick(file.original_path)}
-              >
-                <Trash className="h-2 w-2" />
-              </Button>
-            </>
-          )}
         </div>
       </div>
     );
@@ -626,6 +653,7 @@ const VideoPage = () => {
         onEditSelected={openBulkTagsDialog}
         onDeleteSelected={handleBulkDeleteClick}
         onClearSelected={() => setSelectedAssetIds([])}
+        hint="Hint: Right-click an item or use Shift+F10"
       />
       <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
         {showEmptyState ? (
