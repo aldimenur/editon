@@ -13,8 +13,17 @@ const WavesurferRender = (props: {
   waveform: number[];
   volume: number;
   enableDrag?: boolean;
+  onPositionChange?: (ratio: number) => void;
 }) => {
-  const { src, width, height, waveform, volume, enableDrag = true } = props;
+  const {
+    src,
+    width,
+    height,
+    waveform,
+    volume,
+    enableDrag = true,
+    onPositionChange,
+  } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,7 +110,7 @@ const WavesurferRender = (props: {
     const wavesurfer = wavesurferRef.current;
     if (!wavesurfer) return;
 
-    const handleFinish = () => { };
+    const handleFinish = () => {};
 
     wavesurfer.on("finish", handleFinish);
 
@@ -120,6 +129,7 @@ const WavesurferRender = (props: {
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickPosition = clickX / rect.width;
+    onPositionChange?.(clickPosition);
 
     // Load audio if not loaded
     if (!isLoadedRef.current) {

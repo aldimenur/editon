@@ -68,6 +68,7 @@ const VideoPage = () => {
     string | null
   >(null);
   const [fullscreenVideo, setFullscreenVideo] = useState<Asset | null>(null);
+  const fullscreenContainerRef = useRef<HTMLDivElement | null>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement | null>(null);
   const fullscreenTrimBarRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreenPlaying, setIsFullscreenPlaying] = useState(false);
@@ -78,6 +79,9 @@ const VideoPage = () => {
     start: 0,
     end: 1,
   });
+  const [fullscreenTrimCursorRatio, setFullscreenTrimCursorRatio] = useState<
+    number | null
+  >(null);
   const [fullscreenAppliedTrimRange, setFullscreenAppliedTrimRange] = useState({
     start: 0,
     end: 1,
@@ -109,7 +113,7 @@ const VideoPage = () => {
   const videoSearchText = videoSearch.search;
   const hasFullscreenTrimChanges =
     Math.abs(fullscreenTrimRange.start - fullscreenAppliedTrimRange.start) >
-    0.0001 ||
+      0.0001 ||
     Math.abs(fullscreenTrimRange.end - fullscreenAppliedTrimRange.end) > 0.0001;
 
   // Track container width and update columns + row height responsively
@@ -309,9 +313,9 @@ const VideoPage = () => {
   const parseTags = (tags: string | null | undefined) =>
     tags
       ? tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
       : [];
 
   const getCommonTags = (assets: { tags?: string | null }[]) => {
@@ -346,6 +350,7 @@ const VideoPage = () => {
     setFullscreenCurrentTime(0);
     setFullscreenDuration(0);
     setFullscreenTrimRange({ start: 0, end: 1 });
+    setFullscreenTrimCursorRatio(null);
     setFullscreenAppliedTrimRange({ start: 0, end: 1 });
     setIsFullscreenTrimming(false);
     setFullscreenTrimError(null);
@@ -402,11 +407,20 @@ const VideoPage = () => {
     if (rect.width <= 0) return;
 
     const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-    setFullscreenTrimRange((prev) => {
-      const distToStart = Math.abs(ratio - prev.start);
-      const distToEnd = Math.abs(ratio - prev.end);
+    const distToStart = Math.abs(ratio - fullscreenTrimRange.start);
+    const distToEnd = Math.abs(ratio - fullscreenTrimRange.end);
+    setFullscreenTrimEdgeAtRatio(
+      distToStart <= distToEnd ? "start" : "end",
+      ratio,
+    );
+  };
 
-      if (distToStart <= distToEnd) {
+  const setFullscreenTrimEdgeAtRatio = (
+    edge: "start" | "end",
+    ratio: number,
+  ) => {
+    setFullscreenTrimRange((prev) => {
+      if (edge === "start") {
         const nextStart = clamp(ratio, 0, prev.end - FULLSCREEN_MIN_TRIM_WIDTH);
         return { ...prev, start: nextStart };
       }
@@ -416,6 +430,46 @@ const VideoPage = () => {
     });
     setFullscreenTrimError(null);
   };
+
+  useEffect(() => {
+    if (!fullscreenVideo) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key !== "i" && key !== "o" && key !== "[" && key !== "]") return;
+
+      event.preventDefault();
+      const ratio =
+        fullscreenTrimCursorRatio ??
+        (fullscreenDuration > 0
+          ? clamp(fullscreenCurrentTime / fullscreenDuration, 0, 1)
+          : null);
+      if (ratio == null) return;
+      if (key === "i" || key === "[") {
+        setFullscreenTrimEdgeAtRatio("start", ratio);
+      } else {
+        setFullscreenTrimEdgeAtRatio("end", ratio);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    fullscreenVideo,
+    fullscreenCurrentTime,
+    fullscreenDuration,
+    fullscreenTrimCursorRatio,
+  ]);
 
   const startFullscreenTrimDrag = (
     mode: "start" | "end",
@@ -770,6 +824,7 @@ const VideoPage = () => {
     file: Asset;
     minHeight?: number;
   }) => {
+    const cardRef = useRef<HTMLDivElement | null>(null);
     const trimBarRef = useRef<HTMLDivElement | null>(null);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const [playing, setPlaying] = useState(false);
@@ -777,6 +832,7 @@ const VideoPage = () => {
     const [isMuted, setIsMuted] = useState(true);
     const [currentTime, setCurrentTime] = useState(0);
     const [videoDuration, setVideoDuration] = useState(0);
+    const [trimCursorRatio, setTrimCursorRatio] = useState<number | null>(null);
     const [trimRange, setTrimRange] = useState({ start: 0, end: 1 });
     const [appliedTrimRange, setAppliedTrimRange] = useState({
       start: 0,
@@ -811,6 +867,7 @@ const VideoPage = () => {
       setIsMuted(true);
       setCurrentTime(0);
       setVideoDuration(0);
+      setTrimCursorRatio(null);
     }, [file.original_path]);
 
     const clamp = (value: number, min: number, max: number) =>
@@ -854,6 +911,19 @@ const VideoPage = () => {
 
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
+    };
+
+    const setTrimEdgeAtRatio = (edge: "start" | "end", ratio: number) => {
+      setTrimRange((prev) => {
+        if (edge === "start") {
+          const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
+          return { ...prev, start: nextStart };
+        }
+
+        const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
+        return { ...prev, end: nextEnd };
+      });
+      setTrimError(null);
     };
 
     const handleTrimApply = async (
@@ -999,30 +1069,73 @@ const VideoPage = () => {
       if (rect.width <= 0) return;
 
       const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-      setTrimRange((prev) => {
-        const distToStart = Math.abs(ratio - prev.start);
-        const distToEnd = Math.abs(ratio - prev.end);
+      const distToStart = Math.abs(ratio - trimRange.start);
+      const distToEnd = Math.abs(ratio - trimRange.end);
+      setTrimEdgeAtRatio(distToStart <= distToEnd ? "start" : "end", ratio);
+    };
 
-        if (distToStart <= distToEnd) {
-          const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
-          return { ...prev, start: nextStart };
+    const handleTrimBarPointerMove = (
+      event: ReactMouseEvent<HTMLDivElement>,
+    ) => {
+      if (!trimBarRef.current) return;
+      const rect = trimBarRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      setTrimCursorRatio(ratio);
+    };
+
+    const handleCardPointerMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!cardRef.current) return;
+      const rect = cardRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      setTrimCursorRatio(ratio);
+    };
+
+    useEffect(() => {
+      const onKeyDown = (event: KeyboardEvent) => {
+        const target = event.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        ) {
+          return;
         }
 
-        const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
-        return { ...prev, end: nextEnd };
-      });
-      setTrimError(null);
-    };
+        const key = event.key.toLowerCase();
+        if (trimCursorRatio == null) return;
+        if (key !== "i" && key !== "o" && key !== "[" && key !== "]") return;
+
+        event.preventDefault();
+        setTrimEdgeAtRatio(
+          key === "i" || key === "[" ? "start" : "end",
+          trimCursorRatio,
+        );
+      };
+
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+    }, [trimCursorRatio]);
 
     return (
       <div
+        ref={cardRef}
         key={file.id}
         className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+        onMouseMove={handleCardPointerMove}
+        onMouseLeave={() => setTrimCursorRatio(null)}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
           if (file.id == null) return;
           void openContextMenu(file, event.clientX, event.clientY);
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setFullscreenVideo(file);
         }}
         onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
           if (
@@ -1232,6 +1345,7 @@ const VideoPage = () => {
             ref={trimBarRef}
             className="relative h-[3px] rounded-full bg-background/80"
             onClick={handleTrimBarClick}
+            onMouseMove={handleTrimBarPointerMove}
           >
             <div
               className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
@@ -1409,8 +1523,22 @@ const VideoPage = () => {
           onClick={closeFullscreen}
         >
           <div
+            ref={fullscreenContainerRef}
             className="relative w-full max-w-6xl max-h-[calc(100vh-0.75rem)] overflow-y-auto rounded-xl border border-white/15 bg-black/40 p-2 sm:max-h-[calc(100vh-1.5rem)] sm:p-3 shadow-2xl backdrop-blur"
             onClick={(e) => e.stopPropagation()}
+            onMouseMove={(event) => {
+              if (!fullscreenContainerRef.current) return;
+              const rect =
+                fullscreenContainerRef.current.getBoundingClientRect();
+              if (rect.width <= 0) return;
+              const ratio = clamp(
+                (event.clientX - rect.left) / rect.width,
+                0,
+                1,
+              );
+              setFullscreenTrimCursorRatio(ratio);
+            }}
+            onMouseLeave={() => setFullscreenTrimCursorRatio(null)}
           >
             <div className="mb-2 flex items-center justify-between gap-2 pr-10 sm:pr-12">
               <div className="min-w-0">
@@ -1506,6 +1634,19 @@ const VideoPage = () => {
                 ref={fullscreenTrimBarRef}
                 className="relative h-[3px] rounded-full bg-background/80"
                 onClick={handleFullscreenTrimBarClick}
+                onMouseMove={(event) => {
+                  if (!fullscreenTrimBarRef.current) return;
+                  const rect =
+                    fullscreenTrimBarRef.current.getBoundingClientRect();
+                  if (rect.width <= 0) return;
+                  const ratio = clamp(
+                    (event.clientX - rect.left) / rect.width,
+                    0,
+                    1,
+                  );
+                  setFullscreenTrimCursorRatio(ratio);
+                }}
+                onMouseLeave={() => setFullscreenTrimCursorRatio(null)}
               >
                 <div
                   className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"

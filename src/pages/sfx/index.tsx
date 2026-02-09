@@ -76,6 +76,7 @@ const SfxAudioCard = ({
   renderTags,
   highlightText,
 }: SfxAudioCardProps) => {
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const trimBarRef = useRef<HTMLDivElement | null>(null);
   const [trimRange, setTrimRange] = useState<TrimRange>({ start: 0, end: 1 });
   const [appliedTrimRange, setAppliedTrimRange] = useState<TrimRange>({
@@ -87,6 +88,7 @@ const SfxAudioCard = ({
   const [trimmedOutputPath, setTrimmedOutputPath] = useState<string | null>(
     null,
   );
+  const [trimCursorRatio, setTrimCursorRatio] = useState<number | null>(null);
 
   const MIN_TRIM_WIDTH = 0.02;
   const durationSec = file.duration_sec > 0 ? file.duration_sec : 0;
@@ -100,10 +102,24 @@ const SfxAudioCard = ({
     setTrimError(null);
     setIsTrimming(false);
     setTrimmedOutputPath(null);
+    setTrimCursorRatio(null);
   }, [file.original_path]);
 
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
+
+  const setTrimEdgeAtRatio = (edge: "start" | "end", ratio: number) => {
+    setTrimRange((prev) => {
+      if (edge === "start") {
+        const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
+        return { ...prev, start: nextStart };
+      }
+
+      const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
+      return { ...prev, end: nextEnd };
+    });
+    setTrimError(null);
+  };
 
   const startTrimDrag = (mode: "start" | "end", event: ReactMouseEvent) => {
     if (!trimBarRef.current) return;
@@ -209,20 +225,45 @@ const SfxAudioCard = ({
     if (rect.width <= 0) return;
 
     const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-    setTrimRange((prev) => {
-      const distToStart = Math.abs(ratio - prev.start);
-      const distToEnd = Math.abs(ratio - prev.end);
+    const distToStart = Math.abs(ratio - trimRange.start);
+    const distToEnd = Math.abs(ratio - trimRange.end);
+    setTrimEdgeAtRatio(distToStart <= distToEnd ? "start" : "end", ratio);
+  };
 
-      if (distToStart <= distToEnd) {
-        const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
-        return { ...prev, start: nextStart };
+  const handleCardPointerMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    setTrimCursorRatio(ratio);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
       }
 
-      const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
-      return { ...prev, end: nextEnd };
-    });
-    setTrimError(null);
-  };
+      const key = event.key.toLowerCase();
+      if (trimCursorRatio == null) return;
+      if (key !== "i" && key !== "o" && key !== "[" && key !== "]") return;
+
+      event.preventDefault();
+      setTrimEdgeAtRatio(
+        key === "i" || key === "[" ? "start" : "end",
+        trimCursorRatio,
+      );
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [trimCursorRatio]);
 
   const isSelectedClass = isSelected
     ? "border-primary ring-1 ring-primary/30"
@@ -230,8 +271,11 @@ const SfxAudioCard = ({
 
   return (
     <div
+      ref={cardRef}
       className={`group relative border flex bg-background/70 rounded-[6px] transition-shadow ${isSelectedClass}`}
       style={{ minHeight, height: minHeight, width: "100%" }}
+      onMouseMove={handleCardPointerMove}
+      onMouseLeave={() => setTrimCursorRatio(null)}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenContextMenu(file, event.clientX, event.clientY);
@@ -328,6 +372,13 @@ const SfxAudioCard = ({
           ref={trimBarRef}
           className="relative h-[3px] rounded-full bg-background/80"
           onClick={handleTrimBarClick}
+          onMouseMove={(event) => {
+            if (!trimBarRef.current) return;
+            const rect = trimBarRef.current.getBoundingClientRect();
+            if (rect.width <= 0) return;
+            const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+            setTrimCursorRatio(ratio);
+          }}
         >
           <div
             className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
