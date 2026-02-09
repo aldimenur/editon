@@ -1,11 +1,11 @@
 {
-  "version": "0.2.0",
-  "notes": "Consistency feature on every tabs",
-  "pub_date": "2026-02-04T19:00:00Z",
+  "version": "0.2.1",
+  "notes": "Full Changelog: https://github.com/aldimenur/editon/compare/v0.2.0...v0.2.1",
+  "pub_date": "2026-02-09T14:26:36Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWpUUWtYaEQza0lLYkFIaW5qVHJMNmtIZU9yTTN4SDFpdkRTWkdHSm13S0lBYmJIOXB0TlVKN241Ynl2bFR3UjFRM2kzZmd3bDdKVnlHcGNoZGE5VWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcwMjU0MjMwCWZpbGU6RWRpdG9uXzAuMi4wX3g2NC1zZXR1cC5leGUKTEpGT3Bla2pVNkIrakJrRE11K0JqS0VxLzduQnREd1ppM0w3MlRGdGVuMUdFQ3laNVh2eW44clZnYU1iWVE3K3F0UjM3aFRjdk9jRUI5UkV2cFFOQVE9PQo=",
-      "url": "https://github.com/aldimenur/editon/releases/download/v0.2.0/Editon_0.2.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWxlakF2ZUpIclVuc0RleHlmZTVlL0R5QXVsMjVYVkVXU0l3ekZvdURLUytkdHhTYnRQdW1MdFFXNDd2ejRBcWlyNHlVMHkveVZZQmVQenI3M3puSXdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcwNjQ2NjAyCWZpbGU6RWRpdG9uXzAuMi4xX3g2NC1zZXR1cC5leGUKaUtidDYrOXQ1OVBUSlBLd2FBbnFtaFdXejBQWHZMeTBRcDgrUFBBM1UxN2lmTnZ1N2sxTTJwVG5NWlJ6T3R0bXFySk5OQUtaTzVveDhROEExZ21FQXc9PQo=",
+      "url": "https://github.com/aldimenur/editon/releases/download/v0.2.1/Editon_0.2.1_x64-setup.exe"
     }
   }
 }
