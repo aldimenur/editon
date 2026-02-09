@@ -246,7 +246,7 @@ const SfxAudioCard = ({
           onOpenContextMenu(file, rect.left + rect.width / 2, rect.top + 20);
         }
       }}
-      title="Right-click or use Shift+F10 for actions"
+      title={file.filename}
       tabIndex={0}
     >
       <div className="flex flex-col flex-1 h-full">
@@ -368,7 +368,7 @@ const SfxAudioCard = ({
       <div className="absolute inset-x-0 bottom-0 z-10 pb-2 pl-2 pt-1.5 group-focus-within:opacity-100 pointer-events-none opacity-0 group-hover:opacity-100">
         <div className="relative">
           {showFileName && (
-            <div className="text-[12px] font-semibold truncate whitespace-nowrap leading-none">
+            <div className="inline-block truncate whitespace-nowrap rounded-[6px] bg-background/85 px-1.5 py-0.5 text-[12px] font-semibold leading-none">
               {highlightText(file.filename, searchText)}
             </div>
           )}
@@ -849,7 +849,6 @@ const SfxPage = () => {
         onEditSelected={openBulkTagsDialog}
         onDeleteSelected={handleBulkDeleteClick}
         onClearSelected={() => setSelectedAssetIds([])}
-        hint="Hint: Right-click an item or use Shift+F10"
         settingsExtra={
           <div className="px-2 py-1">
             <p className="text-xs font-medium text-muted-foreground mb-1">
