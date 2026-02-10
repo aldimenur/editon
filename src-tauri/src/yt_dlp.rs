@@ -13,9 +13,11 @@ pub struct DependencyStatus {
     yt_dlp_installed: bool,
     ffmpeg_installed: bool,
     ffprobe_installed: bool,
+    deno_installed: bool,
     yt_dlp_path: Option<String>,
     ffmpeg_path: Option<String>,
     ffprobe_path: Option<String>,
+    deno_path: Option<String>,
 }
 
 // Cek status dependency
@@ -41,14 +43,22 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
         "ffprobe"
     };
 
+    let deno_name = if cfg!(target_os = "windows") {
+        "deno.exe"
+    } else {
+        "deno"
+    };
+
     let yt_dlp_path = bin_dir.join(yt_dlp_name);
     let ffmpeg_path = bin_dir.join(ffmpeg_name);
     let ffprobe_path = bin_dir.join(ffprobe_name);
+    let deno_path = bin_dir.join(deno_name);
 
     Ok(DependencyStatus {
         yt_dlp_installed: yt_dlp_path.exists(),
         ffmpeg_installed: ffmpeg_path.exists(),
         ffprobe_installed: ffprobe_path.exists(),
+        deno_installed: deno_path.exists(),
         yt_dlp_path: if yt_dlp_path.exists() {
             Some(yt_dlp_path.to_string_lossy().to_string())
         } else {
@@ -61,6 +71,11 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
         },
         ffprobe_path: if ffmpeg_path.exists() {
             Some(ffprobe_path.to_string_lossy().to_string())
+        } else {
+            None
+        },
+        deno_path: if deno_path.exists() {
+            Some(deno_path.to_string_lossy().to_string())
         } else {
             None
         },

@@ -4,10 +4,12 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::{
     db_lib::is_schema_valid,
+    deno::download_deno,
     ffmpeg::download_ffmpeg,
     models::{Asset, AssetMetadata, AssetQueryParams, DbState, PaginatedResponse},
 };
 mod db_lib;
+mod deno;
 mod ffmpeg;
 mod folder_lib;
 mod image_lib;
@@ -204,6 +206,11 @@ async fn download_dependencies(
     match download_ffmpeg(app.clone(), window.clone()).await {
         Ok(msg) => println!("FFmpeg: {}", msg),
         Err(e) => return Err(format!("Gagal download FFmpeg: {}", e)),
+    }
+
+    match download_deno(app.clone(), window.clone()).await {
+        Ok(msg) => println!("Deno: {}", msg),
+        Err(e) => return Err(format!("Gagal download Deno: {}", e)),
     }
 
     match yt_dlp::download_ytdlp(app, window).await {

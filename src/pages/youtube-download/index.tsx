@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
@@ -9,8 +9,9 @@ import { FolderOpen } from "lucide-react";
 export type dependenciesCheckResponse = {
   yt_dlp_installed: boolean;
   ffprobe_installed: boolean;
-  ffmpeg_installed: boolean
-}
+  ffmpeg_installed: boolean;
+  deno_installed: boolean;
+};
 
 const YoutubeDownloadPage = () => {
   const [progress, setProgress] = useState(0);
@@ -22,8 +23,8 @@ const YoutubeDownloadPage = () => {
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setSerrorMsg] = useState<string>("");
-  const [dependenciesCheckMsg, setDependenciesMsg] = useState<dependenciesCheckResponse>();
-
+  const [dependenciesCheckMsg, setDependenciesMsg] =
+    useState<dependenciesCheckResponse>();
 
   const parseProgress = (line: string): number | null => {
     const progressMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
@@ -33,94 +34,108 @@ const YoutubeDownloadPage = () => {
     }
 
     return null;
-  }
+  };
 
   const checkDependencies = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await invoke("check_dependencies") as dependenciesCheckResponse;
-      setDependenciesMsg(response)
+      const response = (await invoke(
+        "check_dependencies",
+      )) as dependenciesCheckResponse;
+      setDependenciesMsg(response);
     } catch (error) {
-      console.log(error)
+      console.log(error);
     }
-    setIsLoading(false)
-  }
+    setIsLoading(false);
+  };
 
   const downloadDependencies = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
       const response = await invoke("download_dependencies");
 
-      console.log(response)
+      console.log(response);
     } catch (err) {
-      console.log(err)
+      console.log(err);
     }
-    setIsLoading(false)
-    checkDependencies()
-    setProgress(0)
-  }
+    setIsLoading(false);
+    checkDependencies();
+    setProgress(0);
+  };
 
   const downloadVideo = async () => {
     setSerrorMsg("");
     setVideoProgress(0);
-    setIsLoading(true)
+    setIsLoading(true);
 
-    const audioArgs = ["-x", "--audio-format", format]
+    const audioArgs = ["-x", "--audio-format", format];
 
-    const args = [url, "-P", downloadPath || ".", "--no-playlist"]
+    const args = [url, "-P", downloadPath || ".", "--no-playlist"];
 
     if (downloadType === "audio") {
-      args.push(...audioArgs)
+      args.push(...audioArgs);
     }
 
-    const res = await invoke("run_ytdlp", { args }).catch((e) => { setIsLoading(false); setSerrorMsg(e) })
+    const res = await invoke("run_ytdlp", { args }).catch((e) => {
+      setIsLoading(false);
+      setSerrorMsg(e);
+    });
 
     if (res == "Success") {
-      setVideoProgress(100)
+      setVideoProgress(100);
     }
-    setIsLoading(false)
-  }
+    setIsLoading(false);
+  };
 
   useEffect(() => {
     let unlisten: any;
 
     async function listener() {
-      unlisten = await listen('ytdlp-output', (e: any) => {
-        const line = typeof e.payload === 'string' ? e.payload : e.payload?.message || '';
+      unlisten = await listen("ytdlp-output", (e: any) => {
+        const line =
+          typeof e.payload === "string" ? e.payload : e.payload?.message || "";
         const progressValue = parseProgress(line);
 
         if (progressValue !== null) {
           setVideoProgress(progressValue);
         }
-      })
+      });
 
-      unlisten = await listen('ffmpeg-download-progress', (e) => {
+      unlisten = await listen("ffmpeg-download-progress", (e) => {
         setProgress(e.payload as number);
 
         if (e.payload === 100) {
           return false;
         }
-      })
+      });
 
-      unlisten = await listen('yt-dlp-download-progress', (e: any) => {
+      unlisten = await listen("yt-dlp-download-progress", (e: any) => {
         setProgress(e.payload.progress);
 
         if (e.progress === 100) {
           return false;
         }
-      })
+      });
+
+      unlisten = await listen("deno-download-progress", (e) => {
+        setProgress(e.payload as number);
+
+        if (e.payload === 100) {
+          return false;
+        }
+      });
     }
 
-    listener()
+    listener();
 
     return () => {
       if (unlisten) unlisten();
-    }
-  }, [])
+    };
+  }, []);
 
   useEffect(() => {
     checkDependencies();
-  }, [])
+  }, []);
 
   const handleBrowseDestination = async () => {
     try {
@@ -143,18 +158,19 @@ const YoutubeDownloadPage = () => {
     { value: "360p", label: "360p" },
   ];
 
-  const formatOptions = downloadType === "video"
-    ? [
-      { value: "mp4", label: "MP4" },
-      { value: "webm", label: "WebM" },
-      { value: "mkv", label: "MKV" },
-    ]
-    : [
-      { value: "mp3", label: "MP3" },
-      { value: "m4a", label: "M4A" },
-      { value: "opus", label: "Opus" },
-      { value: "wav", label: "WAV" },
-    ];
+  const formatOptions =
+    downloadType === "video"
+      ? [
+          { value: "mp4", label: "MP4" },
+          { value: "webm", label: "WebM" },
+          { value: "mkv", label: "MKV" },
+        ]
+      : [
+          { value: "mp3", label: "MP3" },
+          { value: "m4a", label: "M4A" },
+          { value: "opus", label: "Opus" },
+          { value: "wav", label: "WAV" },
+        ];
 
   return (
     <div className="px-2 max-w-2xl mx-auto space-y-3 max-h-[calc(100vh-40px)] overflow-auto">
@@ -267,22 +283,57 @@ const YoutubeDownloadPage = () => {
         >
           Download
         </Button>
-        <Button variant="outline" onClick={checkDependencies} loading={isLoading}>
+        <Button
+          variant="outline"
+          onClick={checkDependencies}
+          loading={isLoading}
+        >
           Check Dependencies
         </Button>
-        <Button variant="outline" onClick={downloadDependencies} loading={isLoading}>
+        <Button
+          variant="outline"
+          onClick={downloadDependencies}
+          loading={isLoading}
+        >
           Download Dependencies
         </Button>
       </div>
       {errorMsg && <span className="text-red-500">{errorMsg}</span>}
-      {progress !== 0 && <span className="text-blue-500 text-xs">Downloading dependencies {progress}%</span>}
+      {progress !== 0 && (
+        <span className="text-blue-500 text-xs">
+          Downloading dependencies {progress}%
+        </span>
+      )}
       <div className="flex flex-col">
-        {dependenciesCheckMsg?.ffmpeg_installed ? <span className="text-blue-500 text-xs">ffmpeg sudah terinstall.</span> : <span className="text-red-500 text-xs">ffmpeg Belum terinstall</span>}
-        {dependenciesCheckMsg?.ffprobe_installed ? <span className="text-blue-500 text-xs">ffprobe sudah terinstall.</span> : <span className="text-red-500 text-xs">ffprobe belum terinstall</span>}
-        {dependenciesCheckMsg?.yt_dlp_installed ? <span className="text-blue-500 text-xs">yt_dlp sudah terinstall.</span> : <span className="text-red-500 text-xs">yt_dlp Belum terinstall</span>}
+        {dependenciesCheckMsg?.ffmpeg_installed ? (
+          <span className="text-blue-500 text-xs">
+            ffmpeg sudah terinstall.
+          </span>
+        ) : (
+          <span className="text-red-500 text-xs">ffmpeg Belum terinstall</span>
+        )}
+        {dependenciesCheckMsg?.ffprobe_installed ? (
+          <span className="text-blue-500 text-xs">
+            ffprobe sudah terinstall.
+          </span>
+        ) : (
+          <span className="text-red-500 text-xs">ffprobe belum terinstall</span>
+        )}
+        {dependenciesCheckMsg?.yt_dlp_installed ? (
+          <span className="text-blue-500 text-xs">
+            yt_dlp sudah terinstall.
+          </span>
+        ) : (
+          <span className="text-red-500 text-xs">yt_dlp Belum terinstall</span>
+        )}
+        {dependenciesCheckMsg?.deno_installed ? (
+          <span className="text-blue-500 text-xs">deno sudah terinstall.</span>
+        ) : (
+          <span className="text-red-500 text-xs">deno Belum terinstall</span>
+        )}
       </div>
     </div>
-  )
-}
+  );
+};
 
 export default YoutubeDownloadPage;
