@@ -137,8 +137,8 @@ pub fn generate_missing_thumbnails(
     let total_files = to_process.len();
     if total_files == 0 {
         return Ok(ApiResponse {
-            message: format!("Semua thumbnail sudah di generate!"),
-            status: format!("Success"),
+            message: "Semua thumbnail sudah di generate!".to_string(),
+            status: "Success".to_string(),
         });
     }
     // 2. Buat counter atomic
@@ -184,7 +184,7 @@ pub fn generate_missing_thumbnails(
                         let thumb_path = thumbnails_dir.join(&thumb_filename);
                         let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
-                        if let Ok(_) = std::fs::write(&thumb_path, &blob) {
+                        if std::fs::write(&thumb_path, &blob).is_ok() {
                             // Update database: simpan path-nya dan hapus blob untuk menghemat space DB
                             if let Ok(conn) = db_arc.lock() {
                                 let _ = conn.execute(

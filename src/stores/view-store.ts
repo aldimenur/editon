@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create } from "zustand";
 
 interface ViewStore {
   viewModeAudio: "list" | "grid" | "large";
@@ -9,15 +9,16 @@ interface ViewStore {
   setViewModeImage: (mode: "list" | "grid" | "large") => void;
 }
 
-const useViewStore = create<ViewStore>()(
-  (set) => ({
-    viewModeAudio: "list",
-    viewModeVideo: "grid",
-    viewModeImage: "grid",
-    setViewModeAudio: (mode: "list" | "grid" | "large") => set({ viewModeAudio: mode }),
-    setViewModeVideo: (mode: "list" | "grid" | "large") => set({ viewModeVideo: mode }),
-    setViewModeImage: (mode: "list" | "grid" | "large") => set({ viewModeImage: mode }),
-  }),
-);
+const useViewStore = create<ViewStore>()((set) => ({
+  viewModeAudio: "list",
+  viewModeVideo: "grid",
+  viewModeImage: "grid",
+  setViewModeAudio: (mode: "list" | "grid" | "large") =>
+    set({ viewModeAudio: mode }),
+  setViewModeVideo: (mode: "list" | "grid" | "large") =>
+    set({ viewModeVideo: mode }),
+  setViewModeImage: (mode: "list" | "grid" | "large") =>
+    set({ viewModeImage: mode }),
+}));
 
 export default useViewStore;

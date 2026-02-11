@@ -89,9 +89,13 @@ pub fn get_audio_waveform(
         let end = ((i + 1) as f32 * chunk_size) as usize;
 
         let mut peak = 0.0f32;
-        for j in start..end.min(packet_peaks.len()) {
-            if packet_peaks[j] > peak {
-                peak = packet_peaks[j];
+        for &packet_peak in packet_peaks
+            .iter()
+            .take(end.min(packet_peaks.len()))
+            .skip(start)
+        {
+            if packet_peak > peak {
+                peak = packet_peak;
             }
         }
         waveform.push(peak);

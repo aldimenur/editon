@@ -30,14 +30,14 @@ const handleFileChanges = async () => {
   const refetchAssets = useAssetStore.getState().refetchAssets;
 
   await updateAssetsCount();
-  await refetchAssets()
+  await refetchAssets();
   try {
     const thumb = await invoke("generate_missing_thumbnails");
-    console.log('thumb', thumb)
+    console.log("thumb", thumb);
     const wav = await invoke("generate_missing_waveforms");
-    console.log('wav', wav)
+    console.log("wav", wav);
     const vid = await invoke("generate_missing_video_thumbnails");
-    console.log(vid)
+    console.log(vid);
   } catch (error) {
     console.error("Error generating thumbnails/waveforms:", error);
   }
@@ -64,7 +64,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
           set({ countingTotal: false });
           handleFileChanges();
         }
-        console.log(payload)
+        console.log(payload);
       });
 
       await listen("waveform-progress", (event) => {

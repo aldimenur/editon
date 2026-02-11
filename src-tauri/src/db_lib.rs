@@ -6,7 +6,9 @@ use crate::models::DbState;
 
 pub fn is_schema_valid(conn: &Connection) -> bool {
     // Check assets table structure
-    let assets_valid = check_table_schema(
+    
+
+    check_table_schema(
         conn,
         "assets",
         vec![
@@ -24,9 +26,7 @@ pub fn is_schema_valid(conn: &Connection) -> bool {
             ("date_created", "TEXT"),
             ("date_modified", "TEXT"),
         ],
-    );
-
-    assets_valid
+    )
 }
 
 fn check_table_schema(

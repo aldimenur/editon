@@ -431,16 +431,16 @@ fn handle_rename_to(
     {
         if let Some(ref old) = old_path {
             let old_path_str = old.to_string_lossy().to_string();
-            if let Err(e) = handle_rename_in_db(
-                db_conn,
-                &old_path_str,
-                &new_path_str,
-                &filename,
-                &ext_str,
-                &media_type,
-                file_size,
-                app,
-            ) {
+            let rename_update = RenameUpdate {
+                old_path: &old_path_str,
+                new_path: &new_path_str,
+                new_filename: &filename,
+                new_ext: &ext_str,
+                media_type: &media_type,
+                size: file_size,
+            };
+
+            if let Err(e) = handle_rename_in_db(db_conn, app, &rename_update) {
                 eprintln!("Error handling rename in DB: {}", e);
             } else {
                 let _ = app.emit(
@@ -631,18 +631,22 @@ fn replace_file_in_db(
     Ok(())
 }
 
+struct RenameUpdate<'a> {
+    old_path: &'a str,
+    new_path: &'a str,
+    new_filename: &'a str,
+    new_ext: &'a str,
+    media_type: &'a str,
+    size: u64,
+}
+
 fn handle_rename_in_db(
     conn: &Arc<Mutex<rusqlite::Connection>>,
-    old_path: &str,
-    new_path: &str,
-    new_filename: &str,
-    new_ext: &str,
-    media_type: &str,
-    size: u64,
     app: &AppHandle,
+    rename: &RenameUpdate<'_>,
 ) -> Result<(), String> {
-    let duration_sec = if media_type == "audio" || media_type == "video" {
-        detect_media_duration_sec(app, new_path)
+    let duration_sec = if rename.media_type == "audio" || rename.media_type == "video" {
+        detect_media_duration_sec(app, rename.new_path)
     } else {
         0.0
     };
@@ -653,7 +657,7 @@ fn handle_rename_in_db(
     let exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM assets WHERE original_path = ?1)",
-            rusqlite::params![old_path],
+            rusqlite::params![rename.old_path],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -663,7 +667,7 @@ fn handle_rename_in_db(
         conn.execute(
             "UPDATE assets SET filename = ?1, extension = ?2, original_path = ?3, type = ?4, file_size = ?5, duration_sec = ?6, date_modified = CURRENT_TIMESTAMP 
              WHERE original_path = ?7",
-            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, duration_sec, old_path],
+            rusqlite::params![rename.new_filename, rename.new_ext, rename.new_path, rename.media_type, rename.size as i64, duration_sec, rename.old_path],
         )
         .map_err(|e| e.to_string())?;
     } else {
@@ -671,7 +675,7 @@ fn handle_rename_in_db(
         conn.execute(
             "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags) 
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![new_filename, new_ext, new_path, media_type, size as i64, "{}", duration_sec, None::<String>],
+            rusqlite::params![rename.new_filename, rename.new_ext, rename.new_path, rename.media_type, rename.size as i64, "{}", duration_sec, None::<String>],
         )
         .map_err(|e| e.to_string())?;
     }

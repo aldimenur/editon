@@ -35,7 +35,7 @@ pub fn generate_video_thumbnail_buffer(
 ) -> Result<Vec<u8>, String> {
     // Run ffmpeg to output a single PNG frame to stdout
     let mut cmd = Command::new(ffmpeg_path);
-    cmd.args(&[
+    cmd.args([
         "-ss",
         seek_time,
         "-i",
@@ -157,7 +157,7 @@ pub fn generate_missing_video_thumbnails(
     let total_files = to_process.len();
     if total_files == 0 {
         return Ok(ApiResponse {
-            message: format!("All video thumbnails already generated"),
+            message: "All video thumbnails already generated".to_string(),
             status: "Success".to_string(),
         });
     }
@@ -192,7 +192,7 @@ pub fn generate_missing_video_thumbnails(
                     let thumb_path = thumbnails_dir.join(&thumb_filename);
                     let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
-                    if let Ok(_) = std::fs::write(&thumb_path, &blob) {
+                    if std::fs::write(&thumb_path, &blob).is_ok() {
                         if let Ok(conn) = db_arc.lock() {
                             let _ = conn.execute(
                                 "UPDATE assets SET thumbnail_path = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",

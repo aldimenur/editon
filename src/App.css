@@ -46,8 +46,8 @@
   /* --- LIGHT MODE (Clean & Crisp) --- */
   --radius: 0.5rem; /* Eagle sedikit lebih kotak dibanding default shadcn */
 
-  --background: oklch(1 0 0);       /* Putih bersih */
-  --foreground: oklch(0.2 0 0);     /* Teks hampir hitam */
+  --background: oklch(1 0 0); /* Putih bersih */
+  --foreground: oklch(0.2 0 0); /* Teks hampir hitam */
 
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.2 0 0);
@@ -56,10 +56,10 @@
   --popover-foreground: oklch(0.2 0 0);
 
   /* Eagle Blue (Vibrant Blue) */
-  --primary: oklch(0.55 0.22 260); 
+  --primary: oklch(0.55 0.22 260);
   --primary-foreground: oklch(1 0 0);
 
-  --secondary: oklch(0.96 0 0);     /* Abu-abu sangat muda */
+  --secondary: oklch(0.96 0 0); /* Abu-abu sangat muda */
   --secondary-foreground: oklch(0.2 0 0);
 
   --muted: oklch(1 0 0);
@@ -88,27 +88,27 @@
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.2 0 0);
-  --sidebar-border: oklch(0.90 0 0);
+  --sidebar-border: oklch(0.9 0 0);
   --sidebar-ring: oklch(0.55 0.22 260);
 }
 
 .dark {
   /* --- DARK MODE (Eagle Aesthetic) --- */
-  
+
   /* Background Utama (Area Grid) - Abu-abu gelap (Zinc 900-ish) */
-  --background: oklch(0.18 0.006 285); 
+  --background: oklch(0.18 0.006 285);
   /* Teks Utama - Putih gading (tidak menyilaukan) */
-  --foreground: oklch(0.90 0.01 285);  
+  --foreground: oklch(0.9 0.01 285);
 
   /* Card/Panel - Sedikit lebih terang dari background */
   --card: oklch(0.22 0.006 285);
-  --card-foreground: oklch(0.90 0.01 285);
+  --card-foreground: oklch(0.9 0.01 285);
 
   --popover: oklch(0.22 0.006 285);
-  --popover-foreground: oklch(0.90 0.01 285);
+  --popover-foreground: oklch(0.9 0.01 285);
 
   /* Primary Action - "Eagle Blue" (Biru Terang/Electric) */
-  --primary: oklch(0.60 0.20 260); 
+  --primary: oklch(0.6 0.2 260);
   --primary-foreground: oklch(1 0 0); /* Teks putih di tombol biru */
 
   /* Secondary - Abu-abu medium */
@@ -124,22 +124,22 @@
   --accent-foreground: oklch(0.98 0 0);
 
   --destructive: oklch(0.45 0.2 25);
-  
+
   /* Border - Sangat subtil, hampir tidak terlihat */
   --border: oklch(0.28 0.01 285);
   --input: oklch(0.28 0.01 285);
-  --ring: oklch(0.60 0.20 260);
+  --ring: oklch(0.6 0.2 260);
 
   /* --- SIDEBAR (Kunci tampilan Eagle) --- */
   /* Sidebar lebih gelap dari konten utama (Main Content) */
-  --sidebar: oklch(0.2 0.006 285); 
+  --sidebar: oklch(0.2 0.006 285);
   --sidebar-foreground: oklch(0.85 0.01 285);
-  --sidebar-primary: oklch(0.60 0.20 260); /* Biru saat item sidebar aktif */
+  --sidebar-primary: oklch(0.6 0.2 260); /* Biru saat item sidebar aktif */
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.25 0.006 285); /* Hover item sidebar */
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(0.22 0.006 285); /* Border pemisah sidebar & konten */
-  --sidebar-ring: oklch(0.60 0.20 260);
+  --sidebar-ring: oklch(0.6 0.2 260);
 }
 
 @layer base {
@@ -160,15 +160,20 @@
 
 /* Track (Jalur): Biarkan transparan agar menyatu dengan background */
 ::-webkit-scrollbar-track {
-  background: transparent; 
+  background: transparent;
 }
 
 /* Thumb (Batang Scroll): Gunakan border trick untuk padding */
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5); /* Warna abu-abu semi-transparan */
-  border-radius: 20px;       /* Membuat bulat */
+  background-color: rgba(
+    156,
+    163,
+    175,
+    0.5
+  ); /* Warna abu-abu semi-transparan */
+  border-radius: 20px; /* Membuat bulat */
   border: 4px solid transparent; /* Trik padding transparan */
-  background-clip: content-box;  /* Agar background tidak tembus border */
+  background-clip: content-box; /* Agar background tidak tembus border */
 }
 
 /* Saat di-hover, warna lebih solid */

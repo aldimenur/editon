@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 // src/utils/image.ts (contoh file baru)
@@ -21,34 +21,41 @@ export const createThumbnailUrl = (blobData?: number[]): string | undefined => {
 
   const uint8Array = new Uint8Array(blobData);
 
-  const blob = new Blob([uint8Array], { type: 'image/webp' });
+  const blob = new Blob([uint8Array], { type: "image/webp" });
 
   return URL.createObjectURL(blob);
 };
 
 export const revokeThumbnailUrl = (url: string | undefined) => {
-  if (url && url.startsWith('blob:')) {
+  if (url && url.startsWith("blob:")) {
     URL.revokeObjectURL(url);
   }
 };
 
-
 export const countAssets = async () => {
-  const video = await invoke("get_count_assets", { assetType: "video" }) as number
-  const audio = await invoke("get_count_assets", { assetType: "audio" }) as number
-  const image = await invoke("get_count_assets", { assetType: "image" }) as number
-  return { video: video, audio: audio, image: image }
-}
+  const video = (await invoke("get_count_assets", {
+    assetType: "video",
+  })) as number;
+  const audio = (await invoke("get_count_assets", {
+    assetType: "audio",
+  })) as number;
+  const image = (await invoke("get_count_assets", {
+    assetType: "image",
+  })) as number;
+  return { video: video, audio: audio, image: image };
+};
 
 export const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
 export const startWatcher = async (parentPath: any) => {
-  const watcher = await invoke('stop_folder_watcher').then(() => invoke('trigger_folder_watcher', { folderPath: parentPath })
-  )
-  console.log(watcher)
-}
+  const watcher = await invoke("stop_folder_watcher").then(() =>
+    invoke("trigger_folder_watcher", { folderPath: parentPath }),
+  );
+  console.log(watcher);
+};

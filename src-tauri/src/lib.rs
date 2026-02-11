@@ -87,10 +87,10 @@ fn get_assets_paginated(
 
         if !tokens.is_empty() {
             // Build search condition for each token across filename, original_path, and tags
-            let mut token_conditions = Vec::new();
-            for _ in &tokens {
-                token_conditions.push("(filename LIKE ? OR original_path LIKE ? OR tags LIKE ?)");
-            }
+            let token_conditions = vec![
+                "(filename LIKE ? OR original_path LIKE ? OR tags LIKE ?)";
+                tokens.len()
+            ];
 
             // Combine all token conditions with AND (all tokens must match)
             sql_base.push_str(&format!(" AND ({})", token_conditions.join(" AND ")));

@@ -51,17 +51,18 @@ export default function SearchTagFilter({
               size="sm"
               className="gap-0.5 px-1.5 text-[10px] relative h-8 w-8"
             >
-              {selectedTags.length !== 0 &&
+              {selectedTags.length !== 0 && (
                 <div className="absolute top-[-8px] left-[-4px] bg-red-400 w-4 h-4 rounded-full text-white">
                   {selectedTags.length}
                 </div>
-              }
-              <Tags size="lg"
-              />
+              )}
+              <Tags size="lg" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Filter by Tags</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Filter by Tags
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem
               checked={selectedTags.length === 0}
