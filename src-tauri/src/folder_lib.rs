@@ -164,6 +164,11 @@ pub fn scan_and_import_folder(
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
+
+                    if is_temporary_download_artifact(&filename) {
+                        continue;
+                    }
+
                     let path_str = path.to_string_lossy().to_string();
                     let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
@@ -399,18 +404,52 @@ fn handle_file_change(
 }
 
 /// Stores path and metadata for a media file; returns None if not a valid media file or metadata fails.
+fn is_temporary_download_artifact(filename: &str) -> bool {
+    let name = filename.to_lowercase();
+
+    if name.ends_with(".part")
+        || name.ends_with(".temp")
+        || name.ends_with(".ytdl")
+        || name.ends_with(".tmp")
+        || name.contains(".temp.")
+        || name.contains(".part.")
+        || name.contains(".tmp.")
+    {
+        return true;
+    }
+
+    // yt-dlp fragments can appear as extensions or middle segments:
+    // *.f251, *.f251.mp4, *.f137.webm, etc.
+    for segment in name.split('.') {
+        if let Some(rest) = segment.strip_prefix('f') {
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 fn media_file_info(path: &Path) -> Option<(String, String, String, String, u64)> {
     if !path.is_file() {
         return None;
     }
-    let ext = path.extension()?.to_string_lossy().to_string();
-    let media_type = get_media_type(&ext)?;
-    let metadata = path.metadata().ok()?;
+
     let filename = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
+
+    if is_temporary_download_artifact(&filename) {
+        return None;
+    }
+
+    let ext = path.extension()?.to_string_lossy().to_string();
+    let media_type = get_media_type(&ext)?;
+    let metadata = path.metadata().ok()?;
     let path_str = path.to_string_lossy().to_string();
+
     Some((filename, ext, path_str, media_type, metadata.len()))
 }
 
@@ -537,6 +576,10 @@ fn add_or_update_file_in_db(
     size: u64,
     app: &AppHandle,
 ) -> Result<(), String> {
+    if is_temporary_download_artifact(filename) {
+        return Ok(());
+    }
+
     let duration_sec = if media_type == "audio" || media_type == "video" {
         detect_media_duration_sec(app, path)
     } else {
