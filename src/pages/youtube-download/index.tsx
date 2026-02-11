@@ -3,8 +3,16 @@ import { Input } from "@/components/ui/input";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import {
+  AudioLines,
+  Download,
+  FolderOpen,
+  HardDriveDownload,
+  Link2,
+  Loader2,
+  Video,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 export type dependenciesCheckResponse = {
   yt_dlp_installed: boolean;
@@ -13,27 +21,27 @@ export type dependenciesCheckResponse = {
   deno_installed: boolean;
 };
 
+type DownloadType = "audio" | "video";
+
 const YoutubeDownloadPage = () => {
   const [progress, setProgress] = useState(0);
   const [videoProgress, setVideoProgress] = useState(0);
   const [url, setUrl] = useState("");
-  const [downloadType, setDownloadType] = useState<"audio" | "video">("video");
+  const [downloadType, setDownloadType] = useState<DownloadType>("video");
   const [quality, setQuality] = useState("best");
   const [format, setFormat] = useState("mp4");
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [errorMsg, setSerrorMsg] = useState<string>("");
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const [dependenciesCheckMsg, setDependenciesMsg] =
     useState<dependenciesCheckResponse>();
 
   const parseProgress = (line: string): number | null => {
     const progressMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
-    if (progressMatch) {
-      const progress = parseFloat(progressMatch[1]);
-      return Math.min(100, Math.max(0, progress)); // Clamp between 0-100
-    }
+    if (!progressMatch) return null;
 
-    return null;
+    const parsed = parseFloat(progressMatch[1]);
+    return Math.min(100, Math.max(0, parsed));
   };
 
   const checkDependencies = async () => {
@@ -44,54 +52,68 @@ const YoutubeDownloadPage = () => {
       )) as dependenciesCheckResponse;
       setDependenciesMsg(response);
     } catch (error) {
-      console.log(error);
+      console.error("Failed to check dependencies", error);
     }
     setIsLoading(false);
   };
 
   const downloadDependencies = async () => {
     setIsLoading(true);
+    setErrorMsg("");
     try {
-      const response = await invoke("download_dependencies");
-
-      console.log(response);
-    } catch (err) {
-      console.log(err);
+      await invoke("download_dependencies");
+      await checkDependencies();
+      setProgress(0);
+    } catch (error) {
+      console.error("Failed to download dependencies", error);
+      setErrorMsg("Failed to download dependencies.");
     }
     setIsLoading(false);
-    checkDependencies();
-    setProgress(0);
+  };
+
+  const resolveVideoFormatArg = (): string => {
+    if (quality === "best") {
+      return "bestvideo+bestaudio/best";
+    }
+
+    const height = quality.replace("p", "");
+    return `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
   };
 
   const downloadVideo = async () => {
-    setSerrorMsg("");
+    setErrorMsg("");
     setVideoProgress(0);
     setIsLoading(true);
-
-    const audioArgs = ["-x", "--audio-format", format];
 
     const args = [url, "-P", downloadPath || ".", "--no-playlist"];
 
     if (downloadType === "audio") {
-      args.push(...audioArgs);
+      args.push("-x", "--audio-format", format);
+    } else {
+      args.push("-f", resolveVideoFormatArg(), "--merge-output-format", format);
     }
 
-    const res = await invoke("run_ytdlp", { args }).catch((e) => {
-      setIsLoading(false);
-      setSerrorMsg(e);
-    });
-
-    if (res == "Success") {
-      setVideoProgress(100);
+    try {
+      const res = await invoke("run_ytdlp", { args });
+      if (res === "Success") {
+        setVideoProgress(100);
+      }
+    } catch (error) {
+      console.error("Failed to download media", error);
+      setErrorMsg(typeof error === "string" ? error : "Download failed.");
     }
+
     setIsLoading(false);
   };
 
   useEffect(() => {
-    let unlisten: any;
+    let unlistenYtdlpOutput: (() => void) | undefined;
+    let unlistenFfmpeg: (() => void) | undefined;
+    let unlistenYtdlpDep: (() => void) | undefined;
+    let unlistenDeno: (() => void) | undefined;
 
-    async function listener() {
-      unlisten = await listen("ytdlp-output", (e: any) => {
+    const attachListeners = async () => {
+      unlistenYtdlpOutput = await listen("ytdlp-output", (e: any) => {
         const line =
           typeof e.payload === "string" ? e.payload : e.payload?.message || "";
         const progressValue = parseProgress(line);
@@ -101,35 +123,26 @@ const YoutubeDownloadPage = () => {
         }
       });
 
-      unlisten = await listen("ffmpeg-download-progress", (e) => {
+      unlistenFfmpeg = await listen("ffmpeg-download-progress", (e) => {
         setProgress(e.payload as number);
-
-        if (e.payload === 100) {
-          return false;
-        }
       });
 
-      unlisten = await listen("yt-dlp-download-progress", (e: any) => {
+      unlistenYtdlpDep = await listen("yt-dlp-download-progress", (e: any) => {
         setProgress(e.payload.progress);
-
-        if (e.progress === 100) {
-          return false;
-        }
       });
 
-      unlisten = await listen("deno-download-progress", (e) => {
+      unlistenDeno = await listen("deno-download-progress", (e) => {
         setProgress(e.payload as number);
-
-        if (e.payload === 100) {
-          return false;
-        }
       });
-    }
+    };
 
-    listener();
+    attachListeners();
 
     return () => {
-      if (unlisten) unlisten();
+      unlistenYtdlpOutput?.();
+      unlistenFfmpeg?.();
+      unlistenYtdlpDep?.();
+      unlistenDeno?.();
     };
   }, []);
 
@@ -139,14 +152,12 @@ const YoutubeDownloadPage = () => {
 
   const handleBrowseDestination = async () => {
     try {
-      const path = await open({
-        directory: true,
-      });
+      const path = await open({ directory: true });
       if (path) {
         setDownloadPath(path);
       }
     } catch (error) {
-      console.error(error);
+      console.error("Failed to browse destination", error);
     }
   };
 
@@ -172,165 +183,240 @@ const YoutubeDownloadPage = () => {
           { value: "wav", label: "WAV" },
         ];
 
+  useEffect(() => {
+    const isFormatStillValid = formatOptions.some(
+      (item) => item.value === format,
+    );
+    if (!isFormatStillValid) {
+      setFormat(formatOptions[0].value);
+    }
+  }, [downloadType]);
+
+  const dependencyItems = useMemo(
+    () => [
+      {
+        key: "ffmpeg",
+        installed: dependenciesCheckMsg?.ffmpeg_installed,
+      },
+      {
+        key: "ffprobe",
+        installed: dependenciesCheckMsg?.ffprobe_installed,
+      },
+      {
+        key: "yt-dlp",
+        installed: dependenciesCheckMsg?.yt_dlp_installed,
+      },
+      {
+        key: "deno",
+        installed: dependenciesCheckMsg?.deno_installed,
+      },
+    ],
+    [dependenciesCheckMsg],
+  );
+
+  const allDependenciesInstalled = dependencyItems.every(
+    (item) => item.installed,
+  );
+
   return (
-    <div className="px-2 max-w-2xl mx-auto space-y-3 max-h-[calc(100vh-40px)] overflow-auto">
-      <div className="space-y-1">
-        <label className="text-sm font-medium">YouTube URL</label>
-        <Input
-          type="text"
-          placeholder="https://www.youtube.com/watch?v=..."
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="w-full"
-        />
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-medium">Download Type</label>
-        <div className="flex gap-1">
-          <Button
-            variant={downloadType === "video" ? "default" : "outline"}
-            onClick={() => setDownloadType("video")}
-            className="flex-1"
-          >
-            Video
-          </Button>
-          <Button
-            variant={downloadType === "audio" ? "default" : "outline"}
-            onClick={() => setDownloadType("audio")}
-            className="flex-1"
-          >
-            Audio
-          </Button>
+    <div className="mx-auto max-w-3xl space-y-3 p-3 max-h-[calc(100vh-40px)] overflow-auto">
+      <div className="rounded-xl border bg-card p-4 space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">YouTube Downloader</h2>
+          <p className="text-xs text-muted-foreground">
+            Download video or audio quickly with your preferred format and
+            quality.
+          </p>
         </div>
-      </div>
 
-      <div className="space-y-1">
-        <label className="text-sm font-medium">Quality</label>
-        <div className="flex flex-wrap gap-1">
-          {qualityOptions.map((option) => (
-            <Button
-              key={option.value}
-              variant={quality === option.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setQuality(option.value)}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-medium">Format</label>
-        <div className="flex flex-wrap gap-1">
-          {formatOptions.map((option) => (
-            <Button
-              key={option.value}
-              variant={format === option.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFormat(option.value)}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-medium">Download Destination</label>
-        <div className="flex gap-1">
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-2">
+            <Link2 className="size-4" />
+            URL
+          </label>
           <Input
             type="text"
-            placeholder="Select download folder..."
-            value={downloadPath || ""}
-            readOnly
-            className="flex-1"
+            placeholder="https://www.youtube.com/watch?v=..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="w-full"
           />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Type</label>
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                variant={downloadType === "video" ? "default" : "outline"}
+                onClick={() => setDownloadType("video")}
+              >
+                <Video className="size-4" />
+                Video
+              </Button>
+              <Button
+                variant={downloadType === "audio" ? "default" : "outline"}
+                onClick={() => setDownloadType("audio")}
+              >
+                <AudioLines className="size-4" />
+                Audio
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Format</label>
+            <div className="flex flex-wrap gap-1">
+              {formatOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  variant={format === option.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormat(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {downloadType === "video" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Quality</label>
+            <div className="flex flex-wrap gap-1">
+              {qualityOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  variant={quality === option.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuality(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Destination</label>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="Select download folder..."
+              value={downloadPath || ""}
+              readOnly
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              onClick={handleBrowseDestination}
+              className="shrink-0"
+            >
+              <FolderOpen className="size-4" />
+              Browse
+            </Button>
+          </div>
+        </div>
+
+        {videoProgress > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Download progress</span>
+              <span>{Math.round(videoProgress)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${videoProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="rounded-md border border-red-300/40 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+            {errorMsg}
+          </div>
+        )}
+
+        <Button
+          onClick={downloadVideo}
+          disabled={!url.trim() || !downloadPath || isLoading}
+          className="w-full"
+        >
+          {isLoading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Download className="size-4" />
+          )}
+          Start Download
+        </Button>
+      </div>
+
+      <div className="rounded-xl border bg-card p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Dependencies</h3>
+            <p className="text-xs text-muted-foreground">
+              yt-dlp, ffmpeg, ffprobe, and deno are required.
+            </p>
+          </div>
+          <span
+            className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${allDependenciesInstalled ? "bg-green-500/15 text-green-500" : "bg-yellow-500/15 text-yellow-500"}`}
+          >
+            {allDependenciesInstalled ? "Ready" : "Needs setup"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {dependencyItems.map((item) => (
+            <div
+              key={item.key}
+              className={`rounded-lg border px-2 py-1.5 text-xs ${item.installed ? "border-green-500/40 bg-green-500/10" : "border-red-500/40 bg-red-500/10"}`}
+            >
+              <div className="font-medium uppercase">{item.key}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {item.installed ? "Installed" : "Missing"}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {progress > 0 && progress < 100 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Dependency download</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Button
             variant="outline"
-            onClick={handleBrowseDestination}
-            className="shrink-0"
+            onClick={checkDependencies}
+            loading={isLoading}
           >
-            <FolderOpen className="size-4 mr-2" />
-            Browse
+            <HardDriveDownload className="size-4" />
+            Check dependencies
+          </Button>
+          <Button
+            variant="outline"
+            onClick={downloadDependencies}
+            loading={isLoading}
+          >
+            <Download className="size-4" />
+            Download dependencies
           </Button>
         </div>
-      </div>
-
-      {videoProgress > 0 && (
-        <div className="space-y-1">
-          <div className="flex justify-between text-sm">
-            <span>Download Progress</span>
-            <span>{Math.round(videoProgress)}%</span>
-          </div>
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${videoProgress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="grid sm:grid-cols-3 gap-1.5 pt-3">
-        <Button
-          variant="default"
-          onClick={downloadVideo}
-          disabled={!url || !downloadPath}
-          className="flex-1"
-          loading={isLoading}
-        >
-          Download
-        </Button>
-        <Button
-          variant="outline"
-          onClick={checkDependencies}
-          loading={isLoading}
-        >
-          Check Dependencies
-        </Button>
-        <Button
-          variant="outline"
-          onClick={downloadDependencies}
-          loading={isLoading}
-        >
-          Download Dependencies
-        </Button>
-      </div>
-      {errorMsg && <span className="text-red-500">{errorMsg}</span>}
-      {progress !== 0 && (
-        <span className="text-blue-500 text-xs">
-          Downloading dependencies {progress}%
-        </span>
-      )}
-      <div className="flex flex-col">
-        {dependenciesCheckMsg?.ffmpeg_installed ? (
-          <span className="text-blue-500 text-xs">
-            ffmpeg sudah terinstall.
-          </span>
-        ) : (
-          <span className="text-red-500 text-xs">ffmpeg Belum terinstall</span>
-        )}
-        {dependenciesCheckMsg?.ffprobe_installed ? (
-          <span className="text-blue-500 text-xs">
-            ffprobe sudah terinstall.
-          </span>
-        ) : (
-          <span className="text-red-500 text-xs">ffprobe belum terinstall</span>
-        )}
-        {dependenciesCheckMsg?.yt_dlp_installed ? (
-          <span className="text-blue-500 text-xs">
-            yt_dlp sudah terinstall.
-          </span>
-        ) : (
-          <span className="text-red-500 text-xs">yt_dlp Belum terinstall</span>
-        )}
-        {dependenciesCheckMsg?.deno_installed ? (
-          <span className="text-blue-500 text-xs">deno sudah terinstall.</span>
-        ) : (
-          <span className="text-red-500 text-xs">deno Belum terinstall</span>
-        )}
       </div>
     </div>
   );

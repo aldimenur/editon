@@ -69,7 +69,7 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
         } else {
             None
         },
-        ffprobe_path: if ffmpeg_path.exists() {
+        ffprobe_path: if ffprobe_path.exists() {
             Some(ffprobe_path.to_string_lossy().to_string())
         } else {
             None
@@ -84,7 +84,10 @@ pub async fn check_dependencies(app: AppHandle) -> Result<DependencyStatus, Stri
 
 // Download yt-dlp
 pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<String, String> {
+    const MIN_YTDLP_BYTES: u64 = 500_000;
+
     let bin_dir = get_app_data_dir(&app)?;
+    fs::create_dir_all(&bin_dir).map_err(|e| format!("Failed to create bin dir: {}", e))?;
 
     let (url, filename) = if cfg!(target_os = "windows") {
         (
@@ -105,13 +108,23 @@ pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<Str
 
     let dest_path = bin_dir.join(filename);
 
-    // Download file
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent("Editon/0.2.2")
+        .build()
+        .map_err(|e| format!("Failed to create http client: {}", e))?;
+
     let mut response = client
         .get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to download: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to download yt-dlp: http status {}",
+            response.status()
+        ));
+    }
 
     let total_size = response.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
@@ -130,7 +143,6 @@ pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<Str
 
         downloaded += chunk.len() as u64;
 
-        // Emit progress event (Tauri v2 API)
         let progress = if total_size > 0 {
             (downloaded as f64 / total_size as f64 * 100.0) as u32
         } else {
@@ -148,7 +160,17 @@ pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<Str
         );
     }
 
-    // Set executable permission on Unix
+    file.flush()
+        .map_err(|e| format!("Failed to flush file: {}", e))?;
+
+    if downloaded < MIN_YTDLP_BYTES {
+        let _ = fs::remove_file(&dest_path);
+        return Err(format!(
+            "Downloaded yt-dlp is too small ({} bytes). URL may be unavailable or blocked.",
+            downloaded
+        ));
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
