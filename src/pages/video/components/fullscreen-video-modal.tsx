@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Pause, Play, Volume2, VolumeX, XIcon } from "lucide-react";
 import type { Asset } from "@/types/tauri";
 import type {
   DragEvent as ReactDragEvent,
@@ -134,7 +134,7 @@ export default function FullscreenVideoModal({
           className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full border border-white/20 bg-black/40 text-white hover:bg-black/70 sm:top-3 sm:right-3 sm:h-9 sm:w-9"
           onClick={closeFullscreen}
         >
-          <span className="text-lg sm:text-xl">x</span>
+          <XIcon />
         </Button>
         <video
           ref={fullscreenVideoRef}
