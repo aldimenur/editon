@@ -93,6 +93,13 @@ export default function FullscreenVideoModal({
     return null;
   }
 
+  const controlButtonClass =
+    "h-6 w-6 rounded-sm border-white/35 bg-black/65 text-white hover:bg-black/80 hover:text-white sm:h-7 sm:w-7";
+  const secondaryButtonClass =
+    "h-7 rounded-[6px] border-white/30 bg-black/55 px-2 text-[11px] text-white hover:bg-black/75 hover:text-white";
+  const ghostActionButtonClass =
+    "h-7 rounded-[6px] bg-black/50 px-2 text-[11px] text-white hover:bg-black/75 hover:text-white";
+
   return (
     <div
       className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.4),rgba(0,0,0,0.95))] flex items-center justify-center p-1.5 sm:p-3"
@@ -124,7 +131,7 @@ export default function FullscreenVideoModal({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full text-white hover:bg-white/20 sm:top-3 sm:right-3 sm:h-9 sm:w-9"
+          className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full border border-white/20 bg-black/40 text-white hover:bg-black/70 sm:top-3 sm:right-3 sm:h-9 sm:w-9"
           onClick={closeFullscreen}
         >
           <span className="text-lg sm:text-xl">x</span>
@@ -154,7 +161,7 @@ export default function FullscreenVideoModal({
               <Button
                 size="icon-xs"
                 variant="outline"
-                className="h-6 w-6 rounded-sm bg-background/80 sm:h-7 sm:w-7"
+                className={controlButtonClass}
                 onClick={handleFullscreenTogglePlayback}
                 title={isFullscreenPlaying ? "Pause" : "Play"}
               >
@@ -167,7 +174,7 @@ export default function FullscreenVideoModal({
               <Button
                 size="icon-xs"
                 variant="outline"
-                className="h-6 w-6 rounded-sm bg-background/80 sm:h-7 sm:w-7"
+                className={controlButtonClass}
                 onClick={handleFullscreenToggleMute}
                 title={isFullscreenMuted ? "Unmute" : "Mute"}
               >
@@ -178,7 +185,7 @@ export default function FullscreenVideoModal({
                 )}
               </Button>
             </div>
-            <div className="rounded-sm bg-background/80 px-1.5 py-0.5 text-[10px] text-foreground/90 sm:text-[11px]">
+            <div className="rounded-sm border border-white/20 bg-black/55 px-1.5 py-0.5 text-[10px] text-white sm:text-[11px]">
               {formatVideoTime(fullscreenCurrentTime)} /{" "}
               {formatVideoTime(fullscreenDuration)}
             </div>
@@ -247,7 +254,7 @@ export default function FullscreenVideoModal({
               <>
                 <Button
                   size="sm"
-                  className="h-7 rounded-[6px] px-2 text-[11px]"
+                  className="h-7 rounded-[6px] bg-white text-black px-2 text-[11px] hover:bg-white/90"
                   disabled={isFullscreenTrimming}
                   onClick={handleFullscreenTrimApply}
                 >
@@ -256,7 +263,7 @@ export default function FullscreenVideoModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 rounded-[6px] px-2 text-[11px]"
+                  className={secondaryButtonClass}
                   disabled={isFullscreenTrimming}
                   onClick={handleFullscreenTrimCancel}
                 >
@@ -271,7 +278,7 @@ export default function FullscreenVideoModal({
                   size="sm"
                   variant="ghost"
                   draggable
-                  className="h-7 rounded-[6px] px-2 text-[11px]"
+                  className={ghostActionButtonClass}
                   onDragStart={handleFullscreenTrimmedDragStart}
                   onDragEnd={handleFullscreenTrimmedDragEnd}
                 >
@@ -280,7 +287,7 @@ export default function FullscreenVideoModal({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 rounded-[6px] px-2 text-[11px]"
+                  className={ghostActionButtonClass}
                   onClick={() =>
                     void revealItemInDir(fullscreenTrimmedOutputPath)
                   }
@@ -290,7 +297,7 @@ export default function FullscreenVideoModal({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 rounded-[6px] px-2 text-[11px] text-destructive hover:text-destructive"
+                  className="h-7 rounded-[6px] bg-red-950/55 px-2 text-[11px] text-red-200 hover:bg-red-900/80 hover:text-red-100"
                   onClick={() => void handleDeleteFullscreenTrimmed()}
                 >
                   Delete
