@@ -278,12 +278,12 @@ export default function SfxAudioCard({
       title={file.filename}
       tabIndex={0}
     >
-      <div className="flex flex-col flex-1 h-full">
+      <div className="flex flex-col flex-1 items-center justify-center bg-accent/60">
         <WavesurferRender
           src={file.original_path}
           waveform={file.waveform_data || []}
           volume={volume}
-          height="100%"
+          height="70%"
           width={"100%"}
           enableDrag
         />

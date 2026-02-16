@@ -110,7 +110,7 @@ const WavesurferRender = (props: {
     const wavesurfer = wavesurferRef.current;
     if (!wavesurfer) return;
 
-    const handleFinish = () => {};
+    const handleFinish = () => { };
 
     wavesurfer.on("finish", handleFinish);
 
@@ -170,7 +170,7 @@ const WavesurferRender = (props: {
     >
       <div
         ref={containerRef}
-        className="bg-accent/60"
+        // className="bg-accent/60"
         style={{
           visibility: isLoading ? "hidden" : "visible",
           height: resolvedHeight,
