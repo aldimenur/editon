@@ -60,12 +60,15 @@ export default function SfxAudioCard({
     null,
   );
   const [trimCursorRatio, setTrimCursorRatio] = useState<number | null>(null);
+  const [isHoveringCard, setIsHoveringCard] = useState(false);
+  const [isTrimBarPinned, setIsTrimBarPinned] = useState(false);
 
   const MIN_TRIM_WIDTH = 0.02;
   const durationSec = file.duration_sec > 0 ? file.duration_sec : 0;
   const hasTrimChanges =
     Math.abs(trimRange.start - appliedTrimRange.start) > 0.0001 ||
     Math.abs(trimRange.end - appliedTrimRange.end) > 0.0001;
+  const showTrimBar = isHoveringCard || isTrimBarPinned || hasTrimChanges;
 
   useEffect(() => {
     setTrimRange({ start: 0, end: 1 });
@@ -74,12 +77,15 @@ export default function SfxAudioCard({
     setIsTrimming(false);
     setTrimmedOutputPath(null);
     setTrimCursorRatio(null);
+    setIsHoveringCard(false);
+    setIsTrimBarPinned(false);
   }, [file.original_path]);
 
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
 
   const setTrimEdgeAtRatio = (edge: "start" | "end", ratio: number) => {
+    setIsTrimBarPinned(true);
     setTrimRange((prev) => {
       if (edge === "start") {
         const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
@@ -96,6 +102,7 @@ export default function SfxAudioCard({
     if (!trimBarRef.current) return;
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
 
     const rect = trimBarRef.current.getBoundingClientRect();
     const initial = { ...trimRange };
@@ -130,6 +137,7 @@ export default function SfxAudioCard({
 
   const handleTrimApply = async (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    setIsTrimBarPinned(true);
     if (durationSec <= 0) {
       setTrimError("Cannot trim media with unknown duration.");
       return;
@@ -157,6 +165,7 @@ export default function SfxAudioCard({
 
   const handleTrimCancel = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    setIsTrimBarPinned(true);
     setTrimRange(appliedTrimRange);
     setTrimError(null);
   };
@@ -190,6 +199,7 @@ export default function SfxAudioCard({
   const handleTrimBarClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
 
     if (!trimBarRef.current) return;
     const rect = trimBarRef.current.getBoundingClientRect();
@@ -246,7 +256,11 @@ export default function SfxAudioCard({
       className={`group relative border flex bg-background/70 rounded-[6px] transition-shadow ${isSelectedClass}`}
       style={{ minHeight, height: minHeight, width: "100%" }}
       onMouseMove={handleCardPointerMove}
-      onMouseLeave={() => setTrimCursorRatio(null)}
+      onMouseEnter={() => setIsHoveringCard(true)}
+      onMouseLeave={() => {
+        setIsHoveringCard(false);
+        setTrimCursorRatio(null);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenContextMenu(file, event.clientX, event.clientY);
@@ -332,56 +346,62 @@ export default function SfxAudioCard({
           </Button>
         </div>
       )}
-      <div
-        className="absolute inset-x-2 bottom-0.5 z-20"
-        onMouseDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
+      {showTrimBar && (
         <div
-          ref={trimBarRef}
-          className="relative h-[3px] rounded-full bg-background/80"
-          onClick={handleTrimBarClick}
-          onMouseMove={(event) => {
-            if (!trimBarRef.current) return;
-            const rect = trimBarRef.current.getBoundingClientRect();
-            if (rect.width <= 0) return;
-            const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-            setTrimCursorRatio(ratio);
+          className="absolute inset-x-2 bottom-0.5 z-20"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
           }}
         >
           <div
-            className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
-            style={{
-              left: `${trimRange.start * 100}%`,
-              width: `${(trimRange.end - trimRange.start) * 100}%`,
+            ref={trimBarRef}
+            className="relative h-[3px] rounded-full bg-background/80"
+            onClick={handleTrimBarClick}
+            onMouseMove={(event) => {
+              if (!trimBarRef.current) return;
+              const rect = trimBarRef.current.getBoundingClientRect();
+              if (rect.width <= 0) return;
+              const ratio = clamp(
+                (event.clientX - rect.left) / rect.width,
+                0,
+                1,
+              );
+              setTrimCursorRatio(ratio);
             }}
-          />
-          <button
-            type="button"
-            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
-            style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
-            onMouseDown={(event) => startTrimDrag("start", event)}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            aria-label="Trim start handle"
-          />
-          <button
-            type="button"
-            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
-            style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
-            onMouseDown={(event) => startTrimDrag("end", event)}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            aria-label="Trim end handle"
-          />
+          >
+            <div
+              className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
+              style={{
+                left: `${trimRange.start * 100}%`,
+                width: `${(trimRange.end - trimRange.start) * 100}%`,
+              }}
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("start", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim start handle"
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("end", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim end handle"
+            />
+          </div>
         </div>
-      </div>
+      )}
       {trimError && (
         <div className="absolute bottom-2 left-2 z-20 max-w-[70%] truncate rounded-[6px] bg-destructive/85 px-2 py-0.5 text-[10px] text-destructive-foreground">
           {trimError}

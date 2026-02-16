@@ -73,6 +73,8 @@ export default function VideoCard({
   const [trimmedOutputPath, setTrimmedOutputPath] = useState<string | null>(
     null,
   );
+  const [isHoveringCard, setIsHoveringCard] = useState(false);
+  const [isTrimBarPinned, setIsTrimBarPinned] = useState(false);
   const videoSrc = convertFileSrc(file.original_path);
   const thumbSrc = file.thumbnail_path
     ? convertFileSrc(file.thumbnail_path)
@@ -84,6 +86,7 @@ export default function VideoCard({
     Math.abs(trimRange.end - appliedTrimRange.end) > 0.0001;
   const isGrid = viewModeVideo === "grid";
   const showVideo = playing || !thumbSrc;
+  const showTrimBar = isHoveringCard || isTrimBarPinned || hasTrimChanges;
 
   useEffect(() => {
     setTrimRange({ start: 0, end: 1 });
@@ -97,6 +100,8 @@ export default function VideoCard({
     setCurrentTime(0);
     setVideoDuration(0);
     setTrimCursorRatio(null);
+    setIsHoveringCard(false);
+    setIsTrimBarPinned(false);
   }, [file.original_path]);
 
   const clamp = (value: number, min: number, max: number) =>
@@ -106,6 +111,7 @@ export default function VideoCard({
     if (!trimBarRef.current) return;
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
 
     const rect = trimBarRef.current.getBoundingClientRect();
     const initial = { ...trimRange };
@@ -139,6 +145,7 @@ export default function VideoCard({
   };
 
   const setTrimEdgeAtRatio = (edge: "start" | "end", ratio: number) => {
+    setIsTrimBarPinned(true);
     setTrimRange((prev) => {
       if (edge === "start") {
         const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
@@ -154,6 +161,7 @@ export default function VideoCard({
   const handleTrimApply = async (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
 
     if (durationSec <= 0) {
       setTrimError("Cannot trim media with unknown duration.");
@@ -183,6 +191,7 @@ export default function VideoCard({
   const handleTrimCancel = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
     setTrimRange(appliedTrimRange);
     setTrimError(null);
   };
@@ -279,6 +288,7 @@ export default function VideoCard({
   const handleTrimBarClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsTrimBarPinned(true);
 
     if (!trimBarRef.current) return;
     const rect = trimBarRef.current.getBoundingClientRect();
@@ -339,7 +349,11 @@ export default function VideoCard({
       key={file.id}
       className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
       onMouseMove={handleCardPointerMove}
-      onMouseLeave={() => setTrimCursorRatio(null)}
+      onMouseEnter={() => setIsHoveringCard(true)}
+      onMouseLeave={() => {
+        setIsHoveringCard(false);
+        setTrimCursorRatio(null);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -543,51 +557,53 @@ export default function VideoCard({
         </div>
       )}
 
-      <div
-        className="absolute inset-x-2 bottom-0.5 z-20"
-        data-no-card-drag="true"
-        onMouseDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
+      {showTrimBar && (
         <div
-          ref={trimBarRef}
-          className="relative h-[3px] rounded-full bg-background/80"
-          onClick={handleTrimBarClick}
-          onMouseMove={handleTrimBarPointerMove}
+          className="absolute inset-x-2 bottom-0.5 z-20"
+          data-no-card-drag="true"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
         >
           <div
-            className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
-            style={{
-              left: `${trimRange.start * 100}%`,
-              width: `${(trimRange.end - trimRange.start) * 100}%`,
-            }}
-          />
-          <button
-            type="button"
-            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
-            style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
-            onMouseDown={(event) => startTrimDrag("start", event)}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            aria-label="Trim start handle"
-          />
-          <button
-            type="button"
-            className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
-            style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
-            onMouseDown={(event) => startTrimDrag("end", event)}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            aria-label="Trim end handle"
-          />
+            ref={trimBarRef}
+            className="relative h-[3px] rounded-full bg-background/80"
+            onClick={handleTrimBarClick}
+            onMouseMove={handleTrimBarPointerMove}
+          >
+            <div
+              className="pointer-events-none absolute bottom-0 top-0 rounded-full bg-primary/90"
+              style={{
+                left: `${trimRange.start * 100}%`,
+                width: `${(trimRange.end - trimRange.start) * 100}%`,
+              }}
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.start * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("start", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim start handle"
+            />
+            <button
+              type="button"
+              className="absolute top-1/2 z-10 h-3 w-2 -translate-y-1/2 border border-background bg-primary shadow"
+              style={{ left: `calc(${trimRange.end * 100}% - 6px)` }}
+              onMouseDown={(event) => startTrimDrag("end", event)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label="Trim end handle"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {trimError && (
         <div className="absolute bottom-4 left-2 z-20 max-w-[70%] truncate rounded-[6px] bg-destructive/85 px-2 py-0.5 text-[10px] text-destructive-foreground">
