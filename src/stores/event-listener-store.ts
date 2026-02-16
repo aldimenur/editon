@@ -12,6 +12,29 @@ export interface ProgressPayload {
   name?: string;
 }
 
+type ProcessingResponse = {
+  message: string;
+  status: string;
+};
+
+function toProgressPayload(payload: unknown): ProgressPayload | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const value = payload as Record<string, unknown>;
+
+  return {
+    current: typeof value.current === "number" ? value.current : undefined,
+    total: typeof value.total === "number" ? value.total : undefined,
+    status: typeof value.status === "string" ? value.status : undefined,
+    count: typeof value.count === "number" ? value.count : undefined,
+    last_files:
+      typeof value.last_files === "string" ? value.last_files : undefined,
+    name: typeof value.name === "string" ? value.name : undefined,
+  };
+}
+
 interface EventListenerStore {
   progressSound: ProgressPayload | null;
   progressImage: ProgressPayload | null;
@@ -32,11 +55,15 @@ const handleFileChanges = async () => {
   await updateAssetsCount();
   await refetchAssets();
   try {
-    const thumb = await invoke("generate_missing_thumbnails");
+    const thumb = await invoke<ProcessingResponse>(
+      "generate_missing_thumbnails",
+    );
     console.log("thumb", thumb);
-    const wav = await invoke("generate_missing_waveforms");
+    const wav = await invoke<string>("generate_missing_waveforms");
     console.log("wav", wav);
-    const vid = await invoke("generate_missing_video_thumbnails");
+    const vid = await invoke<ProcessingResponse>(
+      "generate_missing_video_thumbnails",
+    );
     console.log(vid);
   } catch (error) {
     console.error("Error generating thumbnails/waveforms:", error);
@@ -58,8 +85,10 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
       await listen("file-removed", () => handleFileChanges());
       await listen("file-renamed", () => handleFileChanges());
 
-      await listen("scan-progress", (event) => {
-        const payload = event.payload as ProgressPayload;
+      await listen<ProgressPayload>("scan-progress", (event) => {
+        const payload = toProgressPayload(event.payload);
+        if (!payload) return;
+
         if (payload.status === "finished") {
           set({ countingTotal: false });
           handleFileChanges();
@@ -67,8 +96,10 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         console.log(payload);
       });
 
-      await listen("waveform-progress", (event) => {
-        const payload = event.payload as ProgressPayload;
+      await listen<ProgressPayload>("waveform-progress", (event) => {
+        const payload = toProgressPayload(event.payload);
+        if (!payload) return;
+
         set({ progressSound: payload });
         if (payload.status === "done") {
           set({ progressSound: null });
@@ -76,8 +107,10 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         }
       });
 
-      await listen("thumbnail-progress", (event) => {
-        const payload = event.payload as ProgressPayload;
+      await listen<ProgressPayload>("thumbnail-progress", (event) => {
+        const payload = toProgressPayload(event.payload);
+        if (!payload) return;
+
         set({ progressImage: payload });
         if (payload.status === "done") {
           set({ progressImage: null });

@@ -1,6 +1,7 @@
 import useAssetStore from "@/stores/asset-store";
 import useEventListenerStore from "@/stores/event-listener-store";
 import useNavStore from "@/stores/nav-store";
+import type { ProgressPayload } from "@/stores/event-listener-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import {
   faFolderOpen,
@@ -12,11 +13,18 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
 
-const sidebarItems = [
+type SidebarItemType = "sfx" | "video" | "image" | "youtube" | "settings";
+
+const sidebarItems: {
+  icon: ReactNode;
+  label: string;
+  path: string;
+  type: SidebarItemType;
+}[] = [
   {
     icon: <FontAwesomeIcon icon={faMusic} className="text-[12px]" />,
     label: "Sound",
@@ -57,7 +65,7 @@ const Navbar = () => {
   const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
   const { progressSound, progressImage, countingTotal, setCountingTotal } =
     useEventListenerStore((state) => state);
-  const [progressVideo] = useState<any>(null);
+  const progressVideo = null as ProgressPayload | null;
 
   const handleSetPath = async () => {
     try {
@@ -74,7 +82,7 @@ const Navbar = () => {
     }
   };
 
-  const getCount = (type: string) => {
+  const getCount = (type: SidebarItemType) => {
     if (countingTotal) return null;
     if (type === "sfx") return sfx;
     if (type === "video") return video;

@@ -10,7 +10,7 @@ export interface AssetMetadata {
   height?: number;
   frame_rate?: number;
   color_space?: string;
-  [key: string]: any; // For flexible metadata
+  [key: string]: unknown; // For flexible metadata
 }
 
 export interface Asset {

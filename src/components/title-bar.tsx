@@ -15,8 +15,8 @@ type TitleBarProps = {
     isMaximized: boolean;
     isAlwaysOnTop: boolean;
     appWindow: Window;
-    setIsAlwaysOnTop: (e: any) => void;
-    setIsMaximized: (e: any) => void;
+    setIsAlwaysOnTop: (value: boolean) => void;
+    setIsMaximized: (value: boolean) => void;
   };
   isZenMode: boolean;
   onToggleZen: () => void;

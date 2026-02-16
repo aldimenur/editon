@@ -14,11 +14,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-export type dependenciesCheckResponse = {
+type DependenciesCheckResponse = {
   yt_dlp_installed: boolean;
   ffprobe_installed: boolean;
   ffmpeg_installed: boolean;
   deno_installed: boolean;
+};
+
+type YtdlpOutputPayload = string | { message?: string };
+type YtdlpDependencyProgressPayload = {
+  progress: number;
 };
 
 type DownloadType = "audio" | "video";
@@ -34,7 +39,13 @@ const YoutubeDownloadPage = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [dependenciesCheckMsg, setDependenciesMsg] =
-    useState<dependenciesCheckResponse>();
+    useState<DependenciesCheckResponse>();
+
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === "string") return error;
+    if (error instanceof Error) return error.message;
+    return fallback;
+  };
 
   const parseProgress = (line: string): number | null => {
     const progressMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
@@ -47,9 +58,8 @@ const YoutubeDownloadPage = () => {
   const checkDependencies = async () => {
     setIsLoading(true);
     try {
-      const response = (await invoke(
-        "check_dependencies",
-      )) as dependenciesCheckResponse;
+      const response =
+        await invoke<DependenciesCheckResponse>("check_dependencies");
       setDependenciesMsg(response);
     } catch (error) {
       console.error("Failed to check dependencies", error);
@@ -61,7 +71,7 @@ const YoutubeDownloadPage = () => {
     setIsLoading(true);
     setErrorMsg("");
     try {
-      await invoke("download_dependencies");
+      await invoke<string>("download_dependencies");
       await checkDependencies();
       setProgress(0);
     } catch (error) {
@@ -94,13 +104,13 @@ const YoutubeDownloadPage = () => {
     }
 
     try {
-      const res = await invoke("run_ytdlp", { args });
+      const res = await invoke<string>("run_ytdlp", { args });
       if (res === "Success") {
         setVideoProgress(100);
       }
     } catch (error) {
       console.error("Failed to download media", error);
-      setErrorMsg(typeof error === "string" ? error : "Download failed.");
+      setErrorMsg(getErrorMessage(error, "Download failed."));
     }
 
     setIsLoading(false);
@@ -113,30 +123,38 @@ const YoutubeDownloadPage = () => {
     let unlistenDeno: (() => void) | undefined;
 
     const attachListeners = async () => {
-      unlistenYtdlpOutput = await listen("ytdlp-output", (e: any) => {
-        const line =
-          typeof e.payload === "string" ? e.payload : e.payload?.message || "";
-        const progressValue = parseProgress(line);
+      unlistenYtdlpOutput = await listen<YtdlpOutputPayload>(
+        "ytdlp-output",
+        (e) => {
+          const line =
+            typeof e.payload === "string"
+              ? e.payload
+              : e.payload?.message || "";
+          const progressValue = parseProgress(line);
 
-        if (progressValue !== null) {
-          setVideoProgress(progressValue);
-        }
+          if (progressValue !== null) {
+            setVideoProgress(progressValue);
+          }
+        },
+      );
+
+      unlistenFfmpeg = await listen<number>("ffmpeg-download-progress", (e) => {
+        setProgress(e.payload);
       });
 
-      unlistenFfmpeg = await listen("ffmpeg-download-progress", (e) => {
-        setProgress(e.payload as number);
-      });
+      unlistenYtdlpDep = await listen<YtdlpDependencyProgressPayload>(
+        "yt-dlp-download-progress",
+        (e) => {
+          setProgress(e.payload.progress);
+        },
+      );
 
-      unlistenYtdlpDep = await listen("yt-dlp-download-progress", (e: any) => {
-        setProgress(e.payload.progress);
-      });
-
-      unlistenDeno = await listen("deno-download-progress", (e) => {
-        setProgress(e.payload as number);
+      unlistenDeno = await listen<number>("deno-download-progress", (e) => {
+        setProgress(e.payload);
       });
     };
 
-    attachListeners();
+    void attachListeners();
 
     return () => {
       unlistenYtdlpOutput?.();
@@ -147,13 +165,13 @@ const YoutubeDownloadPage = () => {
   }, []);
 
   useEffect(() => {
-    checkDependencies();
+    void checkDependencies();
   }, []);
 
   const handleBrowseDestination = async () => {
     try {
       const path = await open({ directory: true });
-      if (path) {
+      if (typeof path === "string") {
         setDownloadPath(path);
       }
     } catch (error) {

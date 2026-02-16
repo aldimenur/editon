@@ -2,7 +2,7 @@ import { countAssets, startWatcher } from "@/lib/utils";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
-import type { Asset, AssetQueryParams } from "@/types/tauri";
+import type { Asset, AssetQueryParams, PaginatedResponse } from "@/types/tauri";
 
 type AssetSearchState = {
   search: string;
@@ -18,6 +18,22 @@ function createDefaultSearchState(): AssetSearchState {
     sortBy: "date_modified",
     sortOrder: "desc",
   };
+}
+
+async function getAssetsPaginated(
+  page: number,
+  pageSize: number,
+  assetType: "audio" | "video" | "image",
+  queryParams: AssetQueryParams,
+): Promise<PaginatedResponse> {
+  return invoke<PaginatedResponse>("get_assets_paginated", {
+    page,
+    pageSize,
+    queryParams: {
+      ...queryParams,
+      assetType,
+    },
+  });
 }
 
 interface AssetStore {
@@ -205,17 +221,12 @@ const useAssetStore = create<AssetStore>()(
           const { tags, sortBy, sortOrder } = state.sfxSearch;
           const search = state.sfxSearch.search.trim();
 
-          const result = (await invoke("get_assets_paginated", {
-            page,
-            pageSize,
-            queryParams: {
-              search,
-              assetType: "audio",
-              tags,
-              sortBy,
-              sortOrder,
-            },
-          })) as any;
+          const result = await getAssetsPaginated(page, pageSize, "audio", {
+            search,
+            tags,
+            sortBy,
+            sortOrder,
+          });
 
           const assets = result.data || [];
           state.setSfxFiles(assets, reset);
@@ -241,17 +252,12 @@ const useAssetStore = create<AssetStore>()(
           const { tags, sortBy, sortOrder } = state.videoSearch;
           const search = state.videoSearch.search.trim();
 
-          const result = (await invoke("get_assets_paginated", {
-            page,
-            pageSize,
-            queryParams: {
-              search,
-              assetType: "video",
-              tags,
-              sortBy,
-              sortOrder,
-            },
-          })) as any;
+          const result = await getAssetsPaginated(page, pageSize, "video", {
+            search,
+            tags,
+            sortBy,
+            sortOrder,
+          });
 
           const assets = result.data || [];
           state.setVideoFiles(assets, reset);
@@ -277,17 +283,12 @@ const useAssetStore = create<AssetStore>()(
           const { tags, sortBy, sortOrder } = state.imageSearch;
           const search = state.imageSearch.search.trim();
 
-          const result = (await invoke("get_assets_paginated", {
-            page,
-            pageSize,
-            queryParams: {
-              search,
-              assetType: "image",
-              tags,
-              sortBy,
-              sortOrder,
-            },
-          })) as any;
+          const result = await getAssetsPaginated(page, pageSize, "image", {
+            search,
+            tags,
+            sortBy,
+            sortOrder,
+          });
 
           const assets = result.data || [];
           state.setImageFiles(assets, reset);

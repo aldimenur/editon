@@ -1,37 +1,28 @@
 import useAssetStore from "@/stores/asset-store";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Input } from "@/components/ui/input";
-import { MoreHorizontal } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Asset } from "@/types/tauri";
-import { Button } from "@/components/ui/button";
 import useViewStore from "@/stores/view-store";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { formatFileSize } from "@/lib/utils";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 import TagsDialog from "@/components/TagsDialog";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import ImageCard from "./components/image-card";
+import ImageAssetList from "./components/image-asset-list";
+import ImagePreviewModal from "./components/image-preview-modal";
+import ImageCrudDialogs from "./components/image-crud-dialogs";
+import { highlightSearchText, renderTagChips } from "./utils/text";
 
 const ITEM_HEIGHTS = {
   list: 240,
@@ -53,7 +44,7 @@ const ImagePage = () => {
 
   const [pageSize] = useState(30);
   const { viewModeImage, setViewModeImage } = useViewStore((state) => state);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
@@ -213,43 +204,7 @@ const ImagePage = () => {
     setSelectedImage(null);
   };
 
-  const highlightText = (text: string, search: string) => {
-    if (typeof search !== "string" || !search.trim()) return text;
-
-    // Tokenize search query: split by whitespace
-    const tokens = search
-      .split(/\s+/)
-      .filter((token) => token.trim().length > 0)
-      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); // Escape regex special chars
-
-    if (tokens.length === 0) return text;
-
-    // Create regex pattern that matches any token
-    const pattern = new RegExp(`(${tokens.join("|")})`, "gi");
-    const parts = text.split(pattern);
-
-    return (
-      <>
-        {parts.map((part, index) => {
-          // Check if this part matches any of the search tokens
-          const isMatch = tokens.some(
-            (token) => part.toLowerCase() === token.toLowerCase(),
-          );
-
-          return isMatch ? (
-            <mark
-              key={index}
-              className="bg-yellow-300 dark:bg-yellow-600 text-foreground"
-            >
-              {part}
-            </mark>
-          ) : (
-            part
-          );
-        })}
-      </>
-    );
-  };
+  const highlightText = highlightSearchText;
 
   const handleTagsClick = (
     assetId: number,
@@ -402,32 +357,7 @@ const ImagePage = () => {
     setNewFileName("");
   };
 
-  const renderTags = (tags: string | null | undefined) => {
-    if (!tags) return null;
-    const tagArray = tags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-    if (tagArray.length === 0) return null;
-
-    return (
-      <div className="flex flex-wrap gap-1 mt-1">
-        {tagArray.slice(0, 3).map((tag, index) => (
-          <span
-            key={index}
-            className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
-          >
-            {tag}
-          </span>
-        ))}
-        {tagArray.length > 3 && (
-          <span className="text-muted-foreground text-xs">
-            +{tagArray.length - 3}
-          </span>
-        )}
-      </div>
-    );
-  };
+  const renderTags = renderTagChips;
 
   const openContextMenu = useCallback(
     async (file: Asset, x: number, y: number) => {
@@ -513,87 +443,26 @@ const ImagePage = () => {
   };
 
   const renderImageCard = (file: Asset, minHeight: number, isGrid: boolean) => {
-    const imageSrc = file.thumbnail_path
-      ? convertFileSrc(file.thumbnail_path)
-      : "";
     const isSelected = selectedAssetIds.includes(file.id ?? -1);
 
     return (
-      <div
+      <ImageCard
         key={file.id}
-        className={`group relative border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (file.id == null) return;
-          void openContextMenu(file, event.clientX, event.clientY);
+        file={file}
+        isSelected={isSelected}
+        minHeight={minHeight}
+        isGrid={isGrid}
+        gridItemHeight={gridItemHeight}
+        imageSearchText={imageSearchText}
+        highlightText={highlightText}
+        renderTags={renderTags}
+        onOpenContextMenu={(targetFile, x, y) => {
+          void openContextMenu(targetFile, x, y);
         }}
-        onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
-          if (
-            event.key === "ContextMenu" ||
-            (event.shiftKey && event.key === "F10")
-          ) {
-            event.preventDefault();
-            const rect = event.currentTarget.getBoundingClientRect();
-            if (file.id == null) return;
-            void openContextMenu(
-              file,
-              rect.left + rect.width / 2,
-              rect.top + 20,
-            );
-          }
-        }}
-        title="Right-click or use Shift+F10 for actions"
-        tabIndex={0}
-        draggable
-        onDragStart={(event) => handleAssetDragStart(event, file)}
-        onDragEnd={handleAssetDragEnd}
-        style={
-          isGrid
-            ? { height: gridItemHeight, aspectRatio: "16 / 9" }
-            : { minHeight }
-        }
-      >
-        <div className="absolute inset-0">
-          <img
-            src={imageSrc}
-            alt={file.filename}
-            className="h-full w-full object-cover bg-muted cursor-pointer"
-            loading="lazy"
-            decoding="async"
-            onClick={() => setSelectedImage(file)}
-          />
-        </div>
-
-        <div className="absolute inset-x-0 bottom-0 z-10 px-2 pb-1 pt-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none">
-          <div className="absolute inset-x-0 bottom-0 top-0 bg-linear-to-t from-background/95 via-background/70 to-transparent" />
-          <div className="relative">
-            <div className="text-xs font-medium truncate whitespace-nowrap">
-              {highlightText(file.filename, imageSearchText)}
-            </div>
-            <div className="max-h-7 overflow-hidden">
-              {renderTags(file.tags)}
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-sm bg-background/80 shadow-sm hover:bg-background"
-            onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
-              event.stopPropagation();
-              const rect = event.currentTarget.getBoundingClientRect();
-              if (file.id == null) return;
-              void openContextMenu(file, rect.right - 8, rect.bottom + 2);
-            }}
-            title="More actions"
-          >
-            <MoreHorizontal className="h-2 w-2" />
-          </Button>
-        </div>
-      </div>
+        onAssetDragStart={handleAssetDragStart}
+        onAssetDragEnd={handleAssetDragEnd}
+        onOpenPreview={setSelectedImage}
+      />
     );
   };
 
@@ -618,116 +487,21 @@ const ImagePage = () => {
         onClearSelected={() => setSelectedAssetIds([])}
         hint="Hint: Right-click an item or use Shift+F10"
       />
-      <div ref={containerRef} className="h-[calc(100vh-80px)] overflow-y-auto">
-        {showEmptyState ? (
-          <div className="text-center text-muted-foreground py-8 text-sm">
-            {imageSearchText
-              ? "No images found matching your search"
-              : "No image files found"}
-          </div>
-        ) : (
-          <div
-            className="relative w-full"
-            style={{ height: totalHeight || (isLoading ? rowHeight : 0) }}
-          >
-            {!!virtualItems.length && (
-              <div
-                className={`absolute left-0 right-0 space-y-1`}
-                style={{
-                  transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-                }}
-              >
-                {virtualItems.map((virtualRow) => {
-                  if (viewModeImage === "grid") {
-                    const startIndex = virtualRow.index * gridColumns;
-                    const files = Array.from(
-                      { length: gridColumns },
-                      (_, i) => imageFiles[startIndex + i],
-                    ).filter(Boolean);
+      <ImageAssetList
+        containerRef={containerRef}
+        showEmptyState={showEmptyState}
+        imageSearchText={imageSearchText}
+        totalHeight={totalHeight}
+        isLoading={isLoading}
+        rowHeight={rowHeight}
+        virtualItems={virtualItems}
+        viewModeImage={viewModeImage}
+        gridColumns={gridColumns}
+        imageFiles={imageFiles}
+        renderImageCard={renderImageCard}
+      />
 
-                    const gridColsClass =
-                      gridColumns === 5
-                        ? "grid-cols-5"
-                        : gridColumns === 4
-                          ? "grid-cols-4"
-                          : gridColumns === 3
-                            ? "grid-cols-3"
-                            : "grid-cols-2";
-
-                    return (
-                      <div
-                        key={virtualRow.index}
-                        className={`grid ${gridColsClass} gap-1`}
-                        style={{ minHeight: virtualRow.size }}
-                      >
-                        {files.map((file) =>
-                          renderImageCard(file, rowHeight, true),
-                        )}
-                      </div>
-                    );
-                  } else {
-                    // List or Large mode: single column
-                    const file = imageFiles[virtualRow.index];
-                    if (!file) return null;
-
-                    return renderImageCard(file, virtualRow.size, false);
-                  }
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Image Preview Modal */}
-      {selectedImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3"
-          onClick={closeModal}
-        >
-          <div
-            className="relative max-w-7xl max-h-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 right-2 h-10 w-10 text-white hover:bg-white/20 z-10"
-              onClick={closeModal}
-            >
-              <span className="text-2xl">×</span>
-            </Button>
-
-            {/* Image */}
-            <img
-              src={convertFileSrc(selectedImage.original_path)}
-              alt={selectedImage.filename}
-              className="max-w-full max-h-[90vh] object-contain"
-            />
-
-            {/* Image Info Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-white p-3">
-              <p className="font-medium mb-1">{selectedImage.filename}</p>
-              <div className="flex gap-3 text-sm text-gray-300">
-                <span>
-                  {selectedImage.metadata?.width &&
-                  selectedImage.metadata?.height
-                    ? `${selectedImage.metadata.width} × ${selectedImage.metadata.height}`
-                    : "Unknown resolution"}
-                </span>
-                <span>{formatFileSize(selectedImage.file_size)}</span>
-                {selectedImage.metadata?.color_space && (
-                  <span>{selectedImage.metadata.color_space}</span>
-                )}
-                {selectedImage.metadata?.codec && (
-                  <span>{selectedImage.metadata.codec.toUpperCase()}</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ImagePreviewModal image={selectedImage} onClose={closeModal} />
 
       <TagsDialog
         open={tagsDialogOpen}
@@ -738,71 +512,18 @@ const ImagePage = () => {
         onTagsUpdated={handleTagsUpdated}
       />
 
-      <AlertDialog
-        open={deleteDialogOpen}
-        onOpenChange={handleDeleteDialogChange}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete
-              {deleteTargets.length > 1
-                ? ` ${deleteTargets.length} files`
-                : " the file"}{" "}
-              from your system.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => handleDeleteDialogChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>
-              Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Rename File</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a new name for the file.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            type="text"
-            value={newFileName}
-            onChange={(e) => setNewFileName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleRenameConfirm();
-              } else if (e.key === "Escape") {
-                handleRenameCancel();
-              }
-            }}
-            placeholder="New file name"
-            className="mt-2"
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={handleRenameCancel}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleRenameConfirm}
-              disabled={!newFileName.trim()}
-            >
-              Rename
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ImageCrudDialogs
+        deleteDialogOpen={deleteDialogOpen}
+        deleteTargets={deleteTargets}
+        onDeleteDialogChange={handleDeleteDialogChange}
+        onDeleteConfirm={handleDeleteConfirm}
+        renameDialogOpen={renameDialogOpen}
+        setRenameDialogOpen={setRenameDialogOpen}
+        newFileName={newFileName}
+        setNewFileName={setNewFileName}
+        onRenameConfirm={handleRenameConfirm}
+        onRenameCancel={handleRenameCancel}
+      />
     </div>
   );
 };
