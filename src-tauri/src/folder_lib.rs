@@ -3,7 +3,7 @@ use notify::{Event, EventKind, RecursiveMode, Result as NotifyResult, Watcher};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
 use tauri::{AppHandle, Emitter, State};
 use tokio::fs;
@@ -142,7 +142,10 @@ pub fn scan_and_import_folder(
     folder_path: String,
 ) -> Result<String, String> {
     std::thread::sleep(std::time::Duration::from_millis(100));
+    state.cancel_scan.store(false, Ordering::SeqCst);
+
     let db_conn = state.conn.clone();
+    let cancel_scan = state.cancel_scan.clone();
     let app = app.clone();
 
     std::thread::spawn(move || {
@@ -152,6 +155,11 @@ pub fn scan_and_import_folder(
             .into_iter()
             .filter_map(|e| e.ok())
         {
+            if cancel_scan.load(Ordering::SeqCst) {
+                println!("Scan cancelled by user");
+                break;
+            }
+
             let path = entry.path();
             if !path.is_file() {
                 continue;

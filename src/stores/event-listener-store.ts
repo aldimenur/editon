@@ -17,6 +17,13 @@ type ProcessingResponse = {
   status: string;
 };
 
+const REFRESH_DEBOUNCE_MS = 350;
+
+let refreshTimer: number | null = null;
+let refreshInFlight = false;
+let refreshQueued = false;
+let queuedMaintenance = false;
+
 function toProgressPayload(payload: unknown): ProgressPayload | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -48,12 +55,17 @@ interface EventListenerStore {
   initEventListeners: () => Promise<void>;
 }
 
-const handleFileChanges = async () => {
+const runRefreshCycle = async (runMaintenance: boolean) => {
   const updateAssetsCount = useAssetStore.getState().updateAssetsCount;
   const refetchAssets = useAssetStore.getState().refetchAssets;
 
   await updateAssetsCount();
   await refetchAssets();
+
+  if (!runMaintenance) {
+    return;
+  }
+
   try {
     const thumb = await invoke<ProcessingResponse>(
       "generate_missing_thumbnails",
@@ -70,6 +82,40 @@ const handleFileChanges = async () => {
   }
 };
 
+const flushRefreshQueue = async () => {
+  if (refreshInFlight) {
+    refreshQueued = true;
+    return;
+  }
+
+  refreshInFlight = true;
+
+  try {
+    do {
+      const runMaintenance = queuedMaintenance;
+      queuedMaintenance = false;
+      refreshQueued = false;
+
+      await runRefreshCycle(runMaintenance);
+    } while (refreshQueued || queuedMaintenance);
+  } finally {
+    refreshInFlight = false;
+  }
+};
+
+const scheduleFileChangeRefresh = (runMaintenance = false) => {
+  queuedMaintenance = queuedMaintenance || runMaintenance;
+
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer);
+  }
+
+  refreshTimer = window.setTimeout(() => {
+    refreshTimer = null;
+    void flushRefreshQueue();
+  }, REFRESH_DEBOUNCE_MS);
+};
+
 const useEventListenerStore = create<EventListenerStore>()((set) => ({
   progressSound: null,
   progressImage: null,
@@ -81,9 +127,9 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
 
   initEventListeners: async () => {
     try {
-      await listen("file-added", () => handleFileChanges());
-      await listen("file-removed", () => handleFileChanges());
-      await listen("file-renamed", () => handleFileChanges());
+      await listen("file-added", () => scheduleFileChangeRefresh(true));
+      await listen("file-removed", () => scheduleFileChangeRefresh(true));
+      await listen("file-renamed", () => scheduleFileChangeRefresh(true));
 
       await listen<ProgressPayload>("scan-progress", (event) => {
         const payload = toProgressPayload(event.payload);
@@ -91,7 +137,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
 
         if (payload.status === "finished") {
           set({ countingTotal: false });
-          handleFileChanges();
+          scheduleFileChangeRefresh(true);
         }
         console.log(payload);
       });
@@ -103,7 +149,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         set({ progressSound: payload });
         if (payload.status === "done") {
           set({ progressSound: null });
-          handleFileChanges();
+          scheduleFileChangeRefresh();
         }
       });
 
@@ -114,7 +160,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         set({ progressImage: payload });
         if (payload.status === "done") {
           set({ progressImage: null });
-          handleFileChanges();
+          scheduleFileChangeRefresh();
         }
       });
     } catch (error) {

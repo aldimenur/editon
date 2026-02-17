@@ -1,4 +1,4 @@
-import { countAssets, startWatcher } from "@/lib/utils";
+import { countAssets } from "@/lib/utils";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
@@ -203,8 +203,6 @@ const useAssetStore = create<AssetStore>()(
         await invoke("scan_and_import_folder", {
           folderPath: path,
         });
-
-        startWatcher(path);
       },
 
       // Fetch SFX assets with pagination

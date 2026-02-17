@@ -109,10 +109,17 @@ function App() {
       setAppVersion(version);
     };
 
-    startWatcher(parentPath);
     checkForUpdates();
     getAppVersion();
   }, []);
+
+  useEffect(() => {
+    if (!parentPath) {
+      return;
+    }
+
+    void startWatcher(parentPath);
+  }, [parentPath]);
 
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">

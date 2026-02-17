@@ -243,8 +243,12 @@ pub fn run() {
     rayon::ThreadPoolBuilder::new()
         .num_threads(rayon_thread)
         .build_global()
-        .unwrap();
-    tauri::Builder::default()
+        .map_err(|e| e.to_string())
+        .unwrap_or_else(|error| {
+            eprintln!("Failed to initialize rayon global thread pool: {}", error);
+        });
+
+    let run_result = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(tauri_plugin_log::log::LevelFilter::Info)
@@ -255,12 +259,17 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // A. Tentukan lokasi database (di folder AppData user)
-            let app_data_dir = app.path().app_data_dir().unwrap();
-            std::fs::create_dir_all(&app_data_dir).unwrap();
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
             let db_path = app_data_dir.join("editon.db");
 
             {
-                let conn = Connection::open(&db_path).unwrap();
+                let conn = Connection::open(&db_path)
+                    .map_err(|e| format!("Failed to open database for schema check: {}", e))?;
                 if !is_schema_valid(&conn) {
                     println!("Schema mismatch detected. Recreating database...");
                     drop(conn); // Tutup koneksi agar file bisa dihapus
@@ -270,10 +279,13 @@ pub fn run() {
                 }
             }
 
-            let conn = Connection::open(&db_path).unwrap();
+            let conn = Connection::open(&db_path)
+                .map_err(|e| format!("Failed to open database: {}", e))?;
 
-            conn.pragma_update(None, "journal_mode", "WAL").unwrap();
-            conn.pragma_update(None, "synchronous", "NORMAL").unwrap();
+            conn.pragma_update(None, "journal_mode", "WAL")
+                .map_err(|e| format!("Failed to set SQLite journal_mode: {}", e))?;
+            conn.pragma_update(None, "synchronous", "NORMAL")
+                .map_err(|e| format!("Failed to set SQLite synchronous mode: {}", e))?;
 
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS assets (
@@ -339,6 +351,9 @@ pub fn run() {
             get_assets_paginated,
             get_count_assets,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = run_result {
+        eprintln!("error while running tauri application: {}", error);
+    }
 }

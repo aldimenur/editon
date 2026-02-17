@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -29,7 +27,25 @@
       "identifier": "opener:allow-open-path",
       "allow": [
         {
-          "path": "**"
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$PICTURE/**"
+        },
+        {
+          "path": "$VIDEO/**"
+        },
+        {
+          "path": "$MUSIC/**"
         }
       ]
     },
@@ -37,7 +53,25 @@
       "identifier": "opener:allow-reveal-item-in-dir",
       "allow": [
         {
-          "path": "**"
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$PICTURE/**"
+        },
+        {
+          "path": "$VIDEO/**"
+        },
+        {
+          "path": "$MUSIC/**"
         }
       ]
     }

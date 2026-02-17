@@ -6,7 +6,6 @@ use crate::models::DbState;
 
 pub fn is_schema_valid(conn: &Connection) -> bool {
     // Check assets table structure
-    
 
     check_table_schema(
         conn,
@@ -39,11 +38,11 @@ fn check_table_schema(
         Err(_) => return false,
     };
 
-    let existing_columns: HashSet<String> = stmt
-        .query_map([], |row| row.get::<_, String>(1)) // Index 1 is column name
-        .unwrap()
-        .filter_map(|c| c.ok())
-        .collect();
+    let existing_columns: HashSet<String> = match stmt.query_map([], |row| row.get::<_, String>(1))
+    {
+        Ok(rows) => rows.filter_map(|c| c.ok()).collect(),
+        Err(_) => return false,
+    };
 
     if existing_columns.is_empty() {
         return true; // Table doesn't exist yet, let CREATE TABLE IF NOT EXISTS work

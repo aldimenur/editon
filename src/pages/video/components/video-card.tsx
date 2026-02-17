@@ -436,7 +436,7 @@ export default function VideoCard({
           <div className="flex items-center gap-1">
             <Button
               size="icon-xs"
-              variant="outline"
+              variant="secondary"
               className="h-6 w-6 rounded-sm bg-background/80"
               onClick={handleTogglePlayback}
               title={isVideoPlaying ? "Pause" : "Play"}
@@ -449,7 +449,7 @@ export default function VideoCard({
             </Button>
             <Button
               size="icon-xs"
-              variant="outline"
+              variant="secondary"
               className="h-6 w-6 rounded-sm bg-background/80"
               onClick={handleToggleMute}
               title={isMuted ? "Unmute" : "Mute"}
