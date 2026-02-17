@@ -48,13 +48,13 @@ export function renderTagChips(tags: string | null | undefined) {
       {tagArray.slice(0, 3).map((tag, index) => (
         <span
           key={index}
-          className="bg-primary/10 text-primary px-1 py-0.5 rounded text-xs"
+          className="inline-flex items-center bg-primary text-primary-foreground px-1.5 py-0.5 rounded-sm text-xs font-semibold leading-none"
         >
           {tag}
         </span>
       ))}
       {tagArray.length > 3 && (
-        <span className="text-muted-foreground text-xs">
+        <span className="inline-flex items-center bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-sm text-xs font-semibold leading-none">
           +{tagArray.length - 3}
         </span>
       )}
