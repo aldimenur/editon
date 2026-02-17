@@ -110,7 +110,7 @@ const WavesurferRender = (props: {
     const wavesurfer = wavesurferRef.current;
     if (!wavesurfer) return;
 
-    const handleFinish = () => { };
+    const handleFinish = () => {};
 
     wavesurfer.on("finish", handleFinish);
 
@@ -148,7 +148,9 @@ const WavesurferRender = (props: {
 
     wavesurferRef.current.seekTo(clickPosition);
     globalAudioPlayer.play(wavesurferRef.current);
-    wavesurferRef.current.play();
+    void wavesurferRef.current.play().catch((error) => {
+      console.error("Failed to play audio:", error);
+    });
   };
 
   const resolvedHeight =
@@ -165,7 +167,6 @@ const WavesurferRender = (props: {
       onDragStart={enableDrag ? handleDragStart : undefined}
       onDragEnd={handleDragEnd}
       onClick={handleClick}
-      onMouseLeave={() => wavesurferRef.current?.pause()}
       style={{ height: resolvedHeight }}
     >
       <div
