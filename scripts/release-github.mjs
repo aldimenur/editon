@@ -32,6 +32,10 @@ function unquote(value) {
   return trimmed;
 }
 
+function normalizePrivateKey(value) {
+  return value.trim().replace(/\r\n/g, "\n").replace(/\n/g, "\\n");
+}
+
 function loadDotEnv(filePath) {
   if (!existsSync(filePath)) {
     return {};
@@ -40,14 +44,35 @@ function loadDotEnv(filePath) {
   const out = {};
   const lines = readFileSync(filePath, "utf-8").split(/\r?\n/);
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
 
     const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
     if (!match) continue;
 
-    const [, key, value] = match;
+    const [, key, rawValue] = match;
+    let value = rawValue;
+
+    const startsWithDoubleQuote = value.startsWith('"');
+    const startsWithSingleQuote = value.startsWith("'");
+    const quote = startsWithDoubleQuote
+      ? '"'
+      : startsWithSingleQuote
+        ? "'"
+        : "";
+
+    if (quote && !value.endsWith(quote)) {
+      while (i + 1 < lines.length) {
+        i += 1;
+        value += `\n${lines[i]}`;
+        if (lines[i].trim().endsWith(quote)) {
+          break;
+        }
+      }
+    }
+
     out[key] = unquote(value);
   }
 
@@ -57,17 +82,47 @@ function loadDotEnv(filePath) {
 const dotenv = loadDotEnv(path.join(rootDir, ".env"));
 const runEnv = { ...process.env, ...dotenv };
 
-function run(command, args, options = {}) {
-  const executable =
-    process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+if (typeof runEnv.TAURI_SIGNING_PRIVATE_KEY === "string") {
+  runEnv.TAURI_SIGNING_PRIVATE_KEY = normalizePrivateKey(
+    runEnv.TAURI_SIGNING_PRIVATE_KEY,
+  );
+}
 
-  const result = spawnSync(executable, args, {
+if (
+  !runEnv.TAURI_SIGNING_PRIVATE_KEY &&
+  typeof runEnv.TAURI_SIGNING_PRIVATE_KEY_FILE === "string" &&
+  runEnv.TAURI_SIGNING_PRIVATE_KEY_FILE.trim()
+) {
+  const keyPath = path.isAbsolute(runEnv.TAURI_SIGNING_PRIVATE_KEY_FILE)
+    ? runEnv.TAURI_SIGNING_PRIVATE_KEY_FILE
+    : path.join(rootDir, runEnv.TAURI_SIGNING_PRIVATE_KEY_FILE);
+
+  if (!existsSync(keyPath)) {
+    throw new Error(`TAURI_SIGNING_PRIVATE_KEY_FILE not found: ${keyPath}`);
+  }
+
+  runEnv.TAURI_SIGNING_PRIVATE_KEY = normalizePrivateKey(
+    readFileSync(keyPath, "utf-8"),
+  );
+}
+
+function run(command, args, options = {}) {
+  const useShell = process.platform === "win32" && command === "npm";
+
+  const result = spawnSync(command, args, {
     cwd: rootDir,
     stdio: "inherit",
-    shell: false,
+    shell: useShell,
     env: runEnv,
     ...options,
   });
+
+  if (result.error) {
+    console.error(
+      `[release] Failed to run ${command}: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
 
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
@@ -75,13 +130,12 @@ function run(command, args, options = {}) {
 }
 
 function runCapture(command, args) {
-  const executable =
-    process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+  const useShell = process.platform === "win32" && command === "npm";
 
-  const result = spawnSync(executable, args, {
+  const result = spawnSync(command, args, {
     cwd: rootDir,
     encoding: "utf-8",
-    shell: false,
+    shell: useShell,
     env: runEnv,
   });
 
