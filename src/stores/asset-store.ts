@@ -40,7 +40,6 @@ interface AssetStore {
   // Counts
   sfx: number;
   video: number;
-  music: number;
   image: number;
 
   parentPath: string;
@@ -108,32 +107,27 @@ const useAssetStore = create<AssetStore>()(
       // Initial counts
       sfx: 0,
       video: 0,
-      music: 0,
       image: 0,
 
       // Initial paths
       parentPath: "",
       sfxPath: "",
       videoPath: "",
-      musicPath: "",
       imagePath: "",
 
       // Initial search queries
       sfxSearch: createDefaultSearchState(),
       videoSearch: createDefaultSearchState(),
-      musicSearch: "",
       imageSearch: createDefaultSearchState(),
 
       // Initial asset files
       sfxFiles: [],
       videoFiles: [],
-      musicFiles: [],
       imageFiles: [],
 
       // Initial search counts
       sfxSearchCount: 0,
       videoSearchCount: 0,
-      musicSearchCount: 0,
       imageSearchCount: 0,
 
       // Initial loading state

@@ -219,7 +219,6 @@ const VideoPage = () => {
     // when we scroll within a few items of the end, load next page
     if (actualLastIndex >= videoFiles.length - 5) {
       const nextPage = Math.floor(videoFiles.length / pageSize) + 1;
-      console.log("Loading next page:", nextPage);
       fetchVideoAssets(nextPage, pageSize);
     }
   }, [

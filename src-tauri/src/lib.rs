@@ -3,7 +3,7 @@ use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    db_lib::is_schema_valid,
+    db_lib::{ensure_tag_schema, is_schema_valid},
     deno::download_deno,
     ffmpeg::download_ffmpeg,
     models::{Asset, AssetMetadata, AssetQueryParams, DbState, PaginatedResponse},
@@ -88,14 +88,14 @@ fn get_assets_paginated(
         if !tokens.is_empty() {
             // Build search condition for each token across filename, original_path, and tags
             let token_conditions = vec![
-                "(filename LIKE ? OR original_path LIKE ? OR tags LIKE ?)";
+                "(filename LIKE ? OR original_path LIKE ? OR EXISTS (SELECT 1 FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = assets.id AND t.name LIKE ?))";
                 tokens.len()
             ];
 
             // Combine all token conditions with AND (all tokens must match)
             sql_base.push_str(&format!(" AND ({})", token_conditions.join(" AND ")));
 
-            // Add wildcard parameters for each token (3 params per token: filename, original_path, and tags)
+            // Add wildcard parameters for each token (3 params per token: filename, original_path, and tag names)
             for token in tokens {
                 let wildcard = format!("%{}%", token);
                 params_values.push(Box::new(wildcard.clone()));
@@ -116,8 +116,8 @@ fn get_assets_paginated(
             if normalized_tag.is_empty() {
                 continue;
             }
-            sql_base.push_str(" AND tags LIKE ?");
-            params_values.push(Box::new(format!("%{}%", normalized_tag)));
+            sql_base.push_str(" AND EXISTS (SELECT 1 FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = assets.id AND t.name = ?)");
+            params_values.push(Box::new(normalized_tag.to_lowercase()));
         }
     }
 
@@ -279,7 +279,7 @@ pub fn run() {
                 }
             }
 
-            let conn = Connection::open(&db_path)
+            let mut conn = Connection::open(&db_path)
                 .map_err(|e| format!("Failed to open database: {}", e))?;
 
             conn.pragma_update(None, "journal_mode", "WAL")
@@ -317,6 +317,8 @@ pub fn run() {
                  ON assets(type, date_modified DESC)",
                 [],
             )?;
+
+            ensure_tag_schema(&mut conn)?;
 
             app.manage(DbState {
                 conn: Arc::new(Mutex::new(conn)),

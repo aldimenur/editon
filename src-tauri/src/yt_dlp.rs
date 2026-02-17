@@ -1,5 +1,8 @@
 use reqwest::{self};
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Read;
+use std::path::Path;
 use tauri::{AppHandle, Emitter};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader},
@@ -7,6 +10,62 @@ use tokio::{
 };
 
 use crate::utils::get_app_data_dir;
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn parse_checksum_for_filename(content: &str, filename: &str) -> Option<String> {
+    for line in content.lines() {
+        if !line.contains(filename) {
+            continue;
+        }
+
+        for token in line.split_whitespace() {
+            if token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some(token.to_lowercase());
+            }
+        }
+    }
+
+    None
+}
+
+async fn fetch_expected_ytdlp_sha256(
+    client: &reqwest::Client,
+    download_url: &str,
+    filename: &str,
+) -> Result<String, String> {
+    let base = download_url
+        .rsplit_once('/')
+        .map(|(prefix, _)| prefix)
+        .ok_or("Invalid yt-dlp download URL")?;
+    let checksum_url = format!("{}/SHA2-256SUMS", base);
+
+    let body = client
+        .get(&checksum_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch yt-dlp checksum: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read yt-dlp checksum response: {}", e))?;
+
+    parse_checksum_for_filename(&body, filename)
+        .ok_or("yt-dlp checksum entry not found for binary".to_string())
+}
 
 #[derive(serde::Serialize)]
 pub struct DependencyStatus {
@@ -169,6 +228,13 @@ pub async fn download_ytdlp(app: AppHandle, window: tauri::Window) -> Result<Str
             "Downloaded yt-dlp is too small ({} bytes). URL may be unavailable or blocked.",
             downloaded
         ));
+    }
+
+    let expected_sha = fetch_expected_ytdlp_sha256(&client, url, filename).await?;
+    let actual_sha = sha256_file(&dest_path)?;
+    if expected_sha != actual_sha {
+        let _ = fs::remove_file(&dest_path);
+        return Err("yt-dlp checksum verification failed".to_string());
     }
 
     #[cfg(unix)]

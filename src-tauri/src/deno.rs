@@ -1,7 +1,9 @@
 use futures_util::StreamExt;
 use reqwest::Client;
+use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::Read,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -13,6 +15,53 @@ use crate::utils::get_app_data_dir;
 
 const MIN_DENO_ZIP_BYTES: u64 = 1_000_000;
 const MIN_DENO_EXE_BYTES: u64 = 5_000_000;
+
+fn parse_sha256_hex(input: &str) -> Option<String> {
+    for token in input.split_whitespace() {
+        if token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(token.to_lowercase());
+        }
+    }
+    None
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+async fn fetch_expected_sha256(client: &Client, url: &str) -> Result<String, String> {
+    let checksum_candidates = [format!("{}.sha256sum", url), format!("{}.sha256", url)];
+
+    for checksum_url in checksum_candidates {
+        let response = match client.get(&checksum_url).send().await {
+            Ok(resp) if resp.status().is_success() => resp,
+            _ => continue,
+        };
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("failed to read checksum response: {}", e))?;
+
+        if let Some(hash) = parse_sha256_hex(&body) {
+            return Ok(hash);
+        }
+    }
+
+    Err("checksum file unavailable or invalid".to_string())
+}
 
 pub async fn download_deno(app: AppHandle, window: Window) -> Result<String, String> {
     let bin_dir = get_app_data_dir(&app)?;
@@ -41,6 +90,30 @@ pub async fn download_deno(app: AppHandle, window: Window) -> Result<String, Str
         let result = download_deno_zip(&client, url, &zip_path, &window).await;
         match result {
             Ok(()) => {
+                let expected_sha = match fetch_expected_sha256(&client, url).await {
+                    Ok(hash) => hash,
+                    Err(e) => {
+                        fs::remove_file(&zip_path).ok();
+                        last_error = format!("checksum error: {} (url: {})", e, url);
+                        continue;
+                    }
+                };
+
+                let actual_sha = match sha256_file(&zip_path) {
+                    Ok(hash) => hash,
+                    Err(e) => {
+                        fs::remove_file(&zip_path).ok();
+                        last_error = format!("checksum read error: {} (url: {})", e, url);
+                        continue;
+                    }
+                };
+
+                if expected_sha != actual_sha {
+                    fs::remove_file(&zip_path).ok();
+                    last_error = format!("checksum mismatch (url: {})", url);
+                    continue;
+                }
+
                 let extract_result = extract_deno_exe_from_zip(&zip_path, &bin_dir);
                 fs::remove_file(&zip_path).ok();
 

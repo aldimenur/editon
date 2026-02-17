@@ -62,6 +62,143 @@ fn check_table_schema(
     all_expected_present && no_extra_columns
 }
 
+fn normalize_tags(tags: Option<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+
+    if let Some(raw) = tags {
+        for tag in raw
+            .split(',')
+            .map(|tag| tag.trim())
+            .filter(|tag| !tag.is_empty())
+        {
+            let canonical = tag.to_lowercase();
+            if seen.insert(canonical.clone()) {
+                normalized.push(canonical);
+            }
+        }
+    }
+
+    normalized
+}
+
+fn tags_to_csv(tags: &[String]) -> Option<String> {
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags.join(", "))
+    }
+}
+
+fn upsert_asset_tags(
+    tx: &rusqlite::Transaction<'_>,
+    asset_id: i64,
+    tags: &[String],
+) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM asset_tags WHERE asset_id = ?1",
+        rusqlite::params![asset_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    for tag in tags {
+        tx.execute(
+            "INSERT INTO tags(name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
+            rusqlite::params![tag],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let tag_id: i64 = tx
+            .query_row(
+                "SELECT id FROM tags WHERE name = ?1",
+                rusqlite::params![tag],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        tx.execute(
+            "INSERT OR IGNORE INTO asset_tags(asset_id, tag_id) VALUES (?1, ?2)",
+            rusqlite::params![asset_id, tag_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+pub fn ensure_tag_schema(conn: &mut Connection) -> Result<(), String> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tags (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            name    TEXT NOT NULL UNIQUE
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_tags (
+            asset_id INTEGER NOT NULL,
+            tag_id   INTEGER NOT NULL,
+            PRIMARY KEY (asset_id, tag_id),
+            FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+            FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_asset_tags_asset_id ON asset_tags(asset_id)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_asset_tags_tag_id ON asset_tags(tag_id)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name ON tags(name)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM asset_tags", [])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM tags", [])
+        .map_err(|e| e.to_string())?;
+
+    let assets_with_tags: Vec<(i64, Option<String>)> = {
+        let mut stmt = tx
+            .prepare("SELECT id, tags FROM assets")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|row| row.ok()).collect()
+    };
+
+    for (asset_id, tags) in assets_with_tags {
+        let normalized = normalize_tags(tags);
+        upsert_asset_tags(&tx, asset_id, &normalized)?;
+
+        tx.execute(
+            "UPDATE assets SET tags = ?1 WHERE id = ?2",
+            rusqlite::params![tags_to_csv(&normalized), asset_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn clear_db(state: State<'_, DbState>) -> Result<String, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -84,34 +221,22 @@ pub fn get_available_tags(state: State<'_, DbState>) -> Result<Vec<String>, Stri
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT tags FROM assets WHERE tags IS NOT NULL AND tags != ''")
+        .prepare("SELECT name FROM tags ORDER BY name ASC")
         .map_err(|e| e.to_string())?;
 
     let tag_iter = stmt
         .query_map([], |row| {
-            let tags_string: String = row.get(0)?;
-            Ok(tags_string)
+            let tag_name: String = row.get(0)?;
+            Ok(tag_name)
         })
         .map_err(|e| e.to_string())?;
 
-    let mut unique_tags = std::collections::HashSet::new();
+    let mut tags = Vec::new();
     for tag_result in tag_iter {
-        let tags_string = tag_result.map_err(|e| e.to_string())?;
-
-        // Split comma-separated tags and add each tag to the set
-        tags_string
-            .split(',')
-            .map(|tag| tag.trim())
-            .filter(|tag| !tag.is_empty())
-            .for_each(|tag| {
-                unique_tags.insert(tag.to_string());
-            });
+        tags.push(tag_result.map_err(|e| e.to_string())?);
     }
 
-    let mut sorted_tags: Vec<String> = unique_tags.into_iter().collect();
-    sorted_tags.sort();
-
-    Ok(sorted_tags)
+    Ok(tags)
 }
 
 #[tauri::command]
@@ -120,13 +245,20 @@ pub fn update_asset_tags(
     asset_id: i64,
     tags: Option<String>,
 ) -> Result<String, String> {
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    conn.execute(
+    let normalized_tags = normalize_tags(tags);
+    let tags_csv = tags_to_csv(&normalized_tags);
+
+    tx.execute(
         "UPDATE assets SET tags = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2",
-        rusqlite::params![tags, asset_id],
+        rusqlite::params![tags_csv, asset_id],
     )
     .map_err(|e| e.to_string())?;
+
+    upsert_asset_tags(&tx, asset_id, &normalized_tags)?;
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok("Tags updated successfully".to_string())
 }
@@ -143,14 +275,18 @@ pub fn update_assets_tags(
 
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let normalized_tags = normalize_tags(tags);
+    let tags_csv = tags_to_csv(&normalized_tags);
 
     let mut stmt = tx
         .prepare("UPDATE assets SET tags = ?1, date_modified = CURRENT_TIMESTAMP WHERE id = ?2")
         .map_err(|e| e.to_string())?;
+    let tags_csv_ref = tags_csv.as_deref();
 
     for asset_id in asset_ids {
-        stmt.execute(rusqlite::params![tags, asset_id])
+        stmt.execute(rusqlite::params![tags_csv_ref, asset_id])
             .map_err(|e| e.to_string())?;
+        upsert_asset_tags(&tx, asset_id, &normalized_tags)?;
     }
 
     drop(stmt);

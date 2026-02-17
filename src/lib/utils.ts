@@ -54,8 +54,7 @@ export const formatFileSize = (bytes: number) => {
 };
 
 export const startWatcher = async (parentPath: string) => {
-  const watcher = await invoke<string>("stop_folder_watcher").then(() =>
+  await invoke<string>("stop_folder_watcher").then(() =>
     invoke<string>("trigger_folder_watcher", { folderPath: parentPath }),
   );
-  console.log(watcher);
 };

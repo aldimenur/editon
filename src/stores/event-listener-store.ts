@@ -67,16 +67,9 @@ const runRefreshCycle = async (runMaintenance: boolean) => {
   }
 
   try {
-    const thumb = await invoke<ProcessingResponse>(
-      "generate_missing_thumbnails",
-    );
-    console.log("thumb", thumb);
-    const wav = await invoke<string>("generate_missing_waveforms");
-    console.log("wav", wav);
-    const vid = await invoke<ProcessingResponse>(
-      "generate_missing_video_thumbnails",
-    );
-    console.log(vid);
+    await invoke<ProcessingResponse>("generate_missing_thumbnails");
+    await invoke<string>("generate_missing_waveforms");
+    await invoke<ProcessingResponse>("generate_missing_video_thumbnails");
   } catch (error) {
     console.error("Error generating thumbnails/waveforms:", error);
   }
@@ -139,7 +132,6 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
           set({ countingTotal: false });
           scheduleFileChangeRefresh(true);
         }
-        console.log(payload);
       });
 
       await listen<ProgressPayload>("waveform-progress", (event) => {

@@ -162,7 +162,6 @@ const SfxPage = () => {
     // when we scroll within a few items of the end, load next page
     if (actualLastIndex >= sfxFiles.length - 5) {
       const nextPage = Math.floor(sfxFiles.length / pageSize) + 1;
-      console.log("Loading next page:", nextPage);
       fetchSfxAssets(nextPage, pageSize);
     }
   }, [
