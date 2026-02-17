@@ -13,6 +13,7 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 ## ✨ Fitur Utama
 
 ### 🎵 Audio (SFX)
+
 - **Waveform Viewer** dengan Wavesurfer
 - **Search + Tag Filter** (real-time, multi-token)
 - **List / Grid / Large View**
@@ -20,6 +21,7 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 - **Tagging, Rename, Delete, Reveal in Folder**
 
 ### 🎬 Video
+
 - **Thumbnail + Inline Preview**
 - **Search + Tag Filter**
 - **List / Grid / Large View**
@@ -27,12 +29,14 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 - **Info ukuran file** dan quick preview
 
 ### 🖼️ Gambar
+
 - **Thumbnail + Modal Preview** (zoom & metadata)
 - **Search + Tag Filter**
 - **List / Grid / Large View**
 - **Tagging, Rename, Delete, Reveal in Folder**
 
 ### 📥 YouTube Download
+
 - **Download Video / Audio** dengan yt-dlp
 - **Pilih Format** (MP4/WebM/MKV atau MP3/M4A/Opus/WAV)
 - **Pilih Lokasi Unduhan**
@@ -40,6 +44,7 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 - **Dependency Checker & Installer** (ffmpeg, ffprobe, yt-dlp)
 
 ### ⚙️ Settings & Updates
+
 - **Info versi aplikasi**
 - **Manual update check**
 - **In-app update install**
@@ -55,6 +60,7 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - React 18
 - TypeScript
 - Vite
@@ -65,6 +71,7 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 - TanStack Virtual
 
 ### Backend
+
 - Tauri 2
 - Rust
 - SQLite (rusqlite)
@@ -82,17 +89,20 @@ Editon adalah aplikasi desktop berbasis Tauri untuk mengelola aset media editor:
 ## 🚀 Instalasi
 
 1. Clone repository:
+
 ```bash
 git clone https://github.com/aldimenur/editon.git
 cd editon
 ```
 
 2. Install dependencies frontend:
+
 ```bash
 npm install
 ```
 
 3. Build backend (Rust):
+
 ```bash
 cd src-tauri
 cargo build
@@ -115,6 +125,20 @@ npm run tauri build
 
 Output build tersedia di `src-tauri/target/release/`.
 
+## 🚢 GitHub Release
+
+```bash
+npm run release:github
+```
+
+Script ini akan build aplikasi (`tauri build`), mengumpulkan artefak bundle, lalu membuat atau meng-update release di GitHub sesuai versi di `package.json`.
+
+```bash
+npm run update:manifest
+```
+
+Script ini meng-update `update.json` otomatis (version, notes, pub_date, signature, dan URL release) dari hasil build terbaru.
+
 ## 🔧 Update System
 
 Konfigurasi auto-updater ada di `src-tauri/tauri.conf.json` dan menggunakan manifest `update.json` di root repository.
@@ -135,6 +159,7 @@ editon/
 ## 📝 Database
 
 Editon menyimpan metadata aset di SQLite, termasuk:
+
 - Path file, ukuran, tipe
 - Metadata media (resolusi, codec, dsb.)
 - Tag untuk pencarian dan filter
@@ -143,8 +168,6 @@ Editon menyimpan metadata aset di SQLite, termasuk:
 
 Pull request dan issue sangat disambut.
 
-
 ## 👤 Author
 
 **aldimenur**
-

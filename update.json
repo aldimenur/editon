@@ -1,11 +1,11 @@
 {
-  "version": "0.2.3",
-  "notes": "Full Changelog: https://github.com/aldimenur/editon/compare/v0.2.1...v0.2.3",
-  "pub_date": "2026-02-12T00:00:00Z",
+  "version": "0.2.4",
+  "notes": "Full Changelog: https://github.com/aldimenur/editon/compare/v0.2.3...v0.2.4",
+  "pub_date": "2026-02-17T00:50:37.509Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdWwzaUJGNHliSDRRVVVMSHM5ZVpFc280dFNVRWRONmFFcG1ITGh0T0RwS0dQTHhkWWVnbktmOS9aWHpsZ3hVWFRjZ1F4Z2pzM1BUYm9PY2pJV3JnNXdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcwODI5NDkwCWZpbGU6RWRpdG9uXzAuMi4zX3g2NC1zZXR1cC5leGUKU3FnaHM2NktLT0N5Y2dDdWNuemk0NG4xcUQ5cjE1QUx1VkRhTmdBa0x3dlJhOWE0WWNKclc0cWpvTVRsUnl5aHgyNWN5ZHBpUDBPdFFFQUF6d21ZQ3c9PQo=",
-      "url": "https://github.com/aldimenur/editon/releases/download/v0.2.3/Editon_0.2.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTY3dnbTZORUtDdXJmT0NMT0ZLaVlvTlBQQ1lCN01XelpIRnQzaEtwWWhUS2RvUndJQnpPNWZnNG5aaU9sblp6WWV0RThKK3RIaWE5b2RnWm1oYzhaTmVQN0Z4ckRRV1E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxMjg5MjQ3CWZpbGU6RWRpdG9uXzAuMi40X3g2NC1zZXR1cC5leGUKUGk2TUErTGIxYXRpVkhsUm1NVUs3bTNpWThEOTFvSWdlOStTWXZLZ3JLbm80TVB0dFJnb2ZGUzJYT2JQOE8wOGVPZGt2SFN3QWlJV1UrNkRIVSs4QlE9PQo=",
+      "url": "https://github.com/aldimenur/editon/releases/download/v0.2.4/Editon_0.2.4_x64-setup.exe"
     }
   }
 }
