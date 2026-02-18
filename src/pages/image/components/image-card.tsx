@@ -15,6 +15,7 @@ type ImageCardProps = {
   minHeight: number;
   isGrid: boolean;
   gridItemHeight: number;
+  gridAspectRatio?: number;
   imageSearchText: string;
   highlightText: (text: string, search: string) => ReactNode;
   renderTags: (tags: string | null | undefined) => ReactNode;
@@ -33,6 +34,7 @@ export default function ImageCard({
   minHeight,
   isGrid,
   gridItemHeight,
+  gridAspectRatio,
   imageSearchText,
   highlightText,
   renderTags,
@@ -73,7 +75,9 @@ export default function ImageCard({
       onDragEnd={onAssetDragEnd}
       style={
         isGrid
-          ? { height: gridItemHeight, aspectRatio: "16 / 9" }
+          ? gridAspectRatio
+            ? { aspectRatio: gridAspectRatio }
+            : { height: gridItemHeight, aspectRatio: 16 / 9 }
           : { minHeight }
       }
     >

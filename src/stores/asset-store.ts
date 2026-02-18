@@ -23,7 +23,7 @@ function createDefaultSearchState(): AssetSearchState {
 async function getAssetsPaginated(
   page: number,
   pageSize: number,
-  assetType: "audio" | "video" | "image",
+  assetType: "all" | "audio" | "video" | "image",
   queryParams: AssetQueryParams,
 ): Promise<PaginatedResponse> {
   return invoke<PaginatedResponse>("get_assets_paginated", {
@@ -48,16 +48,19 @@ interface AssetStore {
   sfxSearch: AssetSearchState;
   videoSearch: AssetSearchState;
   imageSearch: AssetSearchState;
+  globalSearch: AssetSearchState;
 
   // Asset data
   sfxFiles: Asset[];
   videoFiles: Asset[];
   imageFiles: Asset[];
+  globalFiles: Asset[];
 
   // Pagination
   sfxSearchCount: number;
   videoSearchCount: number;
   imageSearchCount: number;
+  globalSearchCount: number;
 
   // Loading state
   isLoading: boolean;
@@ -69,15 +72,18 @@ interface AssetStore {
   setSfxSearch: (search: string, tags?: string[]) => void;
   setVideoSearch: (search: string, tags?: string[]) => void;
   setImageSearch: (search: string, tags?: string[]) => void;
+  setGlobalSearch: (search: string, tags?: string[]) => void;
 
   // Asset data operations
   setSfxFiles: (files: Asset[], reset?: boolean) => void;
   setVideoFiles: (files: Asset[], reset?: boolean) => void;
   setImageFiles: (files: Asset[], reset?: boolean) => void;
+  setGlobalFiles: (files: Asset[], reset?: boolean) => void;
 
   setSfxSearchCount: (count: number) => void;
   setVideoSearchCount: (count: number) => void;
   setImageSearchCount: (count: number) => void;
+  setGlobalSearchCount: (count: number) => void;
 
   setIsLoading: (loading: boolean) => void;
 
@@ -96,6 +102,12 @@ interface AssetStore {
   fetchImageAssets: (
     page: number,
     pageSize: number,
+    reset?: boolean,
+  ) => Promise<void>;
+  fetchGlobalAssets: (
+    page: number,
+    pageSize: number,
+    assetType: "all" | "audio" | "video" | "image",
     reset?: boolean,
   ) => Promise<void>;
   refetchAssets: (page?: number, pageSize?: number) => Promise<void>;
@@ -119,16 +131,19 @@ const useAssetStore = create<AssetStore>()(
       sfxSearch: createDefaultSearchState(),
       videoSearch: createDefaultSearchState(),
       imageSearch: createDefaultSearchState(),
+      globalSearch: createDefaultSearchState(),
 
       // Initial asset files
       sfxFiles: [],
       videoFiles: [],
       imageFiles: [],
+      globalFiles: [],
 
       // Initial search counts
       sfxSearchCount: 0,
       videoSearchCount: 0,
       imageSearchCount: 0,
+      globalSearchCount: 0,
 
       // Initial loading state
       isLoading: false,
@@ -158,6 +173,14 @@ const useAssetStore = create<AssetStore>()(
             tags,
           },
         }),
+      setGlobalSearch: (search: string, tags: string[] = []) =>
+        set({
+          globalSearch: {
+            ...createDefaultSearchState(),
+            search,
+            tags,
+          },
+        }),
 
       // File setters
       setSfxFiles: (files: Asset[], reset: boolean = false) =>
@@ -172,11 +195,17 @@ const useAssetStore = create<AssetStore>()(
         set((state) => ({
           imageFiles: reset ? files : [...state.imageFiles, ...files],
         })),
+      setGlobalFiles: (files: Asset[], reset: boolean = false) =>
+        set((state) => ({
+          globalFiles: reset ? files : [...state.globalFiles, ...files],
+        })),
 
       // Search count setters
       setSfxSearchCount: (count: number) => set({ sfxSearchCount: count }),
       setVideoSearchCount: (count: number) => set({ videoSearchCount: count }),
       setImageSearchCount: (count: number) => set({ imageSearchCount: count }),
+      setGlobalSearchCount: (count: number) =>
+        set({ globalSearchCount: count }),
 
       // Loading state setter
       setIsLoading: (loading: boolean) => set({ isLoading: loading }),
@@ -287,6 +316,37 @@ const useAssetStore = create<AssetStore>()(
           set({ imageSearchCount: result.total_items ?? 0 });
         } catch (error) {
           console.error("Error fetching Image assets:", error);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      fetchGlobalAssets: async (
+        page: number,
+        pageSize: number,
+        assetType: "all" | "audio" | "video" | "image",
+        reset: boolean = false,
+      ) => {
+        const state = get();
+        if (!state.parentPath) return;
+
+        try {
+          set({ isLoading: true });
+          const { tags, sortBy, sortOrder } = state.globalSearch;
+          const search = state.globalSearch.search.trim();
+
+          const result = await getAssetsPaginated(page, pageSize, assetType, {
+            search,
+            tags,
+            sortBy,
+            sortOrder,
+          });
+
+          const assets = result.data || [];
+          state.setGlobalFiles(assets, reset);
+          set({ globalSearchCount: result.total_items ?? 0 });
+        } catch (error) {
+          console.error("Error fetching global assets:", error);
         } finally {
           set({ isLoading: false });
         }

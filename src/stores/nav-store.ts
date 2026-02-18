@@ -1,8 +1,13 @@
 import { create } from "zustand";
 
+export type AssetFilter = "all" | "audio" | "video" | "image";
+export type AppPage = "assets" | "/youtube-download" | "/settings";
+
 interface NavStore {
-  activeItem: string;
-  setActiveItem: (item: string) => void;
+  activePage: AppPage;
+  setActivePage: (page: AppPage) => void;
+  activeAssetFilter: AssetFilter;
+  setActiveAssetFilter: (filter: AssetFilter) => void;
   isMinimized: boolean;
   setIsMinimized: (isMinimized: boolean) => void;
   toggleMinimized: () => void;
@@ -12,8 +17,11 @@ interface NavStore {
 }
 
 const useNavStore = create<NavStore>()((set) => ({
-  activeItem: "/sound",
-  setActiveItem: (item: string) => set({ activeItem: item }),
+  activePage: "assets",
+  setActivePage: (page: AppPage) => set({ activePage: page }),
+  activeAssetFilter: "all",
+  setActiveAssetFilter: (filter: AssetFilter) =>
+    set({ activeAssetFilter: filter }),
   isMinimized: false,
   setIsMinimized: (isMinimized: boolean) => set({ isMinimized }),
   toggleMinimized: () => set((state) => ({ isMinimized: !state.isMinimized })),

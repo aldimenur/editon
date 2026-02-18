@@ -1,11 +1,8 @@
 import "./App.css";
 import Sidebar from "./components/Sidebar";
 import { ThemeProvider } from "./components/theme-provider";
-import SfxPage from "./pages/sfx";
 import useNavStore from "./stores/nav-store";
 import TitleBar from "./components/title-bar";
-import VideoPage from "./pages/video";
-import ImagePage from "./pages/image";
 import YoutubeDownloadPage from "./pages/youtube-download";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
@@ -15,9 +12,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startWatcher } from "./lib/utils";
 import SettingsPage from "./pages/settings";
 import { Button } from "./components/ui/button";
+import AssetsPage from "./pages/assets";
 
 function App() {
-  const { activeItem, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
+  const { activePage, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
     (state) => state,
   );
   const { parentPath } = useAssetStore((state) => state);
@@ -72,13 +70,9 @@ function App() {
   }, []);
 
   const renderContent = () => {
-    switch (activeItem) {
-      case "/sound":
-        return <SfxPage />;
-      case "/video":
-        return <VideoPage />;
-      case "/image":
-        return <ImagePage />;
+    switch (activePage) {
+      case "assets":
+        return <AssetsPage />;
       case "/youtube-download":
         return <YoutubeDownloadPage />;
       case "/settings":

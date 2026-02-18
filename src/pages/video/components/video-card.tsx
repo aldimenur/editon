@@ -23,6 +23,7 @@ type VideoCardProps = {
   minHeight?: number;
   viewModeVideo: VideoViewMode;
   gridItemHeight: number;
+  gridAspectRatio?: number;
   videoSearchText: string;
   isSelected: boolean;
   highlightText: (text: string, search: string) => ReactNode;
@@ -43,6 +44,7 @@ export default function VideoCard({
   minHeight = 0,
   viewModeVideo,
   gridItemHeight,
+  gridAspectRatio,
   videoSearchText,
   isSelected,
   highlightText,
@@ -383,7 +385,9 @@ export default function VideoCard({
       onDragEnd={onAssetDragEnd}
       style={
         isGrid
-          ? { height: gridItemHeight, aspectRatio: "16 / 9" }
+          ? gridAspectRatio
+            ? { aspectRatio: gridAspectRatio }
+            : { height: gridItemHeight, aspectRatio: 16 / 9 }
           : { minHeight }
       }
     >

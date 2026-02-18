@@ -1,9 +1,13 @@
 import useAssetStore from "@/stores/asset-store";
 import useEventListenerStore from "@/stores/event-listener-store";
-import useNavStore from "@/stores/nav-store";
+import useNavStore, {
+  type AppPage,
+  type AssetFilter,
+} from "@/stores/nav-store";
 import type { ProgressPayload } from "@/stores/event-listener-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import {
+  faBoxesStacked,
   faFolderOpen,
   faGear,
   faImage,
@@ -17,51 +21,63 @@ import type { ReactNode } from "react";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
 
-type SidebarItemType = "sfx" | "video" | "image" | "youtube" | "settings";
-
-const sidebarItems: {
+type FilterItem = {
   icon: ReactNode;
   label: string;
-  path: string;
-  type: SidebarItemType;
-}[] = [
+  filter: AssetFilter;
+};
+
+const filterItems: FilterItem[] = [
+  {
+    icon: <FontAwesomeIcon icon={faBoxesStacked} className="text-[12px]" />,
+    label: "All",
+    filter: "all",
+  },
   {
     icon: <FontAwesomeIcon icon={faMusic} className="text-[12px]" />,
     label: "Sound",
-    path: "/sound",
-    type: "sfx",
+    filter: "audio",
   },
   {
     icon: <FontAwesomeIcon icon={faVideo} className="text-[12px]" />,
     label: "Video",
-    path: "/video",
-    type: "video",
+    filter: "video",
   },
   {
     icon: <FontAwesomeIcon icon={faImage} className="text-[12px]" />,
     label: "Image",
-    path: "/image",
-    type: "image",
+    filter: "image",
   },
+];
+
+const pageItems: {
+  icon: ReactNode;
+  label: string;
+  page: AppPage;
+}[] = [
   {
     icon: (
       <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
     ),
     label: "Download",
-    path: "/youtube-download",
-    type: "youtube",
+    page: "/youtube-download",
   },
   {
     icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
     label: "Settings",
-    path: "/settings",
-    type: "settings",
+    page: "/settings",
   },
 ];
 
 const Navbar = () => {
-  const { activeItem, setActiveItem, isMinimized, toggleMinimized } =
-    useNavStore((state) => state);
+  const {
+    activePage,
+    setActivePage,
+    activeAssetFilter,
+    setActiveAssetFilter,
+    isMinimized,
+    toggleMinimized,
+  } = useNavStore((state) => state);
   const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
   const { progressSound, progressImage, countingTotal, setCountingTotal } =
     useEventListenerStore((state) => state);
@@ -82,9 +98,10 @@ const Navbar = () => {
     }
   };
 
-  const getCount = (type: SidebarItemType) => {
+  const getCount = (type: AssetFilter) => {
     if (countingTotal) return null;
-    if (type === "sfx") return sfx;
+    if (type === "all") return sfx + video + image;
+    if (type === "audio") return sfx;
     if (type === "video") return video;
     if (type === "image") return image;
     return null;
@@ -120,24 +137,30 @@ const Navbar = () => {
 
       {!isMinimized && (
         <div className="px-3.5 py-1.5 text-[10px] tracking-[0.04em] text-muted-foreground border-b border-sidebar-border/80">
-          Library
+          Filters
         </div>
       )}
 
       <nav className="flex-1 py-2 select-none overflow-y-auto">
-        {sidebarItems.map((item) => {
-          const isActive = activeItem === item.path;
-          const count = getCount(item.type);
+        {filterItems.map((item) => {
+          const isActive =
+            activePage === "assets" && activeAssetFilter === item.filter;
+          const count = getCount(item.filter);
 
           return (
             <div
-              key={item.path}
+              key={item.filter}
               role="button"
               tabIndex={0}
-              onClick={() => setActiveItem(item.path)}
+              onClick={() => {
+                setActiveAssetFilter(item.filter);
+                setActivePage("assets");
+              }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ")
-                  setActiveItem(item.path);
+                if (e.key === "Enter" || e.key === " ") {
+                  setActiveAssetFilter(item.filter);
+                  setActivePage("assets");
+                }
               }}
               title={isMinimized ? item.label : undefined}
               className={
@@ -179,6 +202,62 @@ const Navbar = () => {
                         {count}
                       </span>
                     ) : null}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {!isMinimized && (
+          <div className="px-3.5 py-2 mt-1 text-[10px] tracking-[0.04em] text-muted-foreground border-y border-sidebar-border/80">
+            Pages
+          </div>
+        )}
+
+        {pageItems.map((item) => {
+          const isActive = activePage === item.page;
+
+          return (
+            <div
+              key={item.page}
+              role="button"
+              tabIndex={0}
+              onClick={() => setActivePage(item.page)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ")
+                  setActivePage(item.page);
+              }}
+              title={isMinimized ? item.label : undefined}
+              className={
+                `group relative flex h-8 items-center gap-2.5 px-3.5 cursor-pointer border-y border-transparent ` +
+                `hover:bg-sidebar-accent/30 hover:border-sidebar-border/50 active:bg-sidebar-accent/45 ` +
+                (isActive
+                  ? "bg-sidebar-accent/60 border-sidebar-border/80"
+                  : "") +
+                (isMinimized ? " justify-center" : "")
+              }
+            >
+              <div
+                className={
+                  `flex h-5 w-5 items-center justify-center shrink-0 ` +
+                  (isActive
+                    ? "text-foreground"
+                    : "text-muted-foreground group-hover:text-foreground")
+                }
+              >
+                {item.icon}
+              </div>
+
+              {!isMinimized && (
+                <div className="flex items-center justify-between w-full min-w-0">
+                  <span
+                    className={
+                      "text-[12px] truncate " +
+                      (isActive ? "text-foreground" : "text-sidebar-foreground")
+                    }
+                  >
+                    {item.label}
                   </span>
                 </div>
               )}
