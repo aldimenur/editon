@@ -55,19 +55,19 @@ const pageItems: {
   label: string;
   page: AppPage;
 }[] = [
-  {
-    icon: (
-      <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
-    ),
-    label: "Download",
-    page: "/youtube-download",
-  },
-  {
-    icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
-    label: "Settings",
-    page: "/settings",
-  },
-];
+    {
+      icon: (
+        <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
+      ),
+      label: "Download",
+      page: "/youtube-download",
+    },
+    {
+      icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
+      label: "Settings",
+      page: "/settings",
+    },
+  ];
 
 const Navbar = () => {
   const {
@@ -117,9 +117,6 @@ const Navbar = () => {
             <div className="text-[13px] font-medium leading-none truncate tracking-[0.01em]">
               Editon
             </div>
-            <div className="text-[10px] text-muted-foreground mt-1">
-              Workspace
-            </div>
           </div>
         )}
 
@@ -134,12 +131,6 @@ const Navbar = () => {
           {isMinimized ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </Button>
       </div>
-
-      {!isMinimized && (
-        <div className="px-3.5 py-1.5 text-[10px] tracking-[0.04em] text-muted-foreground border-b border-sidebar-border/80">
-          Filters
-        </div>
-      )}
 
       <nav className="flex-1 py-2 select-none overflow-y-auto">
         {filterItems.map((item) => {
@@ -210,8 +201,7 @@ const Navbar = () => {
         })}
 
         {!isMinimized && (
-          <div className="px-3.5 py-2 mt-1 text-[10px] tracking-[0.04em] text-muted-foreground border-y border-sidebar-border/80">
-            Pages
+          <div className="mt-1 text-[10px] tracking-[0.04em] text-muted-foreground border-t border-sidebar-border/80">
           </div>
         )}
 
