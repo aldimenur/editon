@@ -7,7 +7,6 @@ import useNavStore, {
 import type { ProgressPayload } from "@/stores/event-listener-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import {
-  faBoxesStacked,
   faCompass,
   faFolderOpen,
   faGear,
@@ -56,19 +55,19 @@ const pageItems: {
   label: string;
   page: AppPage;
 }[] = [
-    {
-      icon: (
-        <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
-      ),
-      label: "Download",
-      page: "/youtube-download",
-    },
-    {
-      icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
-      label: "Settings",
-      page: "/settings",
-    },
-  ];
+  {
+    icon: (
+      <FontAwesomeIcon icon={faYoutube} className="text-[12px] text-red-500" />
+    ),
+    label: "Download",
+    page: "/youtube-download",
+  },
+  {
+    icon: <FontAwesomeIcon icon={faGear} className="text-[12px]" />,
+    label: "Settings",
+    page: "/settings",
+  },
+];
 
 const Navbar = () => {
   const {
@@ -202,8 +201,7 @@ const Navbar = () => {
         })}
 
         {!isMinimized && (
-          <div className="mt-1 text-[10px] tracking-[0.04em] text-muted-foreground border-t border-sidebar-border/80">
-          </div>
+          <div className="mt-1 text-[10px] tracking-[0.04em] text-muted-foreground border-t border-sidebar-border/80"></div>
         )}
 
         {pageItems.map((item) => {

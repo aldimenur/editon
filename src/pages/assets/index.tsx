@@ -1,41 +1,27 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type DragEvent as ReactDragEvent,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faVolumeHigh } from "@fortawesome/free-solid-svg-icons";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
-import { LogicalPosition } from "@tauri-apps/api/dpi";
-import { Menu } from "@tauri-apps/api/menu";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 import { useAvailableTags } from "@/hooks/use-available-tags";
 import { getCommonTags } from "@/lib/tags";
-import AssetTypeRenderer from "@/components/assets/asset-type-renderer";
-import ImagePreviewModal from "@/components/assets/image-preview-modal";
-import TagsDialog from "@/components/TagsDialog";
-import GlobalAssetList from "@/components/global-asset-list";
-import GlobalAssetNavbar from "@/components/global-asset-navbar";
-import { Slider } from "@/components/ui/slider";
+import { ASSETS_PAGE_SIZE } from "@/features/assets/constants";
+import { useAssetBulkActions } from "@/features/assets/hooks/use-asset-bulk-actions";
+import { useAssetContextMenu } from "@/features/assets/hooks/use-asset-context-menu";
+import { useAssetItemActions } from "@/features/assets/hooks/use-asset-item-actions";
+import { useAssetsQuery } from "@/features/assets/hooks/use-assets-query";
+import { useAssetSelection } from "@/features/assets/hooks/use-asset-selection";
+import AssetsPageDialogs from "@/features/assets/ui/assets-page-dialogs";
+import AssetsPageList from "@/features/assets/ui/assets-page-list";
+import AssetsPageToolbar from "@/features/assets/ui/assets-page-toolbar";
 import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
 import useViewStore from "@/stores/view-store";
 import type { Asset } from "@/types/tauri";
-
-const PAGE_SIZE = 40;
-
-function formatVideoTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const whole = Math.floor(seconds);
-  const mins = Math.floor(whole / 60);
-  const secs = whole % 60;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
 
 export default function AssetsPage() {
   const {
@@ -50,9 +36,6 @@ export default function AssetsPage() {
   const { activeAssetFilter } = useNavStore((state) => state);
   const { viewModeAssets, setViewModeAssets } = useViewStore((state) => state);
 
-  const [searchValue, setSearchValue] = useState(globalSearch.search);
-  const [tagFilter, setTagFilter] = useState<string[]>(globalSearch.tags);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
   const [tagsDialogCurrentTags, setTagsDialogCurrentTags] = useState<
@@ -60,325 +43,191 @@ export default function AssetsPage() {
   >(null);
   const [sliderValue, setSliderValue] = useState(0.5);
   const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
-  const { availableTags, refreshAvailableTags } = useAvailableTags(
-    parentPath,
-    setTagFilter,
-  );
-  const appWindow = getCurrentWindow();
 
-  const hasMore = globalFiles.length < globalSearchCount;
-  const filteredAssetIds = globalFiles
-    .map((file) => file.id)
-    .filter((id): id is number => typeof id === "number");
-
-  const allFilteredSelected =
-    filteredAssetIds.length > 0 &&
-    filteredAssetIds.every((id) => selectedAssetIds.includes(id));
-
-  useEffect(() => {
-    if (!parentPath) return;
-    setSelectedAssetIds([]);
-    fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-  }, [parentPath, activeAssetFilter, fetchGlobalAssets]);
-
-  useEffect(() => {
-    if (!parentPath) return;
-
-    const timeout = window.setTimeout(() => {
-      setGlobalSearch(searchValue, tagFilter);
-      fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-    }, 350);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    parentPath,
-    searchValue,
-    tagFilter,
-    activeAssetFilter,
-    setGlobalSearch,
-    fetchGlobalAssets,
-  ]);
-
-  const selectAllFiltered = () => {
-    setSelectedAssetIds(filteredAssetIds);
-  };
-
-  const toggleSelection = (assetId: number) => {
-    setSelectedAssetIds((prev) =>
-      prev.includes(assetId)
-        ? prev.filter((id) => id !== assetId)
-        : [...prev, assetId],
-    );
-  };
-
-  const selectedAssets = useMemo(
-    () =>
-      globalFiles.filter((asset) =>
-        typeof asset.id === "number"
-          ? selectedAssetIds.includes(asset.id)
-          : false,
-      ),
-    [globalFiles, selectedAssetIds],
-  );
+  const {
+    selectedAssetIds,
+    filteredAssetIds,
+    allFilteredSelected,
+    selectedAssets,
+    selectAllFiltered,
+    toggleSelection,
+    clearSelection,
+  } = useAssetSelection(globalFiles);
 
   const commonSelectedTags = useMemo(
     () => getCommonTags(selectedAssets),
     [selectedAssets],
   );
 
-  const handleDeleteSelected = async () => {
-    if (selectedAssets.length === 0) return;
-    try {
-      for (const asset of selectedAssets) {
-        await invoke("delete_file", { path: asset.original_path });
-      }
-      setSelectedAssetIds([]);
-      fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-    } catch (error) {
-      console.error("Failed to delete selected assets:", error);
-    }
-  };
+  const { searchValue, setSearchValue, tagFilter, setTagFilter } =
+    useAssetsQuery({
+      parentPath,
+      activeAssetFilter,
+      initialSearch: globalSearch,
+      setGlobalSearch,
+      fetchGlobalAssets,
+      onResetSelection: clearSelection,
+    });
 
-  const handleEditSelected = () => {
-    setTagsDialogAssetIds(selectedAssetIds);
-    setTagsDialogCurrentTags(commonSelectedTags);
-    setTagsDialogOpen(true);
-  };
+  const { availableTags, refreshAvailableTags } = useAvailableTags(
+    parentPath,
+    setTagFilter,
+  );
+  const {
+    refreshAssets,
+    handleDeleteAsset,
+    handleDeleteTrimmed,
+    handleTrimApplied,
+  } = useAssetItemActions({
+    activeAssetFilter,
+    fetchGlobalAssets,
+  });
 
-  const loadMore = () => {
-    if (!hasMore || isLoading) return;
-    const nextPage = Math.floor(globalFiles.length / PAGE_SIZE) + 1;
-    fetchGlobalAssets(nextPage, PAGE_SIZE, activeAssetFilter);
-  };
-
-  const handleDeleteAsset = useCallback(
-    async (path: string) => {
-      try {
-        await invoke("delete_file", { path });
-        await fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-      } catch (error) {
-        console.error("Failed to delete file:", error);
-      }
+  const openTagsDialog = useCallback(
+    (assetIds: number[], currentTags: string | null) => {
+      setTagsDialogAssetIds(assetIds);
+      setTagsDialogCurrentTags(currentTags);
+      setTagsDialogOpen(true);
     },
-    [activeAssetFilter, fetchGlobalAssets],
+    [],
   );
 
-  const handleDeleteTrimmed = useCallback(async (path: string) => {
-    try {
-      await invoke("delete_file", { path });
-    } catch (error) {
-      console.error("Failed to delete trimmed file:", error);
+  const { handleDeleteSelected, handleEditSelected } = useAssetBulkActions({
+    selectedAssets,
+    selectedAssetIds,
+    commonSelectedTags,
+    clearSelection,
+    refreshAssets,
+    onOpenTagsDialog: openTagsDialog,
+  });
+
+  const { openContextMenu } = useAssetContextMenu({
+    selectedAssetIds,
+    toggleSelection,
+    onEditTags: (assetId, currentTags) => {
+      openTagsDialog([assetId], currentTags);
+    },
+    onDeleteAsset: handleDeleteAsset,
+  });
+
+  const hasMore = globalFiles.length < globalSearchCount;
+
+  const loadMore = useCallback(() => {
+    if (!hasMore || isLoading) return;
+
+    const nextPage = Math.floor(globalFiles.length / ASSETS_PAGE_SIZE) + 1;
+    void fetchGlobalAssets(nextPage, ASSETS_PAGE_SIZE, activeAssetFilter);
+  }, [
+    activeAssetFilter,
+    fetchGlobalAssets,
+    globalFiles.length,
+    hasMore,
+    isLoading,
+  ]);
+
+  const handleAssetDragStart = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>, file: Asset) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-no-card-drag="true"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const dragPreview = getDragPreviewIcon(
+        file.original_path,
+        "Dragging media",
+      );
+      applyDragImage(event.dataTransfer, dragPreview, file.original_path);
+
+      try {
+        startDrag({
+          item: [file.original_path],
+          icon: dragPreview || file.original_path,
+          mode: "copy",
+        });
+      } catch (error) {
+        console.error("Failed to drag media:", error);
+      }
+    },
+    [],
+  );
+
+  const handleAssetDragEnd = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const handleTagsDialogOpenChange = useCallback((open: boolean) => {
+    setTagsDialogOpen(open);
+
+    if (!open) {
+      setTagsDialogAssetIds([]);
+      setTagsDialogCurrentTags(null);
     }
   }, []);
 
-  const handleTrimApplied = useCallback(
-    async (_outputPath: string) => {
-      await fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-    },
-    [activeAssetFilter, fetchGlobalAssets],
-  );
-
-  const openContextMenu = useCallback(
-    async (file: Asset, x: number, y: number) => {
-      const fileId = file.id;
-      if (typeof fileId !== "number") return;
-      const isSelected = selectedAssetIds.includes(fileId);
-
-      const menu = await Menu.new({
-        items: [
-          {
-            text: isSelected ? "Deselect" : "Select",
-            accelerator: "S",
-            action: () => toggleSelection(fileId),
-          },
-          {
-            text: "Edit tags",
-            accelerator: "T",
-            action: () => {
-              setTagsDialogAssetIds([fileId]);
-              setTagsDialogCurrentTags(file.tags ?? null);
-              setTagsDialogOpen(true);
-            },
-          },
-          {
-            text: "Show in folder",
-            accelerator: "O",
-            action: () => {
-              void revealItemInDir(file.original_path);
-            },
-          },
-          { item: "Separator" },
-          {
-            text: "Delete",
-            accelerator: "Delete",
-            action: () => {
-              void handleDeleteAsset(file.original_path);
-            },
-          },
-        ],
-      });
-
-      try {
-        await menu.popup(new LogicalPosition(x, y), appWindow);
-      } finally {
-        await menu.close();
-      }
-    },
-    [appWindow, handleDeleteAsset, selectedAssetIds],
-  );
-
-  const handleAssetDragStart = (
-    event: ReactDragEvent<HTMLDivElement>,
-    file: Asset,
-  ) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('[data-no-card-drag="true"]')) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    const dragPreview = getDragPreviewIcon(
-      file.original_path,
-      "Dragging media",
-    );
-    applyDragImage(event.dataTransfer, dragPreview, file.original_path);
-
-    try {
-      startDrag({
-        item: [file.original_path],
-        icon: dragPreview || file.original_path,
-        mode: "copy",
-      });
-    } catch (error) {
-      console.error("Failed to drag media:", error);
-    }
-  };
-
-  const handleAssetDragEnd = (event: ReactDragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const renderAsset = useCallback(
-    (asset: Asset, isSelected: boolean) => {
-      return (
-        <AssetTypeRenderer
-          asset={asset}
-          isSelected={isSelected}
-          viewModeAssets={viewModeAssets}
-          searchValue={searchValue}
-          sliderValue={sliderValue}
-          onOpenContextMenu={(targetFile, x, y) => {
-            void openContextMenu(targetFile, x, y);
-          }}
-          onDeleteAsset={(path) => {
-            void handleDeleteAsset(path);
-          }}
-          onDeleteTrimmed={handleDeleteTrimmed}
-          onAssetDragStart={handleAssetDragStart}
-          onAssetDragEnd={handleAssetDragEnd}
-          onOpenImagePreview={setSelectedImage}
-          onTrimApplied={handleTrimApplied}
-          formatVideoTime={formatVideoTime}
-        />
-      );
-    },
-    [
-      handleAssetDragEnd,
-      handleAssetDragStart,
-      handleDeleteAsset,
-      handleDeleteTrimmed,
-      handleTrimApplied,
-      openContextMenu,
-      searchValue,
-      sliderValue,
-      viewModeAssets,
-    ],
-  );
+  const handleTagsUpdated = useCallback(() => {
+    void refreshAvailableTags();
+    void refreshAssets();
+    clearSelection();
+  }, [clearSelection, refreshAssets, refreshAvailableTags]);
 
   return (
     <div className="px-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
-      <GlobalAssetNavbar
-        viewMode={viewModeAssets}
-        onViewModeChange={setViewModeAssets}
+      <AssetsPageToolbar
+        viewModeAssets={viewModeAssets}
+        onViewModeAssetsChange={setViewModeAssets}
         searchValue={searchValue}
-        onSearchChange={setSearchValue}
+        onSearchValueChange={setSearchValue}
         availableTags={availableTags}
-        selectedTags={tagFilter}
-        onSelectedTagsChange={setTagFilter}
+        tagFilter={tagFilter}
+        onTagFilterChange={setTagFilter}
         filteredCount={filteredAssetIds.length}
         selectedCount={selectedAssetIds.length}
         allFilteredSelected={allFilteredSelected}
-        onSelectAll={selectAllFiltered}
+        onSelectAllFiltered={selectAllFiltered}
         onEditSelected={handleEditSelected}
         onDeleteSelected={handleDeleteSelected}
-        onClearSelected={() => setSelectedAssetIds([])}
-        settingsExtra={
-          <div className="px-2 py-1">
-            <p className="text-xs font-medium text-muted-foreground mb-1">
-              Volume
-            </p>
-            <div className="flex items-center gap-1">
-              <FontAwesomeIcon
-                icon={faVolumeHigh}
-                className="text-[10px]"
-                fixedWidth
-              />
-              <Slider
-                defaultValue={[sliderValue]}
-                min={0}
-                max={1}
-                step={0.1}
-                value={[sliderValue]}
-                onValueChange={(value) => setSliderValue(value[0])}
-                className="flex-1"
-              />
-              <span className="text-[10px] w-8 text-right">
-                {Math.round(sliderValue * 100)}%
-              </span>
-            </div>
-          </div>
-        }
+        onClearSelected={clearSelection}
+        sliderValue={sliderValue}
+        onSliderValueChange={setSliderValue}
       />
 
-      <GlobalAssetList
+      <AssetsPageList
         assets={globalFiles}
-        searchText={searchValue}
-        viewMode={viewModeAssets}
-        selectedIds={selectedAssetIds}
+        searchValue={searchValue}
+        viewModeAssets={viewModeAssets}
+        selectedAssetIds={selectedAssetIds}
         isLoading={isLoading}
         hasMore={hasMore}
-        onToggleSelect={toggleSelection}
+        sliderValue={sliderValue}
+        onToggleSelection={toggleSelection}
         onLoadMore={loadMore}
-        renderAsset={renderAsset}
+        onOpenContextMenu={openContextMenu}
+        onDeleteAsset={handleDeleteAsset}
+        onDeleteTrimmed={handleDeleteTrimmed}
+        onAssetDragStart={handleAssetDragStart}
+        onAssetDragEnd={handleAssetDragEnd}
+        onOpenImagePreview={setSelectedImage}
+        onTrimApplied={handleTrimApplied}
       />
 
-      <ImagePreviewModal
-        image={selectedImage}
-        onClose={() => setSelectedImage(null)}
-      />
-
-      <TagsDialog
-        open={tagsDialogOpen}
-        onOpenChange={(open) => {
-          setTagsDialogOpen(open);
-          if (!open) {
-            setTagsDialogAssetIds([]);
-            setTagsDialogCurrentTags(null);
-          }
-        }}
-        assetIds={tagsDialogAssetIds}
-        currentTags={tagsDialogCurrentTags}
+      <AssetsPageDialogs
+        selectedImage={selectedImage}
+        onCloseImagePreview={() => setSelectedImage(null)}
+        tagsDialogOpen={tagsDialogOpen}
+        onTagsDialogOpenChange={handleTagsDialogOpenChange}
+        tagsDialogAssetIds={tagsDialogAssetIds}
+        tagsDialogCurrentTags={tagsDialogCurrentTags}
         availableTags={availableTags}
-        onTagsUpdated={() => {
-          void refreshAvailableTags();
-          fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
-          setSelectedAssetIds([]);
-        }}
+        onTagsUpdated={handleTagsUpdated}
       />
     </div>
   );

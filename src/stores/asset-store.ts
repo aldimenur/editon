@@ -1,8 +1,16 @@
-import { countAssets } from "@/lib/utils";
+import {
+  countAssets,
+  getAssetsPaginated,
+} from "@/features/assets/api/assets-api";
+import {
+  cancelScan,
+  clearAssetDb,
+  scanAndImportFolder,
+} from "@/features/assets/api/folder-api";
+import type { AssetType } from "@/features/assets/model/types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { invoke } from "@tauri-apps/api/core";
-import type { Asset, AssetQueryParams, PaginatedResponse } from "@/types/tauri";
+import type { Asset, AssetQueryParams } from "@/types/tauri";
 
 type AssetSearchState = {
   search: string;
@@ -11,8 +19,6 @@ type AssetSearchState = {
   sortOrder: NonNullable<AssetQueryParams["sortOrder"]>;
 };
 
-type AssetType = "all" | "audio" | "video" | "image";
-
 function createDefaultSearchState(): AssetSearchState {
   return {
     search: "",
@@ -20,22 +26,6 @@ function createDefaultSearchState(): AssetSearchState {
     sortBy: "date_modified",
     sortOrder: "desc",
   };
-}
-
-async function getAssetsPaginated(
-  page: number,
-  pageSize: number,
-  assetType: AssetType,
-  queryParams: AssetQueryParams,
-): Promise<PaginatedResponse> {
-  return invoke<PaginatedResponse>("get_assets_paginated", {
-    page,
-    pageSize,
-    queryParams: {
-      ...queryParams,
-      assetType,
-    },
-  });
 }
 
 interface AssetStore {
@@ -260,12 +250,13 @@ const useAssetStore = create<AssetStore>()(
         // Path setters
         setParentPath: async (path: string) => {
           set({ parentPath: path });
-          await invoke("cancel_scan");
-          await invoke("clear_db");
-
-          await invoke("scan_and_import_folder", {
-            folderPath: path,
-          });
+          try {
+            await cancelScan();
+            await clearAssetDb();
+            await scanAndImportFolder(path);
+          } catch (error) {
+            console.error("Failed to set parent path:", error);
+          }
         },
 
         // Fetch SFX assets with pagination

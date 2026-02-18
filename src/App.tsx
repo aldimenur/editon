@@ -4,29 +4,31 @@ import { ThemeProvider } from "./components/theme-provider";
 import useNavStore from "./stores/nav-store";
 import TitleBar from "./components/title-bar";
 import YoutubeDownloadPage from "./pages/youtube-download";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { useEffect, useState } from "react";
 import useAssetStore from "./stores/asset-store";
-import { check } from "@tauri-apps/plugin-updater";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { startWatcher } from "./lib/utils";
 import SettingsPage from "./pages/settings";
 import { Button } from "./components/ui/button";
 import AssetsPage from "./pages/assets";
+import { startFolderWatcher } from "@/features/assets/api/folder-api";
+import { useAppUpdater } from "@/features/app-updates/hooks/use-app-updater";
 
 function App() {
   const { activePage, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
     (state) => state,
   );
   const { parentPath } = useAssetStore((state) => state);
-  const initialized = useRef(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [appVersion, setAppVersion] = useState("Unknown");
-  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
-  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+  const {
+    appVersion,
+    checkForUpdates,
+    installUpdate,
+    isCheckingUpdates,
+    isInstallingUpdate,
+    lastCheckedAt,
+    updateAvailable,
+  } = useAppUpdater();
 
   const appWindow = getCurrentWindow();
 
@@ -34,40 +36,6 @@ function App() {
     appWindow.isMaximized().then(setIsMaximized);
     appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
   }, [appWindow]);
-
-  const checkForUpdates = useCallback(async () => {
-    setIsCheckingUpdates(true);
-    try {
-      const updates = await check();
-      const hasUpdate = !!updates;
-      setUpdateAvailable(hasUpdate);
-      setLastCheckedAt(new Date().toISOString());
-      return hasUpdate;
-    } catch (error) {
-      console.error("Failed to check for updates:", error);
-      return false;
-    } finally {
-      setIsCheckingUpdates(false);
-    }
-  }, []);
-
-  const installUpdate = useCallback(async () => {
-    setIsInstallingUpdate(true);
-    try {
-      const update = await check();
-      if (update) {
-        await update.download();
-        await update.install();
-        window.location.reload();
-      } else {
-        setUpdateAvailable(false);
-      }
-    } catch (error) {
-      console.error("Failed to install update:", error);
-    } finally {
-      setIsInstallingUpdate(false);
-    }
-  }, []);
 
   const renderContent = () => {
     switch (activePage) {
@@ -95,24 +63,11 @@ function App() {
   };
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const getAppVersion = async () => {
-      const version = await getVersion();
-      setAppVersion(version);
-    };
-
-    checkForUpdates();
-    getAppVersion();
-  }, []);
-
-  useEffect(() => {
     if (!parentPath) {
       return;
     }
 
-    void startWatcher(parentPath);
+    void startFolderWatcher(parentPath);
   }, [parentPath]);
 
   return (
