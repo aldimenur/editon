@@ -59,13 +59,6 @@ export interface PaginatedResponse {
   current_page: number;
 }
 
-export interface SyncResult {
-  added: number;
-  updated: number;
-  removed: number;
-  total: number;
-}
-
 export interface TrimMediaInput {
   input_path: string;
   start_sec: number;

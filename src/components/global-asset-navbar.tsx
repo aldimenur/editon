@@ -29,8 +29,6 @@ type GlobalAssetNavbarProps = {
   onEditSelected: () => void;
   onDeleteSelected: () => void;
   onClearSelected: () => void;
-  className?: string;
-  hint?: string;
   settingsExtra?: ReactNode;
 };
 

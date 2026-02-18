@@ -6,32 +6,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// src/utils/image.ts (contoh file baru)
-
-/**
- * Mengkonversi array of numbers (dari Vec<u8> Rust) menjadi Data URL.
- * Asumsi format gambar adalah WebP.
- * @param blobData Array of numbers yang merepresentasikan data binary gambar.
- * @returns Data URL string, atau null jika input tidak valid.
- */
-export const createThumbnailUrl = (blobData?: number[]): string | undefined => {
-  if (!blobData || blobData.length === 0) {
-    return undefined;
-  }
-
-  const uint8Array = new Uint8Array(blobData);
-
-  const blob = new Blob([uint8Array], { type: "image/webp" });
-
-  return URL.createObjectURL(blob);
-};
-
-export const revokeThumbnailUrl = (url: string | undefined) => {
-  if (url && url.startsWith("blob:")) {
-    URL.revokeObjectURL(url);
-  }
-};
-
 export const countAssets = async () => {
   const video = await invoke<number>("get_count_assets", {
     assetType: "video",

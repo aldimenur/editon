@@ -260,7 +260,9 @@ pub async fn get_ytdlp_version(app: AppHandle) -> Result<String, String> {
         return Err("yt-dlp is not installed".to_string());
     }
 
-    let yt_dlp_path = status.yt_dlp_path.unwrap();
+    let yt_dlp_path = status
+        .yt_dlp_path
+        .ok_or_else(|| "yt-dlp path is unavailable".to_string())?;
 
     use std::process::Command;
 
@@ -379,7 +381,9 @@ pub async fn run_ytdlp(
         return Err("yt-dlp is not installed. Please install it first.".to_string());
     }
 
-    let yt_dlp_path = status.yt_dlp_path.unwrap();
+    let yt_dlp_path = status
+        .yt_dlp_path
+        .ok_or_else(|| "yt-dlp path is unavailable".to_string())?;
 
     let mut cmd = Command::new(&yt_dlp_path);
     cmd.args(args)

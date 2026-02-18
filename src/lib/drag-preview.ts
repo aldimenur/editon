@@ -6,7 +6,7 @@ function trimText(value: string, maxLength: number): string {
     : value;
 }
 
-export function getFileNameFromPath(path: string): string {
+function getFileNameFromPath(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 

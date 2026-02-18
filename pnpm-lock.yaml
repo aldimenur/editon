@@ -12,19 +12,19 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       '@fortawesome/fontawesome-svg-core':
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: 7.2.0
       '@fortawesome/free-brands-svg-icons':
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: 7.2.0
       '@fortawesome/free-regular-svg-icons':
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: 7.2.0
       '@fortawesome/free-solid-svg-icons':
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: 7.2.0
       '@fortawesome/react-fontawesome':
-        specifier: ^3.1.1
+        specifier: ^3.2.0
         version: 3.2.0(@fortawesome/fontawesome-svg-core@7.2.0)(react@18.3.1)
       '@radix-ui/react-dialog':
         specifier: ^1.1.15
@@ -90,7 +90,7 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
       tailwind-merge:
-        specifier: ^3.4.0
+        specifier: ^3.4.1
         version: 3.4.1
       tailwindcss:
         specifier: ^4.1.18
@@ -99,35 +99,35 @@ importers:
         specifier: ^7.12.1
         version: 7.12.1
       zustand:
-        specifier: ^5.0.10
+        specifier: ^5.0.11
         version: 5.0.11(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
     devDependencies:
       '@tauri-apps/cli':
-        specifier: ^2
+        specifier: ^2.10.0
         version: 2.10.0
       '@types/node':
-        specifier: ^25.0.8
+        specifier: ^25.2.3
         version: 25.2.3
       '@types/react':
-        specifier: ^18.3.1
+        specifier: ^18.3.28
         version: 18.3.28
       '@types/react-dom':
-        specifier: ^18.3.1
+        specifier: ^18.3.7
         version: 18.3.7(@types/react@18.3.28)
       '@vitejs/plugin-react':
-        specifier: ^4.3.4
+        specifier: ^4.7.0
         version: 4.7.0(vite@6.4.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.30.2))
       prettier:
-        specifier: ^3.7.4
+        specifier: ^3.8.1
         version: 3.8.1
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
       typescript:
-        specifier: ~5.6.2
+        specifier: ~5.6.3
         version: 5.6.3
       vite:
-        specifier: ^6.0.3
+        specifier: ^6.4.1
         version: 6.4.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.30.2)
 
 packages:

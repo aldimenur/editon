@@ -11,6 +11,8 @@ type AssetSearchState = {
   sortOrder: NonNullable<AssetQueryParams["sortOrder"]>;
 };
 
+type AssetType = "all" | "audio" | "video" | "image";
+
 function createDefaultSearchState(): AssetSearchState {
   return {
     search: "",
@@ -23,7 +25,7 @@ function createDefaultSearchState(): AssetSearchState {
 async function getAssetsPaginated(
   page: number,
   pageSize: number,
-  assetType: "all" | "audio" | "video" | "image",
+  assetType: AssetType,
   queryParams: AssetQueryParams,
 ): Promise<PaginatedResponse> {
   return invoke<PaginatedResponse>("get_assets_paginated", {
@@ -107,7 +109,7 @@ interface AssetStore {
   fetchGlobalAssets: (
     page: number,
     pageSize: number,
-    assetType: "all" | "audio" | "video" | "image",
+    assetType: AssetType,
     reset?: boolean,
   ) => Promise<void>;
   refetchAssets: (page?: number, pageSize?: number) => Promise<void>;
@@ -115,123 +117,15 @@ interface AssetStore {
 
 const useAssetStore = create<AssetStore>()(
   persist(
-    (set, get) => ({
-      // Initial counts
-      sfx: 0,
-      video: 0,
-      image: 0,
-
-      // Initial paths
-      parentPath: "",
-      sfxPath: "",
-      videoPath: "",
-      imagePath: "",
-
-      // Initial search queries
-      sfxSearch: createDefaultSearchState(),
-      videoSearch: createDefaultSearchState(),
-      imageSearch: createDefaultSearchState(),
-      globalSearch: createDefaultSearchState(),
-
-      // Initial asset files
-      sfxFiles: [],
-      videoFiles: [],
-      imageFiles: [],
-      globalFiles: [],
-
-      // Initial search counts
-      sfxSearchCount: 0,
-      videoSearchCount: 0,
-      imageSearchCount: 0,
-      globalSearchCount: 0,
-
-      // Initial loading state
-      isLoading: false,
-
-      // Search setters
-      setSfxSearch: (search: string, tags: string[] = []) =>
-        set({
-          sfxSearch: {
-            ...createDefaultSearchState(),
-            search,
-            tags,
-          },
-        }),
-      setVideoSearch: (search: string, tags: string[] = []) =>
-        set({
-          videoSearch: {
-            ...createDefaultSearchState(),
-            search,
-            tags,
-          },
-        }),
-      setImageSearch: (search: string, tags: string[] = []) =>
-        set({
-          imageSearch: {
-            ...createDefaultSearchState(),
-            search,
-            tags,
-          },
-        }),
-      setGlobalSearch: (search: string, tags: string[] = []) =>
-        set({
-          globalSearch: {
-            ...createDefaultSearchState(),
-            search,
-            tags,
-          },
-        }),
-
-      // File setters
-      setSfxFiles: (files: Asset[], reset: boolean = false) =>
-        set((state) => ({
-          sfxFiles: reset ? files : [...state.sfxFiles, ...files],
-        })),
-      setVideoFiles: (files: Asset[], reset: boolean = false) =>
-        set((state) => ({
-          videoFiles: reset ? files : [...state.videoFiles, ...files],
-        })),
-      setImageFiles: (files: Asset[], reset: boolean = false) =>
-        set((state) => ({
-          imageFiles: reset ? files : [...state.imageFiles, ...files],
-        })),
-      setGlobalFiles: (files: Asset[], reset: boolean = false) =>
-        set((state) => ({
-          globalFiles: reset ? files : [...state.globalFiles, ...files],
-        })),
-
-      // Search count setters
-      setSfxSearchCount: (count: number) => set({ sfxSearchCount: count }),
-      setVideoSearchCount: (count: number) => set({ videoSearchCount: count }),
-      setImageSearchCount: (count: number) => set({ imageSearchCount: count }),
-      setGlobalSearchCount: (count: number) =>
-        set({ globalSearchCount: count }),
-
-      // Loading state setter
-      setIsLoading: (loading: boolean) => set({ isLoading: loading }),
-
-      // Update asset counts
-      updateAssetsCount: async () => {
-        const assets = await countAssets();
-        set({ sfx: assets.audio, video: assets.video, image: assets.image });
-        return assets;
-      },
-
-      // Path setters
-      setParentPath: async (path: string) => {
-        set({ parentPath: path });
-        await invoke("cancel_scan");
-        await invoke("clear_db");
-
-        await invoke("scan_and_import_folder", {
-          folderPath: path,
-        });
-      },
-
-      // Fetch SFX assets with pagination
-      fetchSfxAssets: async (
+    (set, get) => {
+      const fetchAssetsWithSearch = async (
         page: number,
         pageSize: number,
+        assetType: AssetType,
+        searchState: AssetSearchState,
+        setFiles: (files: Asset[], reset?: boolean) => void,
+        setCount: (count: number) => void,
+        errorLabel: string,
         reset: boolean = false,
       ) => {
         const state = get();
@@ -239,101 +133,8 @@ const useAssetStore = create<AssetStore>()(
 
         try {
           set({ isLoading: true });
-          const { tags, sortBy, sortOrder } = state.sfxSearch;
-          const search = state.sfxSearch.search.trim();
-
-          const result = await getAssetsPaginated(page, pageSize, "audio", {
-            search,
-            tags,
-            sortBy,
-            sortOrder,
-          });
-
-          const assets = result.data || [];
-          state.setSfxFiles(assets, reset);
-          set({ sfxSearchCount: result.total_items ?? 0 });
-        } catch (error) {
-          console.error("Error fetching SFX assets:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      // Fetch Video assets with pagination
-      fetchVideoAssets: async (
-        page: number,
-        pageSize: number,
-        reset: boolean = false,
-      ) => {
-        const state = get();
-        if (!state.parentPath) return;
-
-        try {
-          set({ isLoading: true });
-          const { tags, sortBy, sortOrder } = state.videoSearch;
-          const search = state.videoSearch.search.trim();
-
-          const result = await getAssetsPaginated(page, pageSize, "video", {
-            search,
-            tags,
-            sortBy,
-            sortOrder,
-          });
-
-          const assets = result.data || [];
-          state.setVideoFiles(assets, reset);
-          set({ videoSearchCount: result.total_items ?? 0 });
-        } catch (error) {
-          console.error("Error fetching Video assets:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      // Fetch Image assets with pagination
-      fetchImageAssets: async (
-        page: number,
-        pageSize: number,
-        reset: boolean = false,
-      ) => {
-        const state = get();
-        if (!state.parentPath) return;
-
-        try {
-          set({ isLoading: true });
-          const { tags, sortBy, sortOrder } = state.imageSearch;
-          const search = state.imageSearch.search.trim();
-
-          const result = await getAssetsPaginated(page, pageSize, "image", {
-            search,
-            tags,
-            sortBy,
-            sortOrder,
-          });
-
-          const assets = result.data || [];
-          state.setImageFiles(assets, reset);
-          set({ imageSearchCount: result.total_items ?? 0 });
-        } catch (error) {
-          console.error("Error fetching Image assets:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      fetchGlobalAssets: async (
-        page: number,
-        pageSize: number,
-        assetType: "all" | "audio" | "video" | "image",
-        reset: boolean = false,
-      ) => {
-        const state = get();
-        if (!state.parentPath) return;
-
-        try {
-          set({ isLoading: true });
-          const { tags, sortBy, sortOrder } = state.globalSearch;
-          const search = state.globalSearch.search.trim();
+          const { tags, sortBy, sortOrder } = searchState;
+          const search = searchState.search.trim();
 
           const result = await getAssetsPaginated(page, pageSize, assetType, {
             search,
@@ -343,22 +144,210 @@ const useAssetStore = create<AssetStore>()(
           });
 
           const assets = result.data || [];
-          state.setGlobalFiles(assets, reset);
-          set({ globalSearchCount: result.total_items ?? 0 });
+          setFiles(assets, reset);
+          setCount(result.total_items ?? 0);
         } catch (error) {
-          console.error("Error fetching global assets:", error);
+          console.error(`Error fetching ${errorLabel}:`, error);
         } finally {
           set({ isLoading: false });
         }
-      },
+      };
 
-      // Refetch all asset types (audio, video, image) in a single trigger
-      refetchAssets: async (page: number = 1, pageSize: number = 50) => {
-        const state = get();
-        if (!state.parentPath) return;
+      return {
+        // Initial counts
+        sfx: 0,
+        video: 0,
+        image: 0,
 
-        try {
-          set({ isLoading: true });
+        // Initial paths
+        parentPath: "",
+        sfxPath: "",
+        videoPath: "",
+        imagePath: "",
+
+        // Initial search queries
+        sfxSearch: createDefaultSearchState(),
+        videoSearch: createDefaultSearchState(),
+        imageSearch: createDefaultSearchState(),
+        globalSearch: createDefaultSearchState(),
+
+        // Initial asset files
+        sfxFiles: [],
+        videoFiles: [],
+        imageFiles: [],
+        globalFiles: [],
+
+        // Initial search counts
+        sfxSearchCount: 0,
+        videoSearchCount: 0,
+        imageSearchCount: 0,
+        globalSearchCount: 0,
+
+        // Initial loading state
+        isLoading: false,
+
+        // Search setters
+        setSfxSearch: (search: string, tags: string[] = []) =>
+          set({
+            sfxSearch: {
+              ...createDefaultSearchState(),
+              search,
+              tags,
+            },
+          }),
+        setVideoSearch: (search: string, tags: string[] = []) =>
+          set({
+            videoSearch: {
+              ...createDefaultSearchState(),
+              search,
+              tags,
+            },
+          }),
+        setImageSearch: (search: string, tags: string[] = []) =>
+          set({
+            imageSearch: {
+              ...createDefaultSearchState(),
+              search,
+              tags,
+            },
+          }),
+        setGlobalSearch: (search: string, tags: string[] = []) =>
+          set({
+            globalSearch: {
+              ...createDefaultSearchState(),
+              search,
+              tags,
+            },
+          }),
+
+        // File setters
+        setSfxFiles: (files: Asset[], reset: boolean = false) =>
+          set((state) => ({
+            sfxFiles: reset ? files : [...state.sfxFiles, ...files],
+          })),
+        setVideoFiles: (files: Asset[], reset: boolean = false) =>
+          set((state) => ({
+            videoFiles: reset ? files : [...state.videoFiles, ...files],
+          })),
+        setImageFiles: (files: Asset[], reset: boolean = false) =>
+          set((state) => ({
+            imageFiles: reset ? files : [...state.imageFiles, ...files],
+          })),
+        setGlobalFiles: (files: Asset[], reset: boolean = false) =>
+          set((state) => ({
+            globalFiles: reset ? files : [...state.globalFiles, ...files],
+          })),
+
+        // Search count setters
+        setSfxSearchCount: (count: number) => set({ sfxSearchCount: count }),
+        setVideoSearchCount: (count: number) =>
+          set({ videoSearchCount: count }),
+        setImageSearchCount: (count: number) =>
+          set({ imageSearchCount: count }),
+        setGlobalSearchCount: (count: number) =>
+          set({ globalSearchCount: count }),
+
+        // Loading state setter
+        setIsLoading: (loading: boolean) => set({ isLoading: loading }),
+
+        // Update asset counts
+        updateAssetsCount: async () => {
+          const assets = await countAssets();
+          set({ sfx: assets.audio, video: assets.video, image: assets.image });
+          return assets;
+        },
+
+        // Path setters
+        setParentPath: async (path: string) => {
+          set({ parentPath: path });
+          await invoke("cancel_scan");
+          await invoke("clear_db");
+
+          await invoke("scan_and_import_folder", {
+            folderPath: path,
+          });
+        },
+
+        // Fetch SFX assets with pagination
+        fetchSfxAssets: async (
+          page: number,
+          pageSize: number,
+          reset: boolean = false,
+        ) => {
+          const state = get();
+          await fetchAssetsWithSearch(
+            page,
+            pageSize,
+            "audio",
+            state.sfxSearch,
+            state.setSfxFiles,
+            state.setSfxSearchCount,
+            "SFX assets",
+            reset,
+          );
+        },
+
+        // Fetch Video assets with pagination
+        fetchVideoAssets: async (
+          page: number,
+          pageSize: number,
+          reset: boolean = false,
+        ) => {
+          const state = get();
+          await fetchAssetsWithSearch(
+            page,
+            pageSize,
+            "video",
+            state.videoSearch,
+            state.setVideoFiles,
+            state.setVideoSearchCount,
+            "Video assets",
+            reset,
+          );
+        },
+
+        // Fetch Image assets with pagination
+        fetchImageAssets: async (
+          page: number,
+          pageSize: number,
+          reset: boolean = false,
+        ) => {
+          const state = get();
+          await fetchAssetsWithSearch(
+            page,
+            pageSize,
+            "image",
+            state.imageSearch,
+            state.setImageFiles,
+            state.setImageSearchCount,
+            "Image assets",
+            reset,
+          );
+        },
+
+        fetchGlobalAssets: async (
+          page: number,
+          pageSize: number,
+          assetType: AssetType,
+          reset: boolean = false,
+        ) => {
+          const state = get();
+          await fetchAssetsWithSearch(
+            page,
+            pageSize,
+            assetType,
+            state.globalSearch,
+            state.setGlobalFiles,
+            state.setGlobalSearchCount,
+            "global assets",
+            reset,
+          );
+        },
+
+        // Refetch all asset types (audio, video, image) in a single trigger
+        refetchAssets: async (page: number = 1, pageSize: number = 50) => {
+          const state = get();
+          if (!state.parentPath) return;
 
           // Reset current lists
           state.setSfxFiles([], true);
@@ -369,13 +358,9 @@ const useAssetStore = create<AssetStore>()(
           await state.fetchSfxAssets(page, pageSize, true);
           await state.fetchVideoAssets(page, pageSize, true);
           await state.fetchImageAssets(page, pageSize, true);
-        } catch (error) {
-          console.error("Error refetching assets:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-    }),
+        },
+      };
+    },
     {
       name: "asset-store",
       storage: createJSONStorage(() => localStorage),

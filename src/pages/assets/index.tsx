@@ -14,6 +14,8 @@ import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
+import { useAvailableTags } from "@/hooks/use-available-tags";
+import { getCommonTags } from "@/lib/tags";
 import TagsDialog from "@/components/TagsDialog";
 import GlobalAssetList from "@/components/global-asset-list";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
@@ -41,14 +43,6 @@ import type { Asset } from "@/types/tauri";
 
 const PAGE_SIZE = 40;
 
-function parseTags(tags: string | null | undefined) {
-  if (!tags) return [];
-  return tags
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0);
-}
-
 function formatVideoTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const whole = Math.floor(seconds);
@@ -72,7 +66,6 @@ export default function AssetsPage() {
 
   const [searchValue, setSearchValue] = useState(globalSearch.search);
   const [tagFilter, setTagFilter] = useState<string[]>(globalSearch.tags);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [tagsDialogAssetIds, setTagsDialogAssetIds] = useState<number[]>([]);
@@ -81,6 +74,10 @@ export default function AssetsPage() {
   >(null);
   const [sliderValue, setSliderValue] = useState(0.5);
   const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
+  const { availableTags, refreshAvailableTags } = useAvailableTags(
+    parentPath,
+    setTagFilter,
+  );
   const appWindow = getCurrentWindow();
 
   const hasMore = globalFiles.length < globalSearchCount;
@@ -91,23 +88,6 @@ export default function AssetsPage() {
   const allFilteredSelected =
     filteredAssetIds.length > 0 &&
     filteredAssetIds.every((id) => selectedAssetIds.includes(id));
-
-  const fetchAvailableTags = useCallback(async () => {
-    try {
-      const tags = await invoke<string[]>("get_available_tags");
-      setAvailableTags(tags);
-      setTagFilter((prev) => prev.filter((tag) => tags.includes(tag)));
-    } catch (error) {
-      console.error("Failed to fetch tags:", error);
-      setAvailableTags([]);
-      setTagFilter([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!parentPath) return;
-    fetchAvailableTags();
-  }, [parentPath, fetchAvailableTags]);
 
   useEffect(() => {
     if (!parentPath) return;
@@ -155,18 +135,10 @@ export default function AssetsPage() {
     [globalFiles, selectedAssetIds],
   );
 
-  const commonSelectedTags = useMemo(() => {
-    if (selectedAssets.length === 0) return null;
-    let common = parseTags(selectedAssets[0].tags);
-
-    for (let i = 1; i < selectedAssets.length; i += 1) {
-      const tagSet = new Set(parseTags(selectedAssets[i].tags));
-      common = common.filter((tag) => tagSet.has(tag));
-      if (common.length === 0) break;
-    }
-
-    return common.length > 0 ? common.join(", ") : null;
-  }, [selectedAssets]);
+  const commonSelectedTags = useMemo(
+    () => getCommonTags(selectedAssets),
+    [selectedAssets],
+  );
 
   const handleDeleteSelected = async () => {
     if (selectedAssets.length === 0) return;
@@ -340,7 +312,7 @@ export default function AssetsPage() {
             }}
             onAssetDragStart={handleAssetDragStart}
             onAssetDragEnd={handleAssetDragEnd}
-            onOpenFullscreen={() => { }}
+            onOpenFullscreen={() => {}}
             onDeleteClick={(path) => {
               void handleDeleteAsset(path);
             }}
@@ -461,7 +433,7 @@ export default function AssetsPage() {
         currentTags={tagsDialogCurrentTags}
         availableTags={availableTags}
         onTagsUpdated={() => {
-          fetchAvailableTags();
+          void refreshAvailableTags();
           fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
           setSelectedAssetIds([]);
         }}
