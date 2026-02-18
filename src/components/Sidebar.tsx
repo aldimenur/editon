@@ -8,6 +8,7 @@ import type { ProgressPayload } from "@/stores/event-listener-store";
 import { faYoutube } from "@fortawesome/free-brands-svg-icons";
 import {
   faBoxesStacked,
+  faCompass,
   faFolderOpen,
   faGear,
   faImage,
@@ -29,7 +30,7 @@ type FilterItem = {
 
 const filterItems: FilterItem[] = [
   {
-    icon: <FontAwesomeIcon icon={faBoxesStacked} className="text-[12px]" />,
+    icon: <FontAwesomeIcon icon={faCompass} className="text-[12px]" />,
     label: "All",
     filter: "all",
   },

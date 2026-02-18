@@ -32,6 +32,7 @@ type SfxAudioCardProps = {
   isSelected: boolean;
   onOpenContextMenu: (file: Asset, x: number, y: number) => void;
   onDeleteTrimmed: (path: string) => void;
+  onTrimApplied: (outputPath: string) => void | Promise<void>;
   renderTags: (tags: string | null) => ReactNode;
   highlightText: (text: string, search: string) => ReactNode;
 };
@@ -45,6 +46,7 @@ export default function SfxAudioCard({
   isSelected,
   onOpenContextMenu,
   onDeleteTrimmed,
+  onTrimApplied,
   renderTags,
   highlightText,
 }: SfxAudioCardProps) {
@@ -155,6 +157,7 @@ export default function SfxAudioCard({
       });
       setAppliedTrimRange(trimRange);
       setTrimmedOutputPath(outputPath);
+      void onTrimApplied(outputPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTrimError(message);

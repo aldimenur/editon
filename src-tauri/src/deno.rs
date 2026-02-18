@@ -202,7 +202,8 @@ async fn download_deno_zip(
             .ok();
     }
 
-    file.flush().map_err(|e| format!("flush zip failed: {}", e))?;
+    file.flush()
+        .map_err(|e| format!("flush zip failed: {}", e))?;
 
     if downloaded < MIN_DENO_ZIP_BYTES {
         return Err(format!(

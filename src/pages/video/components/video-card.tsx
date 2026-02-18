@@ -37,6 +37,7 @@ type VideoCardProps = {
   onAssetDragEnd: (event: ReactDragEvent<HTMLDivElement>) => void;
   onOpenFullscreen: (file: Asset) => void;
   onDeleteClick: (path: string) => void;
+  onTrimApplied: (outputPath: string) => void | Promise<void>;
 };
 
 export default function VideoCard({
@@ -55,6 +56,7 @@ export default function VideoCard({
   onAssetDragEnd,
   onOpenFullscreen,
   onDeleteClick,
+  onTrimApplied,
 }: VideoCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const trimBarRef = useRef<HTMLDivElement | null>(null);
@@ -181,6 +183,7 @@ export default function VideoCard({
       });
       setAppliedTrimRange(trimRange);
       setTrimmedOutputPath(outputPath);
+      void onTrimApplied(outputPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTrimError(message);

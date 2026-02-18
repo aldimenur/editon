@@ -4,12 +4,16 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use rusqlite::params;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
-use crate::utils::{get_app_data_dir, get_media_type};
+use crate::{
+    models::DbState,
+    utils::{get_app_data_dir, get_media_type},
+};
 
 /// Try to locate ffmpeg binary: first under app data bin, else fallback to `ffmpeg` on PATH.
 fn resolve_ffmpeg_path(app: &tauri::AppHandle) -> String {
@@ -52,6 +56,7 @@ fn resolve_output_path(
 #[tauri::command]
 pub fn trim_media(
     app: AppHandle,
+    state: State<'_, DbState>,
     input_path: String,
     start_sec: f64,
     end_sec: f64,
@@ -118,5 +123,55 @@ pub fn trim_media(
         ));
     }
 
-    Ok(output.to_string_lossy().to_string())
+    let output_string = output.to_string_lossy().to_string();
+    upsert_trimmed_asset(&state, &output_string, &media_type)?;
+
+    Ok(output_string)
+}
+
+fn upsert_trimmed_asset(
+    state: &State<'_, DbState>,
+    output_path: &str,
+    media_type: &str,
+) -> Result<(), String> {
+    let output = Path::new(output_path);
+    let metadata = std::fs::metadata(output).map_err(|e| e.to_string())?;
+    let file_size = i64::try_from(metadata.len()).map_err(|e| e.to_string())?;
+
+    let filename = output
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or("Invalid output filename")?
+        .to_string();
+
+    let extension = output
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_string();
+
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(original_path) DO UPDATE SET
+           filename = excluded.filename,
+           extension = excluded.extension,
+           type = excluded.type,
+           file_size = excluded.file_size,
+           date_modified = CURRENT_TIMESTAMP",
+        params![
+            filename,
+            extension,
+            output_path,
+            media_type,
+            file_size,
+            "{}",
+            0.0_f64,
+            Option::<String>::None,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

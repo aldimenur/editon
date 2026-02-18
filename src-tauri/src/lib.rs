@@ -83,7 +83,10 @@ fn get_assets_paginated(
 
     // Tokenized search: split query into words and match all of them
     if !search.trim().is_empty() {
-        let tokens: Vec<&str> = search.split_whitespace().filter(|s| !s.is_empty()).collect();
+        let tokens: Vec<&str> = search
+            .split_whitespace()
+            .filter(|s| !s.is_empty())
+            .collect();
 
         if !tokens.is_empty() {
             // Build search condition for each token across filename, original_path, and tags

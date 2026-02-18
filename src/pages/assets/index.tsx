@@ -185,6 +185,13 @@ export default function AssetsPage() {
     }
   }, []);
 
+  const handleTrimApplied = useCallback(
+    async (_outputPath: string) => {
+      await fetchGlobalAssets(1, PAGE_SIZE, activeAssetFilter, true);
+    },
+    [activeAssetFilter, fetchGlobalAssets],
+  );
+
   const openContextMenu = useCallback(
     async (file: Asset, x: number, y: number) => {
       const fileId = file.id;
@@ -286,6 +293,7 @@ export default function AssetsPage() {
               void openContextMenu(targetFile, x, y);
             }}
             onDeleteTrimmed={handleDeleteTrimmed}
+            onTrimApplied={handleTrimApplied}
             renderTags={renderSfxTagChips}
             highlightText={highlightSfxSearchText}
           />
@@ -316,6 +324,7 @@ export default function AssetsPage() {
             onDeleteClick={(path) => {
               void handleDeleteAsset(path);
             }}
+            onTrimApplied={handleTrimApplied}
           />
         );
       }
@@ -351,6 +360,7 @@ export default function AssetsPage() {
       handleAssetDragStart,
       handleDeleteAsset,
       handleDeleteTrimmed,
+      handleTrimApplied,
       openContextMenu,
       searchValue,
       sliderValue,
