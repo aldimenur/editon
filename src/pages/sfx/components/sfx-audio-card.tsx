@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import WavesurferRender from "@/components/wavesurfer";
 import { trimMediaAction } from "@/lib/actions/trim-media";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
+import { globalAudioPlayer } from "@/lib/global-audio-player";
 import type { Asset } from "@/types/tauri";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -260,6 +261,7 @@ export default function SfxAudioCard({
       onMouseLeave={() => {
         setIsHoveringCard(false);
         setTrimCursorRatio(null);
+        globalAudioPlayer.stop();
       }}
       onContextMenu={(event) => {
         event.preventDefault();
