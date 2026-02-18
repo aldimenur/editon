@@ -16,26 +16,12 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 import { useAvailableTags } from "@/hooks/use-available-tags";
 import { getCommonTags } from "@/lib/tags";
+import AssetTypeRenderer from "@/components/assets/asset-type-renderer";
+import ImagePreviewModal from "@/components/assets/image-preview-modal";
 import TagsDialog from "@/components/TagsDialog";
 import GlobalAssetList from "@/components/global-asset-list";
 import GlobalAssetNavbar from "@/components/global-asset-navbar";
 import { Slider } from "@/components/ui/slider";
-import ImageCard from "@/pages/image/components/image-card";
-import ImagePreviewModal from "@/pages/image/components/image-preview-modal";
-import {
-  highlightSearchText as highlightImageSearchText,
-  renderTagChips as renderImageTagChips,
-} from "@/pages/image/utils/text";
-import SfxAudioCard from "@/pages/sfx/components/sfx-audio-card";
-import {
-  highlightSearchText as highlightSfxSearchText,
-  renderTagChips as renderSfxTagChips,
-} from "@/pages/sfx/utils/text";
-import VideoCard from "@/pages/video/components/video-card";
-import {
-  highlightSearchText as highlightVideoSearchText,
-  renderTagChips as renderVideoTagChips,
-} from "@/pages/video/utils/text";
 import useAssetStore from "@/stores/asset-store";
 import useNavStore from "@/stores/nav-store";
 import useViewStore from "@/stores/view-store";
@@ -279,81 +265,27 @@ export default function AssetsPage() {
 
   const renderAsset = useCallback(
     (asset: Asset, isSelected: boolean) => {
-      if (asset.type_name === "audio") {
-        return (
-          <SfxAudioCard
-            file={asset}
-            waveHeight={44}
-            minHeight={84}
-            showFileName={viewModeAssets !== "grid"}
-            searchText={searchValue}
-            volume={sliderValue}
-            isSelected={isSelected}
-            onOpenContextMenu={(targetFile, x, y) => {
-              void openContextMenu(targetFile, x, y);
-            }}
-            onDeleteTrimmed={handleDeleteTrimmed}
-            onTrimApplied={handleTrimApplied}
-            renderTags={renderSfxTagChips}
-            highlightText={highlightSfxSearchText}
-          />
-        );
-      }
-
-      if (asset.type_name === "video") {
-        const gridItemHeight = 0;
-
-        return (
-          <VideoCard
-            file={asset}
-            minHeight={viewModeAssets === "large" ? 320 : 220}
-            viewModeVideo={viewModeAssets}
-            gridItemHeight={gridItemHeight}
-            gridAspectRatio={16 / 9}
-            videoSearchText={searchValue}
-            isSelected={isSelected}
-            highlightText={highlightVideoSearchText}
-            renderTags={renderVideoTagChips}
-            formatVideoTime={formatVideoTime}
-            onOpenContextMenu={(targetFile, x, y) => {
-              void openContextMenu(targetFile, x, y);
-            }}
-            onAssetDragStart={handleAssetDragStart}
-            onAssetDragEnd={handleAssetDragEnd}
-            onOpenFullscreen={() => {}}
-            onDeleteClick={(path) => {
-              void handleDeleteAsset(path);
-            }}
-            onTrimApplied={handleTrimApplied}
-          />
-        );
-      }
-
-      if (asset.type_name === "image") {
-        const gridItemHeight = 0;
-
-        return (
-          <ImageCard
-            file={asset}
-            isSelected={isSelected}
-            minHeight={viewModeAssets === "large" ? 320 : 220}
-            isGrid={viewModeAssets === "grid"}
-            gridItemHeight={gridItemHeight}
-            gridAspectRatio={1}
-            imageSearchText={searchValue}
-            highlightText={highlightImageSearchText}
-            renderTags={renderImageTagChips}
-            onOpenContextMenu={(targetFile, x, y) => {
-              void openContextMenu(targetFile, x, y);
-            }}
-            onAssetDragStart={handleAssetDragStart}
-            onAssetDragEnd={handleAssetDragEnd}
-            onOpenPreview={setSelectedImage}
-          />
-        );
-      }
-
-      return null;
+      return (
+        <AssetTypeRenderer
+          asset={asset}
+          isSelected={isSelected}
+          viewModeAssets={viewModeAssets}
+          searchValue={searchValue}
+          sliderValue={sliderValue}
+          onOpenContextMenu={(targetFile, x, y) => {
+            void openContextMenu(targetFile, x, y);
+          }}
+          onDeleteAsset={(path) => {
+            void handleDeleteAsset(path);
+          }}
+          onDeleteTrimmed={handleDeleteTrimmed}
+          onAssetDragStart={handleAssetDragStart}
+          onAssetDragEnd={handleAssetDragEnd}
+          onOpenImagePreview={setSelectedImage}
+          onTrimApplied={handleTrimApplied}
+          formatVideoTime={formatVideoTime}
+        />
+      );
     },
     [
       handleAssetDragEnd,
