@@ -105,7 +105,7 @@ function DefaultAssetCard({
                 {getTypeIcon(asset.type_name)}
               </div>
             )}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 via-background/60 to-transparent p-2">
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-background/90 via-background/60 to-transparent p-2">
               <div className="text-xs font-medium truncate">
                 {highlightText(asset.filename, searchText)}
               </div>
