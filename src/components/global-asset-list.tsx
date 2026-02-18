@@ -1,7 +1,8 @@
 import type { Asset } from "@/types/tauri";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { FileImage, FileMusic, FileVideo2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 type ViewMode = "list" | "grid" | "large";
 
@@ -149,26 +150,98 @@ export default function GlobalAssetList({
   onLoadMore,
   renderAsset,
 }: GlobalAssetListProps) {
+  const scrollElementRef = useRef<HTMLDivElement | null>(null);
   const isGrid = viewMode === "grid";
   const isLarge = viewMode === "large";
+  const isList = viewMode === "list";
+
+  const virtualizer = useVirtualizer({
+    count: assets.length,
+    getScrollElement: () => scrollElementRef.current,
+    estimateSize: () => {
+      if (isLarge) return 340;
+      if (isGrid) return 260;
+      return 240;
+    },
+    overscan: 6,
+    enabled: isList,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (!isList || !hasMore || isLoading || virtualItems.length === 0) {
+      return;
+    }
+
+    const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
+    if (lastVisibleIndex >= assets.length - 5) {
+      onLoadMore();
+    }
+  }, [assets.length, hasMore, isList, isLoading, onLoadMore, virtualItems]);
 
   return (
     <div
+      ref={scrollElementRef}
       className="flex-1 overflow-y-auto"
-      onScroll={(event) => {
-        const target = event.currentTarget;
-        const nearBottom =
-          target.scrollTop + target.clientHeight >= target.scrollHeight - 160;
-        if (nearBottom && hasMore && !isLoading) {
-          onLoadMore();
-        }
-      }}
+      onScroll={
+        isList
+          ? undefined
+          : (event) => {
+              const target = event.currentTarget;
+              const nearBottom =
+                target.scrollTop + target.clientHeight >=
+                target.scrollHeight - 160;
+              if (nearBottom && hasMore && !isLoading) {
+                onLoadMore();
+              }
+            }
+      }
     >
       {assets.length === 0 && !isLoading ? (
         <div className="text-center text-muted-foreground py-8 text-sm border border-dashed border-border/60 rounded-[6px] bg-muted/10">
           {searchText
             ? "No assets found matching your search"
             : "No assets found"}
+        </div>
+      ) : isList ? (
+        <div
+          className="relative w-full"
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+          }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const asset = assets[virtualItem.index];
+            if (!asset) return null;
+
+            const isSelected =
+              typeof asset.id === "number" && selectedIds.includes(asset.id);
+            const custom = renderAsset?.(asset, isSelected, virtualItem.index);
+
+            return (
+              <div
+                key={asset.id ?? asset.original_path}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                className="absolute left-0 top-0 w-full"
+                style={{
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                {custom ?? (
+                  <DefaultAssetCard
+                    asset={asset}
+                    isSelected={isSelected}
+                    isGrid={false}
+                    isLarge={false}
+                    searchText={searchText}
+                    onToggleSelect={onToggleSelect}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div

@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import useAssetStore from "./asset-store";
+import useNavStore from "./nav-store";
 
 export interface ProgressPayload {
   current?: number;
@@ -56,11 +57,10 @@ interface EventListenerStore {
 }
 
 const runRefreshCycle = async (runMaintenance: boolean) => {
-  const updateAssetsCount = useAssetStore.getState().updateAssetsCount;
   const refetchAssets = useAssetStore.getState().refetchAssets;
+  const activeAssetFilter = useNavStore.getState().activeAssetFilter;
 
-  await updateAssetsCount();
-  await refetchAssets();
+  await refetchAssets(activeAssetFilter);
 
   if (!runMaintenance) {
     return;

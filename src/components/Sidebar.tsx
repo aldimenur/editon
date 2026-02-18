@@ -78,7 +78,7 @@ const Navbar = () => {
     isMinimized,
     toggleMinimized,
   } = useNavStore((state) => state);
-  const { setParentPath, sfx, video, image } = useAssetStore((state) => state);
+  const { setParentPath, globalSearchCount } = useAssetStore((state) => state);
   const { progressSound, progressImage, countingTotal, setCountingTotal } =
     useEventListenerStore((state) => state);
   const progressVideo = null as ProgressPayload | null;
@@ -100,11 +100,8 @@ const Navbar = () => {
 
   const getCount = (type: AssetFilter) => {
     if (countingTotal) return null;
-    if (type === "all") return sfx + video + image;
-    if (type === "audio") return sfx;
-    if (type === "video") return video;
-    if (type === "image") return image;
-    return null;
+    if (type !== activeAssetFilter) return null;
+    return globalSearchCount;
   };
 
   return (
