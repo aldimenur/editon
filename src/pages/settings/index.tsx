@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { Download, RefreshCw } from "lucide-react";
+import { PageHeader, PageLayout } from "@/components/shell/page-layout";
+import type { AppUpdaterStatus } from "@/features/app-updates/hooks/use-app-updater";
+import { AlertCircle, Download, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type SettingsPageProps = {
@@ -9,6 +11,8 @@ type SettingsPageProps = {
     lastCheckedAt: string | null;
     isCheckingUpdates: boolean;
     isInstallingUpdate: boolean;
+    status: AppUpdaterStatus;
+    lastError: string | null;
   };
   onCheckForUpdates: () => Promise<boolean>;
   onInstallUpdate: () => Promise<void>;
@@ -25,6 +29,8 @@ const SettingsPage = ({
     lastCheckedAt,
     isCheckingUpdates,
     isInstallingUpdate,
+    status,
+    lastError,
   } = update;
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -38,64 +44,114 @@ const SettingsPage = ({
     setStatusMessage(hasUpdate ? "Update available." : "You're up to date.");
   };
 
-  return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-xs text-muted-foreground">
-            Manage app preferences and updates.
-          </p>
-        </div>
-      </div>
+  const statusLabel = useMemo(() => {
+    if (lastError) {
+      return "Error";
+    }
 
-      <div className="border rounded-xl p-3 space-y-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold">App Updates</h3>
+    switch (status) {
+      case "checking":
+        return "Checking";
+      case "available":
+        return "Update available";
+      case "installing":
+        return "Installing";
+      case "up-to-date":
+        return "Up to date";
+      default:
+        return "Idle";
+    }
+  }, [lastError, status]);
+
+  const statusClass = useMemo(() => {
+    if (lastError) {
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    }
+
+    if (updateAvailable || status === "available") {
+      return "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400";
+    }
+
+    if (isCheckingUpdates || isInstallingUpdate) {
+      return "border-primary/30 bg-primary/10 text-primary";
+    }
+
+    return "border-border bg-muted/40 text-muted-foreground";
+  }, [
+    isCheckingUpdates,
+    isInstallingUpdate,
+    lastError,
+    status,
+    updateAvailable,
+  ]);
+
+  return (
+    <PageLayout>
+      <PageHeader
+        title="Settings"
+        subtitle="Update status and controls"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheckUpdates}
+            loading={isCheckingUpdates}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Check
+          </Button>
+        }
+      />
+
+      <section
+        className="rounded-xl border bg-card p-4"
+        data-testid="settings-updates-card"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold">App updates</h2>
             <p className="text-xs text-muted-foreground">
               Version {appVersion}
             </p>
             <p className="text-xs text-muted-foreground">
-              Last checked: {formattedCheckedAt}
+              Last checked {formattedCheckedAt}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCheckUpdates}
-              loading={isCheckingUpdates}
-            >
-              <RefreshCw className="h-4 w-4" />
-              Check for updates
-            </Button>
-            {updateAvailable && (
-              <Button
-                size="sm"
-                onClick={onInstallUpdate}
-                loading={isInstallingUpdate}
-              >
-                <Download className="h-4 w-4" />
-                Install update
-              </Button>
-            )}
-          </div>
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-medium ${statusClass}`}
+            data-testid="settings-update-status"
+          >
+            {statusLabel}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={`h-2.5 w-2.5 rounded-full ${updateAvailable ? "bg-green-500" : "bg-muted-foreground"}`}
-          />
-          <span className="text-muted-foreground">
-            {updateAvailable ? "Update available" : "Up to date"}
-          </span>
-          {statusMessage && (
-            <span className="text-muted-foreground">• {statusMessage}</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {updateAvailable && (
+            <Button
+              size="sm"
+              onClick={onInstallUpdate}
+              loading={isInstallingUpdate}
+            >
+              <Download className="h-4 w-4" />
+              Install update
+            </Button>
           )}
+
+          {statusMessage ? (
+            <span className="text-xs text-muted-foreground">
+              {statusMessage}
+            </span>
+          ) : null}
+
+          {lastError ? (
+            <span className="inline-flex items-center gap-1 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              {lastError}
+            </span>
+          ) : null}
         </div>
-      </div>
-    </div>
+      </section>
+    </PageLayout>
   );
 };
 

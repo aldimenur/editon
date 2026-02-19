@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { Window } from "@tauri-apps/api/window";
+import { isTauriRuntime } from "@/lib/runtime";
+import type { Window } from "@tauri-apps/api/window";
 import {
   Focus,
   Minus,
@@ -14,7 +15,7 @@ type TitleBarProps = {
   window: {
     isMaximized: boolean;
     isAlwaysOnTop: boolean;
-    appWindow: Window;
+    appWindow: Window | null;
     setIsAlwaysOnTop: (value: boolean) => void;
     setIsMaximized: (value: boolean) => void;
   };
@@ -30,17 +31,20 @@ const TitleBar = ({ window, isZenMode, onToggleZen }: TitleBarProps) => {
     setIsAlwaysOnTop,
     setIsMaximized,
   } = window;
+  const inTauri = isTauriRuntime();
 
   return (
     <div
       className={cn("flex items-center gap-1 w-full h-8 select-none")}
       data-tauri-drag-region
+      data-testid="titlebar"
     >
       <div className="flex items-center gap-1 p-1 pointer-events-auto">
         <button
           onClick={onToggleZen}
           className="hover:bg-sidebar-accent/50 rounded-md px-2 py-1 text-[11px] cursor-pointer transition-colors flex items-center gap-1"
           title={isZenMode ? "Exit Zen Mode" : "Enter Zen Mode"}
+          data-testid="zen-toggle"
         >
           {isZenMode ? (
             <>
@@ -60,28 +64,43 @@ const TitleBar = ({ window, isZenMode, onToggleZen }: TitleBarProps) => {
         <div className="flex items-center gap-1 p-1 pointer-events-auto">
           <button
             onClick={async () => {
+              if (!inTauri || !appWindow) return;
               const newState = !isAlwaysOnTop;
               await appWindow.setAlwaysOnTop(newState);
               setIsAlwaysOnTop(newState);
             }}
             className={cn(
-              "hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer transition-colors",
+              "rounded-md p-1 transition-colors",
+              inTauri
+                ? "cursor-pointer hover:bg-sidebar-accent/50"
+                : "cursor-not-allowed opacity-40",
               isAlwaysOnTop && "bg-sidebar-accent/70",
             )}
             title={
               isAlwaysOnTop ? "Disable Always on Top" : "Enable Always on Top"
             }
+            disabled={!inTauri}
           >
             {isAlwaysOnTop ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
           <button
-            onClick={() => appWindow.minimize()}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
+            onClick={() => {
+              if (!inTauri || !appWindow) return;
+              appWindow.minimize();
+            }}
+            className={cn(
+              "rounded-md p-1 transition-colors",
+              inTauri
+                ? "cursor-pointer hover:bg-sidebar-accent/50"
+                : "cursor-not-allowed opacity-40",
+            )}
+            disabled={!inTauri}
           >
             <Minus size={14} />
           </button>
           <button
             onClick={() => {
+              if (!inTauri || !appWindow) return;
               if (isMaximized) {
                 appWindow.unmaximize();
                 setIsMaximized(false);
@@ -90,13 +109,28 @@ const TitleBar = ({ window, isZenMode, onToggleZen }: TitleBarProps) => {
                 setIsMaximized(true);
               }
             }}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
+            className={cn(
+              "rounded-md p-1 transition-colors",
+              inTauri
+                ? "cursor-pointer hover:bg-sidebar-accent/50"
+                : "cursor-not-allowed opacity-40",
+            )}
+            disabled={!inTauri}
           >
             {!isMaximized ? <Square size={12} /> : <SquaresExclude size={12} />}
           </button>
           <button
-            onClick={() => appWindow.close()}
-            className="hover:bg-sidebar-accent/50 rounded-md p-1 cursor-pointer"
+            onClick={() => {
+              if (!inTauri || !appWindow) return;
+              appWindow.close();
+            }}
+            className={cn(
+              "rounded-md p-1 transition-colors",
+              inTauri
+                ? "cursor-pointer hover:bg-sidebar-accent/50"
+                : "cursor-not-allowed opacity-40",
+            )}
+            disabled={!inTauri}
           >
             <X size={16} />
           </button>

@@ -1,6 +1,7 @@
 import { useYoutubeDownload } from "@/features/youtube-download/hooks/use-youtube-download";
 import YoutubeDependenciesPanel from "@/features/youtube-download/ui/youtube-dependencies-panel";
 import YoutubeDownloadForm from "@/features/youtube-download/ui/youtube-download-form";
+import { PageHeader, PageLayout } from "@/components/shell/page-layout";
 
 export default function YoutubeDownloadPage() {
   const {
@@ -25,37 +26,45 @@ export default function YoutubeDownloadPage() {
     downloadDependencies,
     startDownload,
     browseDestination,
+    isBrowserQa,
+    setDownloadPath,
   } = useYoutubeDownload();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-3 p-3 max-h-[calc(100vh-40px)] overflow-auto">
-      <YoutubeDownloadForm
-        url={url}
-        onUrlChange={setUrl}
-        downloadType={downloadType}
-        onDownloadTypeChange={setDownloadType}
-        format={format}
-        onFormatChange={setFormat}
-        formatOptions={formatOptions}
-        quality={quality}
-        onQualityChange={setQuality}
-        qualityOptions={qualityOptions}
-        downloadPath={downloadPath}
-        onBrowseDestination={browseDestination}
-        videoProgress={videoProgress}
-        errorMsg={errorMsg}
-        isLoading={isLoading}
-        onStartDownload={startDownload}
-      />
+    <PageLayout>
+      <PageHeader title="YouTube download" subtitle="URL, options, download" />
 
-      <YoutubeDependenciesPanel
-        dependencyItems={dependencyItems}
-        allDependenciesInstalled={allDependenciesInstalled}
-        progress={progress}
-        isLoading={isLoading}
-        onCheckDependencies={checkDependencies}
-        onDownloadDependencies={downloadDependencies}
-      />
-    </div>
+      <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <YoutubeDownloadForm
+          url={url}
+          onUrlChange={setUrl}
+          downloadType={downloadType}
+          onDownloadTypeChange={setDownloadType}
+          format={format}
+          onFormatChange={setFormat}
+          formatOptions={formatOptions}
+          quality={quality}
+          onQualityChange={setQuality}
+          qualityOptions={qualityOptions}
+          downloadPath={downloadPath}
+          onDownloadPathChange={setDownloadPath}
+          isDestinationEditable={isBrowserQa}
+          onBrowseDestination={browseDestination}
+          videoProgress={videoProgress}
+          errorMsg={errorMsg}
+          isLoading={isLoading}
+          onStartDownload={startDownload}
+        />
+
+        <YoutubeDependenciesPanel
+          dependencyItems={dependencyItems}
+          allDependenciesInstalled={allDependenciesInstalled}
+          progress={progress}
+          isLoading={isLoading}
+          onCheckDependencies={checkDependencies}
+          onDownloadDependencies={downloadDependencies}
+        />
+      </div>
+    </PageLayout>
   );
 }

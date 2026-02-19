@@ -15,9 +15,9 @@ import {
   faVideo,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { isTauriRuntime } from "@/lib/runtime";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
 
@@ -84,7 +84,12 @@ const Navbar = () => {
   const progressVideo = null as ProgressPayload | null;
 
   const handleSetPath = async () => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
     try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
       const path = await open({
         directory: true,
       });
@@ -107,6 +112,7 @@ const Navbar = () => {
   return (
     <aside
       className={`flex flex-col border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground supports-backdrop-filter:bg-sidebar/80 supports-backdrop-filter:backdrop-blur-xl transition-[width] duration-200 ease-out ${isMinimized ? "w-[58px]" : "w-[220px]"}`}
+      data-testid="sidebar"
     >
       <div className="h-11 px-3.5 flex items-center gap-2 border-b border-sidebar-border/90 select-none">
         {!isMinimized && (
@@ -203,6 +209,12 @@ const Navbar = () => {
 
         {pageItems.map((item) => {
           const isActive = activePage === item.page;
+          const testId =
+            item.page === "/youtube-download"
+              ? "sidebar-nav-download"
+              : item.page === "/settings"
+                ? "sidebar-nav-settings"
+                : undefined;
 
           return (
             <div
@@ -215,6 +227,7 @@ const Navbar = () => {
                   setActivePage(item.page);
               }}
               title={isMinimized ? item.label : undefined}
+              data-testid={testId}
               className={
                 `group relative flex h-8 items-center gap-2.5 px-3.5 cursor-pointer border-y border-transparent ` +
                 `hover:bg-sidebar-accent/30 hover:border-sidebar-border/50 active:bg-sidebar-accent/45 ` +

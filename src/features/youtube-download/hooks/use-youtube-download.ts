@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -18,6 +17,7 @@ import type {
   DownloadType,
   OptionItem,
 } from "@/features/youtube-download/model/types";
+import { getQaFlag, isBrowserQaMode, isTauriRuntime } from "@/lib/runtime";
 
 type YtdlpOutputPayload = string | { message?: string };
 type YtdlpDependencyProgressPayload = {
@@ -47,6 +47,40 @@ function resolveVideoFormatArg(quality: string): string {
   return `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
 }
 
+function isValidUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function getQaDependencies(): DependenciesCheckResponse {
+  const preset = getQaFlag("deps");
+  if (preset === "missing") {
+    return {
+      yt_dlp_installed: false,
+      ffprobe_installed: false,
+      ffmpeg_installed: false,
+      deno_installed: false,
+    };
+  }
+
+  return {
+    yt_dlp_installed: true,
+    ffprobe_installed: true,
+    ffmpeg_installed: true,
+    deno_installed: true,
+  };
+}
+
 export function useYoutubeDownload() {
   const [progress, setProgress] = useState(0);
   const [videoProgress, setVideoProgress] = useState(0);
@@ -59,6 +93,7 @@ export function useYoutubeDownload() {
   const [errorMsg, setErrorMsg] = useState("");
   const [dependenciesCheckMsg, setDependenciesMsg] =
     useState<DependenciesCheckResponse>();
+  const isBrowserQa = isBrowserQaMode();
 
   const formatOptions = useMemo<OptionItem[]>(
     () =>
@@ -97,21 +132,56 @@ export function useYoutubeDownload() {
 
   const checkDependencies = useCallback(async () => {
     setIsLoading(true);
+    setErrorMsg("");
+
     try {
+      if (!isTauriRuntime()) {
+        if (isBrowserQa) {
+          await wait(350);
+          setDependenciesMsg(getQaDependencies());
+          return;
+        }
+
+        setDependenciesMsg(undefined);
+        return;
+      }
+
       const response = await checkDependenciesApi();
       setDependenciesMsg(response);
     } catch (error) {
       console.error("Failed to check dependencies", error);
+      setErrorMsg("Dependency check failed.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isBrowserQa]);
 
   const downloadDependencies = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg("");
 
     try {
+      if (!isTauriRuntime()) {
+        if (!isBrowserQa) {
+          setErrorMsg("Dependencies can only be installed in desktop app.");
+          return;
+        }
+
+        setProgress(0);
+        for (let i = 1; i <= 10; i += 1) {
+          await wait(130);
+          setProgress(i * 10);
+        }
+
+        setDependenciesMsg({
+          yt_dlp_installed: true,
+          ffprobe_installed: true,
+          ffmpeg_installed: true,
+          deno_installed: true,
+        });
+        return;
+      }
+
       await downloadDependenciesApi();
       await checkDependencies();
       setProgress(0);
@@ -121,12 +191,41 @@ export function useYoutubeDownload() {
     } finally {
       setIsLoading(false);
     }
-  }, [checkDependencies]);
+  }, [checkDependencies, isBrowserQa]);
 
   const startDownload = useCallback(async () => {
     setErrorMsg("");
     setVideoProgress(0);
     setIsLoading(true);
+
+    if (!isValidUrl(url.trim())) {
+      setErrorMsg("Invalid URL.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!downloadPath?.trim()) {
+      setErrorMsg("Destination required.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isTauriRuntime()) {
+      if (!isBrowserQa) {
+        setErrorMsg("Download only runs in desktop app.");
+        setIsLoading(false);
+        return;
+      }
+
+      for (let i = 1; i <= 8; i += 1) {
+        await wait(220);
+        setVideoProgress(i * 12.5);
+      }
+
+      setVideoProgress(100);
+      setIsLoading(false);
+      return;
+    }
 
     const args = [url, "-P", downloadPath || ".", "--no-playlist"];
 
@@ -152,10 +251,19 @@ export function useYoutubeDownload() {
     } finally {
       setIsLoading(false);
     }
-  }, [downloadPath, downloadType, format, quality, url]);
+  }, [downloadPath, downloadType, format, isBrowserQa, quality, url]);
 
   const browseDestination = useCallback(async () => {
     try {
+      if (!isTauriRuntime()) {
+        if (isBrowserQa) {
+          setDownloadPath("C:/Downloads");
+          return;
+        }
+
+        return;
+      }
+
       const path = await browseDownloadDirectory();
       if (path) {
         setDownloadPath(path);
@@ -163,15 +271,21 @@ export function useYoutubeDownload() {
     } catch (error) {
       console.error("Failed to browse destination", error);
     }
-  }, []);
+  }, [isBrowserQa]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
     let unlistenYtdlpOutput: (() => void) | undefined;
     let unlistenFfmpeg: (() => void) | undefined;
     let unlistenYtdlpDep: (() => void) | undefined;
     let unlistenDeno: (() => void) | undefined;
 
     const attachListeners = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+
       unlistenYtdlpOutput = await listen<YtdlpOutputPayload>(
         "ytdlp-output",
         (event) => {
@@ -217,6 +331,12 @@ export function useYoutubeDownload() {
   }, []);
 
   useEffect(() => {
+    if (isBrowserQa && !downloadPath) {
+      setDownloadPath("C:/Downloads");
+    }
+  }, [downloadPath, isBrowserQa]);
+
+  useEffect(() => {
     void checkDependencies();
   }, [checkDependencies]);
 
@@ -241,7 +361,9 @@ export function useYoutubeDownload() {
     format,
     setFormat,
     downloadPath,
+    setDownloadPath,
     isLoading,
+    isBrowserQa,
     errorMsg,
     qualityOptions: YOUTUBE_QUALITY_OPTIONS,
     formatOptions,

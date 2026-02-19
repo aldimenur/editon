@@ -44,102 +44,102 @@
 
 :root {
   /* --- LIGHT MODE (Clean & Crisp) --- */
-  --radius: 0.5rem; /* Eagle sedikit lebih kotak dibanding default shadcn */
+  --radius: 0.375rem; /* Compact radius for professional look */
 
   --background: oklch(1 0 0); /* Putih bersih */
-  --foreground: oklch(0.2 0 0); /* Teks hampir hitam */
+  --foreground: oklch(0.145 0 0); /* Teks hampir hitam, sedikit hangat */
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0 0);
+  --card: oklch(0.995 0 0);
+  --card-foreground: oklch(0.145 0 0);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0 0);
+  --popover-foreground: oklch(0.145 0 0);
 
-  /* Eagle Blue (Vibrant Blue) */
-  --primary: oklch(0.55 0.22 260);
+  /* Steel Blue - Professional, less saturated than vivid blue */
+  --primary: oklch(0.45 0.12 250);
   --primary-foreground: oklch(1 0 0);
 
-  --secondary: oklch(0.96 0 0); /* Abu-abu sangat muda */
-  --secondary-foreground: oklch(0.2 0 0);
+  --secondary: oklch(0.97 0 0); /* Abu-abu sangat muda */
+  --secondary-foreground: oklch(0.22 0 0);
 
-  --muted: oklch(1 0 0);
-  --muted-foreground: oklch(0.55 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
 
-  --accent: oklch(0.9 0 0);
-  --accent-foreground: oklch(0.2 0 0);
+  --accent: oklch(0.95 0 0);
+  --accent-foreground: oklch(0.22 0 0);
 
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: oklch(0.92 0 0);
-  --input: oklch(0.92 0 0);
-  --ring: oklch(0.55 0.22 260); /* Ring fokus warna biru */
+  /* Border - Slightly more contrast for definition */
+  --border: oklch(0.885 0 0);
+  --input: oklch(0.885 0 0);
+  --ring: oklch(0.45 0.12 250); /* Ring fokus warna steel blue */
 
   /* Chart colors placeholder */
-  --chart-1: oklch(0.55 0.22 260);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-1: oklch(0.45 0.12 250);
+  --chart-2: oklch(0.55 0.12 180);
+  --chart-3: oklch(0.4 0.08 220);
+  --chart-4: oklch(0.75 0.15 80);
+  --chart-5: oklch(0.7 0.15 60);
 
   /* Sidebar Light */
-  --sidebar: oklch(0.98 0 0); /* Sedikit off-white */
+  --sidebar: oklch(0.97 0 0); /* Off-white */
   --sidebar-foreground: oklch(0.25 0 0);
-  --sidebar-primary: oklch(0.55 0.22 260);
+  --sidebar-primary: oklch(0.45 0.12 250);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.94 0 0);
-  --sidebar-accent-foreground: oklch(0.2 0 0);
-  --sidebar-border: oklch(0.9 0 0);
-  --sidebar-ring: oklch(0.55 0.22 260);
+  --sidebar-accent: oklch(0.92 0 0);
+  --sidebar-accent-foreground: oklch(0.22 0 0);
+  --sidebar-border: oklch(0.88 0 0);
+  --sidebar-ring: oklch(0.45 0.12 250);
 }
 
 .dark {
-  /* --- DARK MODE (Eagle Aesthetic) --- */
+  /* --- DARK MODE (Professional Dark) --- */
 
-  /* Background Utama (Area Grid) - Abu-abu gelap (Zinc 900-ish) */
-  --background: oklch(0.18 0.006 285);
-  /* Teks Utama - Putih gading (tidak menyilaukan) */
-  --foreground: oklch(0.9 0.01 285);
+  /* Background Utama - Abu-abu gelap profesional */
+  --background: oklch(0.145 0.008 285);
+  /* Teks Utama - Putih gading */
+  --foreground: oklch(0.92 0.008 285);
 
   /* Card/Panel - Sedikit lebih terang dari background */
-  --card: oklch(0.22 0.006 285);
-  --card-foreground: oklch(0.9 0.01 285);
+  --card: oklch(0.18 0.008 285);
+  --card-foreground: oklch(0.92 0.008 285);
 
-  --popover: oklch(0.22 0.006 285);
-  --popover-foreground: oklch(0.9 0.01 285);
+  --popover: oklch(0.18 0.008 285);
+  --popover-foreground: oklch(0.92 0.008 285);
 
-  /* Primary Action - "Eagle Blue" (Biru Terang/Electric) */
-  --primary: oklch(0.6 0.2 260);
-  --primary-foreground: oklch(1 0 0); /* Teks putih di tombol biru */
+  /* Primary Action - Steel Blue (lebih muted dari vivid) */
+  --primary: oklch(0.52 0.14 250);
+  --primary-foreground: oklch(1 0 0);
 
   /* Secondary - Abu-abu medium */
-  --secondary: oklch(0.28 0.01 285);
-  --secondary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.26 0.012 285);
+  --secondary-foreground: oklch(0.96 0 0);
 
   /* Muted - Untuk teks deskripsi/metadata */
-  --muted: oklch(0.28 0.01 285);
-  --muted-foreground: oklch(0.65 0.01 285);
+  --muted: oklch(0.26 0.012 285);
+  --muted-foreground: oklch(0.62 0.012 285);
 
-  /* Accent - Hover state (Biru transparan atau abu-abu terang) */
-  --accent: oklch(0.28 0.01 285);
-  --accent-foreground: oklch(0.98 0 0);
+  /* Accent - Hover state */
+  --accent: oklch(0.26 0.012 285);
+  --accent-foreground: oklch(0.96 0 0);
 
   --destructive: oklch(0.45 0.2 25);
 
-  /* Border - Sangat subtil, hampir tidak terlihat */
-  --border: oklch(0.28 0.01 285);
-  --input: oklch(0.28 0.01 285);
-  --ring: oklch(0.6 0.2 260);
+  /* Border - Subtle but visible */
+  --border: oklch(0.26 0.012 285);
+  --input: oklch(0.26 0.012 285);
+  --ring: oklch(0.52 0.14 250);
 
-  /* --- SIDEBAR (Kunci tampilan Eagle) --- */
-  /* Sidebar lebih gelap dari konten utama (Main Content) */
-  --sidebar: oklch(0.2 0.006 285);
-  --sidebar-foreground: oklch(0.85 0.01 285);
-  --sidebar-primary: oklch(0.6 0.2 260); /* Biru saat item sidebar aktif */
+  /* --- SIDEBAR --- */
+  --sidebar: oklch(0.16 0.008 285);
+  --sidebar-foreground: oklch(0.85 0.008 285);
+  --sidebar-primary: oklch(0.52 0.14 250);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.25 0.006 285); /* Hover item sidebar */
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.22 0.006 285); /* Border pemisah sidebar & konten */
-  --sidebar-ring: oklch(0.6 0.2 260);
+  --sidebar-accent: oklch(0.22 0.008 285);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(0.2 0.008 285);
+  --sidebar-ring: oklch(0.52 0.14 250);
 }
 
 @layer base {

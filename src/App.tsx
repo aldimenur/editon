@@ -6,12 +6,13 @@ import TitleBar from "./components/title-bar";
 import YoutubeDownloadPage from "./pages/youtube-download";
 import { useEffect, useState } from "react";
 import useAssetStore from "./stores/asset-store";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Window } from "@tauri-apps/api/window";
 import SettingsPage from "./pages/settings";
 import { Button } from "./components/ui/button";
 import AssetsPage from "./pages/assets";
 import { startFolderWatcher } from "@/features/assets/api/folder-api";
 import { useAppUpdater } from "@/features/app-updates/hooks/use-app-updater";
+import { isTauriRuntime } from "@/lib/runtime";
 
 function App() {
   const { activePage, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
@@ -20,26 +21,68 @@ function App() {
   const { parentPath } = useAssetStore((state) => state);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+  const [appWindow, setAppWindow] = useState<Window | null>(null);
   const {
     appVersion,
     checkForUpdates,
     installUpdate,
     isCheckingUpdates,
     isInstallingUpdate,
+    lastError,
     lastCheckedAt,
+    status,
     updateAvailable,
   } = useAppUpdater();
 
-  const appWindow = getCurrentWindow();
-
   useEffect(() => {
-    appWindow.isMaximized().then(setIsMaximized);
-    appWindow.isAlwaysOnTop().then(setIsAlwaysOnTop);
-  }, [appWindow]);
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const currentWindow = getCurrentWindow();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setAppWindow(currentWindow);
+
+        const [maximized, alwaysOnTop] = await Promise.all([
+          currentWindow.isMaximized(),
+          currentWindow.isAlwaysOnTop(),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setIsMaximized(maximized);
+        setIsAlwaysOnTop(alwaysOnTop);
+      } catch (error) {
+        console.error("Failed to initialize app window state:", error);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const renderContent = () => {
     switch (activePage) {
       case "assets":
+        if (!isTauriRuntime()) {
+          return (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Assets unavailable in browser QA
+            </div>
+          );
+        }
         return <AssetsPage />;
       case "/youtube-download":
         return <YoutubeDownloadPage />;
@@ -52,6 +95,8 @@ function App() {
               lastCheckedAt,
               isCheckingUpdates,
               isInstallingUpdate,
+              lastError,
+              status,
             }}
             onCheckForUpdates={checkForUpdates}
             onInstallUpdate={installUpdate}
@@ -63,7 +108,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (!parentPath) {
+    if (!isTauriRuntime() || !parentPath) {
       return;
     }
 
@@ -72,9 +117,15 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <div className="bg-background text-foreground w-screen h-screen flex">
+      <div
+        className="bg-background text-foreground w-screen h-screen flex"
+        data-testid="app-shell"
+      >
         {!isZenMode && <Sidebar />}
-        <main className="flex-1 max-h-screen overflow-y-hidden relative">
+        <main
+          className="relative flex-1 max-h-screen overflow-hidden"
+          data-testid="page-content"
+        >
           {!isZenMode && (
             <TitleBar
               window={{
