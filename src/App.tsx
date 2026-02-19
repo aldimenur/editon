@@ -4,7 +4,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import useNavStore from "./stores/nav-store";
 import TitleBar from "./components/title-bar";
 import YoutubeDownloadPage from "./pages/youtube-download";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import useAssetStore from "./stores/asset-store";
 import type { Window } from "@tauri-apps/api/window";
 import SettingsPage from "./pages/settings";
@@ -13,6 +13,52 @@ import AssetsPage from "./pages/assets";
 import { startFolderWatcher } from "@/features/assets/api/folder-api";
 import { useAppUpdater } from "@/features/app-updates/hooks/use-app-updater";
 import { isTauriRuntime } from "@/lib/runtime";
+
+type AppContentProps = {
+  activePage: string;
+  settingsUpdate: {
+    updateAvailable: boolean;
+    appVersion: string;
+    lastCheckedAt: string | null;
+    isCheckingUpdates: boolean;
+    isInstallingUpdate: boolean;
+    lastError: string | null;
+    status: ReturnType<typeof useAppUpdater>["status"];
+  };
+  onCheckForUpdates: () => Promise<boolean>;
+  onInstallUpdate: () => Promise<void>;
+};
+
+function AppContent({
+  activePage,
+  settingsUpdate,
+  onCheckForUpdates,
+  onInstallUpdate,
+}: AppContentProps) {
+  switch (activePage) {
+    case "assets":
+      if (!isTauriRuntime()) {
+        return (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            Assets unavailable in browser QA
+          </div>
+        );
+      }
+      return <AssetsPage />;
+    case "/youtube-download":
+      return <YoutubeDownloadPage />;
+    case "/settings":
+      return (
+        <SettingsPage
+          update={settingsUpdate}
+          onCheckForUpdates={onCheckForUpdates}
+          onInstallUpdate={onInstallUpdate}
+        />
+      );
+    default:
+      return null;
+  }
+}
 
 function App() {
   const { activePage, isZenMode, toggleZenMode, setIsZenMode } = useNavStore(
@@ -33,6 +79,18 @@ function App() {
     status,
     updateAvailable,
   } = useAppUpdater();
+  const shellStyle: CSSProperties & Record<"--chrome-h", string> = {
+    "--chrome-h": isZenMode ? "0px" : "32px",
+  };
+  const settingsUpdate = {
+    updateAvailable,
+    appVersion,
+    lastCheckedAt,
+    isCheckingUpdates,
+    isInstallingUpdate,
+    lastError,
+    status,
+  };
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -73,40 +131,6 @@ function App() {
     };
   }, []);
 
-  const renderContent = () => {
-    switch (activePage) {
-      case "assets":
-        if (!isTauriRuntime()) {
-          return (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Assets unavailable in browser QA
-            </div>
-          );
-        }
-        return <AssetsPage />;
-      case "/youtube-download":
-        return <YoutubeDownloadPage />;
-      case "/settings":
-        return (
-          <SettingsPage
-            update={{
-              updateAvailable,
-              appVersion,
-              lastCheckedAt,
-              isCheckingUpdates,
-              isInstallingUpdate,
-              lastError,
-              status,
-            }}
-            onCheckForUpdates={checkForUpdates}
-            onInstallUpdate={installUpdate}
-          />
-        );
-      default:
-        return null;
-    }
-  };
-
   useEffect(() => {
     if (!isTauriRuntime() || !parentPath) {
       return;
@@ -118,12 +142,13 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <div
-        className="bg-background text-foreground w-screen h-screen flex"
+        className="bg-background text-foreground flex h-[100dvh] w-screen overflow-hidden"
         data-testid="app-shell"
+        style={shellStyle}
       >
         {!isZenMode && <Sidebar />}
         <main
-          className="relative flex-1 max-h-screen overflow-hidden"
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
           data-testid="page-content"
         >
           {!isZenMode && (
@@ -151,7 +176,12 @@ function App() {
               </Button>
             </div>
           )}
-          {renderContent()}
+          <AppContent
+            activePage={activePage}
+            settingsUpdate={settingsUpdate}
+            onCheckForUpdates={checkForUpdates}
+            onInstallUpdate={installUpdate}
+          />
         </main>
       </div>
     </ThemeProvider>

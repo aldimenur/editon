@@ -180,7 +180,7 @@ export default function AssetsPage() {
   }, [clearSelection, refreshAssets, refreshAvailableTags]);
 
   return (
-    <div className="px-1 flex flex-col gap-1 h-[calc(100vh-32px)]">
+    <div className="flex h-[calc(100dvh-var(--chrome-h,32px))] flex-col gap-1 px-1">
       <AssetsPageToolbar
         viewModeAssets={viewModeAssets}
         onViewModeAssetsChange={setViewModeAssets}

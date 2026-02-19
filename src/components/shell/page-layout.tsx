@@ -17,7 +17,7 @@ export function PageLayout({ children, className }: PageLayoutProps) {
   return (
     <section
       className={cn(
-        "h-[calc(100dvh-30px)] overflow-y-auto px-3 py-3 md:px-4 md:py-4",
+        "h-[calc(100dvh-var(--chrome-h,32px))] overflow-y-auto px-3 py-3 md:px-4 md:py-4",
         className,
       )}
     >
