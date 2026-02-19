@@ -4,13 +4,19 @@ import App from "./App";
 import { isTauriRuntime } from "./lib/runtime";
 import useEventListenerStore from "./stores/event-listener-store";
 
+const tauriRuntime = isTauriRuntime();
+
 // Activate Tauri event listeners for the full app lifetime (no cleanup until app closes)
-if (isTauriRuntime()) {
+if (tauriRuntime) {
   useEventListenerStore.getState().initEventListeners();
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
+  tauriRuntime ? (
     <App />
-  </React.StrictMode>,
+  ) : (
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  ),
 );

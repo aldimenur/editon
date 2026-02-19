@@ -68,6 +68,9 @@ interface AssetStore {
 const useAssetStore = create<AssetStore>()(
   persist(
     (set, get) => {
+      const inFlightRequestKeys = new Set<string>();
+      let activeFetchCount = 0;
+
       const fetchAssetsWithSearch = async (
         page: number,
         pageSize: number,
@@ -81,11 +84,29 @@ const useAssetStore = create<AssetStore>()(
         const state = get();
         if (!state.parentPath) return;
 
-        try {
-          set({ isLoading: true });
-          const { tags, sortBy, sortOrder } = searchState;
-          const search = searchState.search.trim();
+        const { tags, sortBy, sortOrder } = searchState;
+        const search = searchState.search.trim();
+        const requestKey = JSON.stringify({
+          parentPath: state.parentPath,
+          page,
+          pageSize,
+          assetType,
+          search,
+          tags,
+          sortBy,
+          sortOrder,
+          reset,
+        });
 
+        if (inFlightRequestKeys.has(requestKey)) {
+          return;
+        }
+
+        inFlightRequestKeys.add(requestKey);
+        activeFetchCount += 1;
+        set({ isLoading: true });
+
+        try {
           const result = await getAssetsPaginated(page, pageSize, assetType, {
             search,
             tags,
@@ -99,7 +120,9 @@ const useAssetStore = create<AssetStore>()(
         } catch (error) {
           console.error(`Error fetching ${errorLabel}:`, error);
         } finally {
-          set({ isLoading: false });
+          inFlightRequestKeys.delete(requestKey);
+          activeFetchCount = Math.max(0, activeFetchCount - 1);
+          set({ isLoading: activeFetchCount > 0 });
         }
       };
 

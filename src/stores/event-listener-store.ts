@@ -24,6 +24,7 @@ let refreshTimer: number | null = null;
 let refreshInFlight = false;
 let refreshQueued = false;
 let queuedMaintenance = false;
+let listenersInitialized = false;
 
 function toProgressPayload(payload: unknown): ProgressPayload | null {
   if (!payload || typeof payload !== "object") {
@@ -119,6 +120,12 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
   setCountingTotal: (counting) => set({ countingTotal: counting }),
 
   initEventListeners: async () => {
+    if (listenersInitialized) {
+      return;
+    }
+
+    listenersInitialized = true;
+
     try {
       await listen("file-added", () => scheduleFileChangeRefresh(true));
       await listen("file-removed", () => scheduleFileChangeRefresh(true));
@@ -156,6 +163,7 @@ const useEventListenerStore = create<EventListenerStore>()((set) => ({
         }
       });
     } catch (error) {
+      listenersInitialized = false;
       console.error("Failed to setup event listeners:", error);
     }
   },

@@ -12,7 +12,9 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::{
     models::DbState,
+    sound_lib::get_audio_waveform,
     utils::{get_app_data_dir, get_media_type},
+    video_lib::generate_video_thumbnail_buffer,
 };
 
 /// Try to locate ffmpeg binary: first under app data bin, else fallback to `ffmpeg` on PATH.
@@ -51,6 +53,32 @@ fn resolve_output_path(
         .as_millis();
 
     Ok(trimmed_dir.join(format!("{}_trim_{}.{}", stem, ts, ext)))
+}
+
+fn generate_trimmed_video_thumbnail(app: &AppHandle, video_path: &str) -> Option<String> {
+    let app_data_dir = get_app_data_dir(app).ok()?;
+    let thumbnails_dir = app_data_dir.join("thumbnails");
+    std::fs::create_dir_all(&thumbnails_dir).ok()?;
+
+    let ffmpeg_path = resolve_ffmpeg_path(app);
+    let blob = generate_video_thumbnail_buffer(video_path, 200, "0", &ffmpeg_path).ok()?;
+
+    let stem = Path::new(video_path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("video");
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    let thumbnail_name = format!("{}_trim_{}.webp", stem, ts);
+    let thumbnail_path = thumbnails_dir.join(thumbnail_name);
+
+    if std::fs::write(&thumbnail_path, &blob).is_err() {
+        return None;
+    }
+
+    Some(thumbnail_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -124,7 +152,44 @@ pub fn trim_media(
     }
 
     let output_string = output.to_string_lossy().to_string();
-    upsert_trimmed_asset(&state, &output_string, &media_type)?;
+    let duration_sec = duration;
+    let waveform_data = if media_type == "audio" {
+        match get_audio_waveform(&output_string, 100) {
+            Ok(data) => Some(serde_json::to_string(&data).unwrap_or("[]".to_string())),
+            Err(error) => {
+                eprintln!(
+                    "Failed to generate waveform for trimmed audio {}: {}",
+                    output_string, error
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let thumbnail_path = if media_type == "video" {
+        match generate_trimmed_video_thumbnail(&app, &output_string) {
+            Some(path) => Some(path),
+            None => {
+                eprintln!(
+                    "Failed to generate thumbnail for trimmed video {}",
+                    output_string
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    upsert_trimmed_asset(
+        &state,
+        &output_string,
+        &media_type,
+        duration_sec,
+        waveform_data,
+        thumbnail_path,
+    )?;
 
     Ok(output_string)
 }
@@ -133,6 +198,9 @@ fn upsert_trimmed_asset(
     state: &State<'_, DbState>,
     output_path: &str,
     media_type: &str,
+    duration_sec: f64,
+    waveform_data: Option<String>,
+    thumbnail_path: Option<String>,
 ) -> Result<(), String> {
     let output = Path::new(output_path);
     let metadata = std::fs::metadata(output).map_err(|e| e.to_string())?;
@@ -152,13 +220,16 @@ fn upsert_trimmed_asset(
 
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, tags)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "INSERT INTO assets (filename, extension, original_path, type, file_size, metadata, duration_sec, thumbnail_path, waveform_data, tags)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(original_path) DO UPDATE SET
            filename = excluded.filename,
            extension = excluded.extension,
            type = excluded.type,
            file_size = excluded.file_size,
+           duration_sec = excluded.duration_sec,
+           thumbnail_path = COALESCE(excluded.thumbnail_path, assets.thumbnail_path),
+           waveform_data = COALESCE(excluded.waveform_data, assets.waveform_data),
            date_modified = CURRENT_TIMESTAMP",
         params![
             filename,
@@ -167,7 +238,9 @@ fn upsert_trimmed_asset(
             media_type,
             file_size,
             "{}",
-            0.0_f64,
+            duration_sec,
+            thumbnail_path,
+            waveform_data,
             Option::<String>::None,
         ],
     )

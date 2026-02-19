@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ASSETS_PAGE_SIZE,
@@ -37,18 +37,50 @@ export function useAssetsQuery({
 }: UseAssetsQueryOptions) {
   const [searchValue, setSearchValue] = useState(initialSearch.search);
   const [tagFilter, setTagFilter] = useState<string[]>(initialSearch.tags);
+  const lastFetchKeyRef = useRef<string>("");
+
+  const buildFetchKey = (
+    path: string,
+    filter: AssetType,
+    search: string,
+    tags: string[],
+  ) => `${path}|${filter}|${search.trim()}|${tags.join(",")}`;
 
   useEffect(() => {
     if (!parentPath) return;
 
     onResetSelection();
+    setGlobalSearch(searchValue, tagFilter);
+    lastFetchKeyRef.current = buildFetchKey(
+      parentPath,
+      activeAssetFilter,
+      searchValue,
+      tagFilter,
+    );
     void fetchGlobalAssets(1, ASSETS_PAGE_SIZE, activeAssetFilter, true);
-  }, [parentPath, activeAssetFilter, fetchGlobalAssets, onResetSelection]);
+  }, [
+    parentPath,
+    activeAssetFilter,
+    fetchGlobalAssets,
+    onResetSelection,
+    setGlobalSearch,
+  ]);
 
   useEffect(() => {
     if (!parentPath) return;
 
     const timeout = window.setTimeout(() => {
+      const nextFetchKey = buildFetchKey(
+        parentPath,
+        activeAssetFilter,
+        searchValue,
+        tagFilter,
+      );
+      if (nextFetchKey === lastFetchKeyRef.current) {
+        return;
+      }
+
+      lastFetchKeyRef.current = nextFetchKey;
       setGlobalSearch(searchValue, tagFilter);
       void fetchGlobalAssets(1, ASSETS_PAGE_SIZE, activeAssetFilter, true);
     }, ASSET_SEARCH_DEBOUNCE_MS);
