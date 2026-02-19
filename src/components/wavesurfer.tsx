@@ -1,12 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useRef, useEffect, useState } from "react";
+import { memo, useRef, useEffect, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { useTheme } from "./theme-provider";
 import { globalAudioPlayer } from "@/lib/global-audio-player";
 import { applyDragImage, getDragPreviewIcon } from "@/lib/drag-preview";
 
-const WavesurferRender = (props: {
+function WavesurferRender(props: {
   src: string;
   width: number | string;
   height: number | string;
@@ -14,7 +14,7 @@ const WavesurferRender = (props: {
   volume: number;
   enableDrag?: boolean;
   onPositionChange?: (ratio: number) => void;
-}) => {
+}) {
   const {
     src,
     width,
@@ -190,6 +190,6 @@ const WavesurferRender = (props: {
       )}
     </div>
   );
-};
+}
 
-export default WavesurferRender;
+export default memo(WavesurferRender);

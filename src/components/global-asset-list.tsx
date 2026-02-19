@@ -2,7 +2,7 @@ import type { Asset } from "@/types/tauri";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { FileImage, FileMusic, FileVideo2 } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 type ViewMode = "list" | "grid" | "large";
 
@@ -17,6 +17,8 @@ type GlobalAssetListProps = {
   onLoadMore: () => void;
   renderAsset?: (asset: Asset, isSelected: boolean, index: number) => ReactNode;
 };
+
+const LOAD_MORE_THRESHOLD_PX = 160;
 
 function getTypeLabel(typeName: string) {
   if (typeName === "audio") return "Sound";
@@ -154,11 +156,35 @@ export default function GlobalAssetList({
   const isGrid = viewMode === "grid";
   const isLarge = viewMode === "large";
   const isList = viewMode === "list";
+  const listItemCount = isList && hasMore ? assets.length + 1 : assets.length;
+
+  const maybeLoadMore = useCallback(
+    (target?: HTMLDivElement | null) => {
+      if (!hasMore || isLoading) {
+        return;
+      }
+
+      const container = target ?? scrollElementRef.current;
+      if (!container) {
+        return;
+      }
+
+      const nearBottom =
+        container.scrollTop + container.clientHeight >=
+        container.scrollHeight - LOAD_MORE_THRESHOLD_PX;
+
+      if (nearBottom) {
+        onLoadMore();
+      }
+    },
+    [hasMore, isLoading, onLoadMore],
+  );
 
   const virtualizer = useVirtualizer({
-    count: assets.length,
+    count: listItemCount,
     getScrollElement: () => scrollElementRef.current,
-    estimateSize: () => {
+    estimateSize: (index) => {
+      if (index >= assets.length) return 44;
       if (isLarge) return 340;
       if (isGrid) return 260;
       return 240;
@@ -170,33 +196,24 @@ export default function GlobalAssetList({
   const virtualItems = virtualizer.getVirtualItems();
 
   useEffect(() => {
-    if (!isList || !hasMore || isLoading || virtualItems.length === 0) {
+    if (!isList) {
       return;
     }
 
-    const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
-    if (lastVisibleIndex >= assets.length - 5) {
-      onLoadMore();
-    }
-  }, [assets.length, hasMore, isList, isLoading, onLoadMore, virtualItems]);
+    const frame = window.requestAnimationFrame(() => {
+      maybeLoadMore();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [assets.length, hasMore, isList, isLoading, maybeLoadMore]);
 
   return (
     <div
       ref={scrollElementRef}
       className="flex-1 overflow-y-auto"
-      onScroll={
-        isList
-          ? undefined
-          : (event) => {
-              const target = event.currentTarget;
-              const nearBottom =
-                target.scrollTop + target.clientHeight >=
-                target.scrollHeight - 160;
-              if (nearBottom && hasMore && !isLoading) {
-                onLoadMore();
-              }
-            }
-      }
+      onScroll={(event) => {
+        maybeLoadMore(event.currentTarget);
+      }}
     >
       {assets.length === 0 && !isLoading ? (
         <div className="text-center text-muted-foreground py-8 text-sm border border-dashed border-border/60 rounded-[6px] bg-muted/10">
@@ -212,6 +229,21 @@ export default function GlobalAssetList({
           }}
         >
           {virtualItems.map((virtualItem) => {
+            const isLoaderRow = virtualItem.index >= assets.length;
+            if (isLoaderRow) {
+              return (
+                <div
+                  key={virtualItem.key}
+                  className="absolute left-0 top-0 w-full px-2 py-3 text-center text-xs text-muted-foreground"
+                  style={{
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  {isLoading ? "Loading assets..." : "Scroll to load more"}
+                </div>
+              );
+            }
+
             const asset = assets[virtualItem.index];
             if (!asset) return null;
 
@@ -221,8 +253,7 @@ export default function GlobalAssetList({
 
             return (
               <div
-                key={asset.id ?? asset.original_path}
-                ref={virtualizer.measureElement}
+                key={virtualItem.key}
                 data-index={virtualItem.index}
                 className="absolute left-0 top-0 w-full"
                 style={{
@@ -277,7 +308,7 @@ export default function GlobalAssetList({
         </div>
       )}
 
-      {isLoading && (
+      {isLoading && !isList && (
         <div className="text-center text-xs text-muted-foreground py-3">
           Loading assets...
         </div>

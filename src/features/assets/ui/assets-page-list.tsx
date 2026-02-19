@@ -64,15 +64,9 @@ export default function AssetsPageList({
         viewModeAssets={viewModeAssets}
         searchValue={searchValue}
         sliderValue={sliderValue}
-        onOpenContextMenu={(targetFile, x, y) => {
-          void onOpenContextMenu(targetFile, x, y);
-        }}
-        onDeleteAsset={(path) => {
-          void onDeleteAsset(path);
-        }}
-        onDeleteTrimmed={(path) => {
-          void onDeleteTrimmed(path);
-        }}
+        onOpenContextMenu={onOpenContextMenu}
+        onDeleteAsset={onDeleteAsset}
+        onDeleteTrimmed={onDeleteTrimmed}
         onAssetDragStart={onAssetDragStart}
         onAssetDragEnd={onAssetDragEnd}
         onOpenImagePreview={onOpenImagePreview}

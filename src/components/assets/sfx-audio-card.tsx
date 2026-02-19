@@ -9,9 +9,12 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { faEllipsisVertical } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
+  useMemo,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -21,6 +24,12 @@ type TrimRange = {
   start: number;
   end: number;
 };
+
+const MIN_TRIM_WIDTH = 0.02;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
 type SfxAudioCardProps = {
   file: Asset;
@@ -37,7 +46,7 @@ type SfxAudioCardProps = {
   highlightText: (text: string, search: string) => ReactNode;
 };
 
-export default function SfxAudioCard({
+function SfxAudioCard({
   file,
   minHeight,
   showFileName,
@@ -62,11 +71,10 @@ export default function SfxAudioCard({
   const [trimmedOutputPath, setTrimmedOutputPath] = useState<string | null>(
     null,
   );
-  const [trimCursorRatio, setTrimCursorRatio] = useState<number | null>(null);
+  const trimCursorRatioRef = useRef<number | null>(null);
   const [isHoveringCard, setIsHoveringCard] = useState(false);
   const [isTrimBarPinned, setIsTrimBarPinned] = useState(false);
 
-  const MIN_TRIM_WIDTH = 0.02;
   const durationSec = file.duration_sec > 0 ? file.duration_sec : 0;
   const hasTrimChanges =
     Math.abs(trimRange.start - appliedTrimRange.start) > 0.0001 ||
@@ -79,27 +87,27 @@ export default function SfxAudioCard({
     setTrimError(null);
     setIsTrimming(false);
     setTrimmedOutputPath(null);
-    setTrimCursorRatio(null);
+    trimCursorRatioRef.current = null;
     setIsHoveringCard(false);
     setIsTrimBarPinned(false);
   }, [file.original_path]);
 
-  const clamp = (value: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, value));
+  const setTrimEdgeAtRatio = useCallback(
+    (edge: "start" | "end", ratio: number) => {
+      setIsTrimBarPinned(true);
+      setTrimRange((prev) => {
+        if (edge === "start") {
+          const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
+          return { ...prev, start: nextStart };
+        }
 
-  const setTrimEdgeAtRatio = (edge: "start" | "end", ratio: number) => {
-    setIsTrimBarPinned(true);
-    setTrimRange((prev) => {
-      if (edge === "start") {
-        const nextStart = clamp(ratio, 0, prev.end - MIN_TRIM_WIDTH);
-        return { ...prev, start: nextStart };
-      }
-
-      const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
-      return { ...prev, end: nextEnd };
-    });
-    setTrimError(null);
-  };
+        const nextEnd = clamp(ratio, prev.start + MIN_TRIM_WIDTH, 1);
+        return { ...prev, end: nextEnd };
+      });
+      setTrimError(null);
+    },
+    [],
+  );
 
   const startTrimDrag = (mode: "start" | "end", event: ReactMouseEvent) => {
     if (!trimBarRef.current) return;
@@ -220,7 +228,7 @@ export default function SfxAudioCard({
     const rect = cardRef.current.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-    setTrimCursorRatio(ratio);
+    trimCursorRatioRef.current = ratio;
   };
 
   useEffect(() => {
@@ -236,6 +244,7 @@ export default function SfxAudioCard({
       }
 
       const key = event.key.toLowerCase();
+      const trimCursorRatio = trimCursorRatioRef.current;
       if (trimCursorRatio == null) return;
       if (key !== "i" && key !== "o" && key !== "[" && key !== "]") return;
 
@@ -248,7 +257,17 @@ export default function SfxAudioCard({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [trimCursorRatio]);
+  }, [setTrimEdgeAtRatio]);
+
+  const highlightedFilename = useMemo(
+    () => highlightText(file.filename, searchText),
+    [file.filename, highlightText, searchText],
+  );
+
+  const tagsContent = useMemo(
+    () => renderTags(file.tags ?? null),
+    [file.tags, renderTags],
+  );
 
   const isSelectedClass = isSelected
     ? "border-primary ring-1 ring-primary/30"
@@ -263,7 +282,7 @@ export default function SfxAudioCard({
       onMouseEnter={() => setIsHoveringCard(true)}
       onMouseLeave={() => {
         setIsHoveringCard(false);
-        setTrimCursorRatio(null);
+        trimCursorRatioRef.current = null;
         globalAudioPlayer.stop();
       }}
       onContextMenu={(event) => {
@@ -372,7 +391,7 @@ export default function SfxAudioCard({
                 0,
                 1,
               );
-              setTrimCursorRatio(ratio);
+              trimCursorRatioRef.current = ratio;
             }}
           >
             <div
@@ -416,12 +435,10 @@ export default function SfxAudioCard({
         <div className="relative">
           {showFileName && (
             <div className="inline-block truncate whitespace-nowrap rounded-[6px] bg-background/85 px-1.5 py-0.5 text-[12px] font-semibold leading-none">
-              {highlightText(file.filename, searchText)}
+              {highlightedFilename}
             </div>
           )}
-          <div className="max-h-5 overflow-hidden">
-            {renderTags(file.tags ?? null)}
-          </div>
+          <div className="max-h-5 overflow-hidden">{tagsContent}</div>
         </div>
       </div>
       <div className="absolute right-0 top-0 z-10 flex items-center rounded-[6px] bg-background/90 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -446,3 +463,5 @@ export default function SfxAudioCard({
     </div>
   );
 }
+
+export default memo(SfxAudioCard);

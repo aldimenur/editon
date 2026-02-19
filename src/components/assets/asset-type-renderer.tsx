@@ -2,6 +2,7 @@ import AudioAssetRenderer from "@/components/assets/renderers/audio-asset-render
 import ImageAssetRenderer from "@/components/assets/renderers/image-asset-renderer";
 import VideoAssetRenderer from "@/components/assets/renderers/video-asset-renderer";
 import type { Asset } from "@/types/tauri";
+import { memo } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 
 type ViewMode = "list" | "grid" | "large";
@@ -25,7 +26,7 @@ type AssetTypeRendererProps = {
   formatVideoTime: (seconds: number) => string;
 };
 
-export default function AssetTypeRenderer({
+function AssetTypeRenderer({
   asset,
   isSelected,
   viewModeAssets,
@@ -89,3 +90,5 @@ export default function AssetTypeRenderer({
 
   return null;
 }
+
+export default memo(AssetTypeRenderer);

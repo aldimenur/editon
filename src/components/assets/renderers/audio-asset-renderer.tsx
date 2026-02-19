@@ -4,6 +4,7 @@ import {
   renderTagChips as renderSfxTagChips,
 } from "@/components/assets/utils/sfx-text";
 import type { Asset } from "@/types/tauri";
+import { memo } from "react";
 
 type AudioAssetRendererProps = {
   asset: Asset;
@@ -16,7 +17,7 @@ type AudioAssetRendererProps = {
   onTrimApplied: (outputPath: string) => void | Promise<void>;
 };
 
-export default function AudioAssetRenderer({
+function AudioAssetRenderer({
   asset,
   isSelected,
   viewModeAssets,
@@ -43,3 +44,5 @@ export default function AudioAssetRenderer({
     />
   );
 }
+
+export default memo(AudioAssetRenderer);
