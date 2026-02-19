@@ -101,8 +101,6 @@ export default function VideoCard({
   const timelineDuration = videoDuration > 0 ? videoDuration : durationSec;
   const showTimeline =
     showVideo || isHoveringCard || isTrimBarPinned || hasTrimChanges;
-  const hideTimelineUntilFocus =
-    showVideo && !isTrimBarPinned && !hasTrimChanges;
 
   useEffect(() => {
     setTrimRange({ start: 0, end: 1 });
@@ -208,7 +206,7 @@ export default function VideoCard({
   const handleTrimCancel = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setIsTrimBarPinned(true);
+    setIsTrimBarPinned(false);
     setTrimRange(appliedTrimRange);
     setTrimError(null);
   };
@@ -384,7 +382,7 @@ export default function VideoCard({
     <div
       ref={cardRef}
       key={file.id}
-      className={`group relative flex flex-col border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+      className={`group relative flex flex-col border rounded-none overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
       onMouseMove={handleCardPointerMove}
       onMouseEnter={() => setIsHoveringCard(true)}
       onMouseLeave={() => {
@@ -536,7 +534,7 @@ export default function VideoCard({
         >
           <div
             ref={trimBarRef}
-            className={`relative h-[10px] border-t border-white/45 bg-black/80 transition-opacity duration-200 ${hideTimelineUntilFocus ? "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" : "opacity-100"}`}
+            className="relative h-[10px] border-t border-white/45 bg-black/80 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
             onMouseDown={startSeekDrag}
             onMouseMove={handleTrimBarPointerMove}
             onDoubleClick={(event) => {
@@ -555,10 +553,10 @@ export default function VideoCard({
               className="pointer-events-none absolute inset-y-0 left-0 z-2 shadow-[0_0_0_1px_rgba(0,0,0,0.55)] bg-primary"
               style={{
                 width: `${timelineDuration > 0
-                  ? (Math.min(currentTime, timelineDuration) /
-                    timelineDuration) *
-                  100
-                  : 0
+                    ? (Math.min(currentTime, timelineDuration) /
+                      timelineDuration) *
+                    100
+                    : 0
                   }%`,
               }}
             />
@@ -667,7 +665,7 @@ export default function VideoCard({
       </div>
 
       <div
-        className={`pointer-events-none absolute inset-x-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${showVideo ? "bottom-[4.25rem]" : "bottom-12"}`}
+        className={`pointer-events-none absolute inset-x-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${showVideo ? "bottom-17" : "bottom-12"}`}
       >
         <div className="max-h-7 overflow-hidden">{renderTags(file.tags)}</div>
       </div>

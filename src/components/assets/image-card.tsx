@@ -50,7 +50,7 @@ export default function ImageCard({
   return (
     <div
       key={file.id}
-      className={`group relative border rounded-lg overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+      className={`group relative border rounded-none overflow-hidden bg-card transition-all hover:shadow-lg ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
