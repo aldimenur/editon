@@ -142,7 +142,7 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <div
-        className="bg-background text-foreground flex h-[100dvh] w-screen overflow-hidden"
+        className="bg-background text-foreground flex h-dvh w-screen overflow-hidden"
         data-testid="app-shell"
         style={shellStyle}
       >
