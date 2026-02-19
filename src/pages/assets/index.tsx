@@ -32,6 +32,7 @@ export default function AssetsPage() {
     globalSearchCount,
     isLoading,
     fetchGlobalAssets,
+    refetchAssets,
   } = useAssetStore((state) => state);
   const { activeAssetFilter } = useNavStore((state) => state);
   const { viewModeAssets, setViewModeAssets } = useViewStore((state) => state);
@@ -80,7 +81,7 @@ export default function AssetsPage() {
     handleTrimApplied,
   } = useAssetItemActions({
     activeAssetFilter,
-    fetchGlobalAssets,
+    refetchAssets,
   });
 
   const openTagsDialog = useCallback(

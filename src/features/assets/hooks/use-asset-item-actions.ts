@@ -1,28 +1,22 @@
 import { useCallback } from "react";
 
 import { deleteAssetFile } from "@/features/assets/api/folder-api";
-import { ASSETS_PAGE_SIZE } from "@/features/assets/constants";
 import type { AssetType } from "@/features/assets/model/types";
 
-type FetchGlobalAssets = (
-  page: number,
-  pageSize: number,
-  assetType: AssetType,
-  reset?: boolean,
-) => Promise<void>;
+type RefetchAssets = (assetType: AssetType) => Promise<void>;
 
 type UseAssetItemActionsOptions = {
   activeAssetFilter: AssetType;
-  fetchGlobalAssets: FetchGlobalAssets;
+  refetchAssets: RefetchAssets;
 };
 
 export function useAssetItemActions({
   activeAssetFilter,
-  fetchGlobalAssets,
+  refetchAssets,
 }: UseAssetItemActionsOptions) {
   const refreshAssets = useCallback(async () => {
-    await fetchGlobalAssets(1, ASSETS_PAGE_SIZE, activeAssetFilter, true);
-  }, [activeAssetFilter, fetchGlobalAssets]);
+    await refetchAssets(activeAssetFilter);
+  }, [activeAssetFilter, refetchAssets]);
 
   const handleDeleteAsset = useCallback(
     async (path: string) => {

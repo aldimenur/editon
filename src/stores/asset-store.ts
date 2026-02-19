@@ -48,6 +48,7 @@ interface AssetStore {
 
   // Asset data operations
   setGlobalFiles: (files: Asset[], reset?: boolean) => void;
+  mergeGlobalFiles: (files: Asset[], totalCount?: number) => void;
 
   setGlobalSearchCount: (count: number) => void;
 
@@ -65,6 +66,14 @@ interface AssetStore {
   ) => Promise<void>;
 }
 
+function getAssetKey(asset: Asset): string {
+  if (typeof asset.id === "number") {
+    return `id:${asset.id}`;
+  }
+
+  return `path:${asset.original_path}`;
+}
+
 const useAssetStore = create<AssetStore>()(
   persist(
     (set, get) => {
@@ -76,7 +85,11 @@ const useAssetStore = create<AssetStore>()(
         pageSize: number,
         assetType: AssetType,
         searchState: AssetSearchState,
-        setFiles: (files: Asset[], reset?: boolean) => void,
+        setFiles: (
+          files: Asset[],
+          reset?: boolean,
+          totalCount?: number,
+        ) => void,
         setCount: (count: number) => void,
         errorLabel: string,
         reset: boolean = false,
@@ -115,8 +128,9 @@ const useAssetStore = create<AssetStore>()(
           });
 
           const assets = result.data || [];
-          setFiles(assets, reset);
-          setCount(result.total_items ?? 0);
+          const totalCount = result.total_items ?? 0;
+          setCount(totalCount);
+          setFiles(assets, reset, totalCount);
         } catch (error) {
           console.error(`Error fetching ${errorLabel}:`, error);
         } finally {
@@ -154,9 +168,51 @@ const useAssetStore = create<AssetStore>()(
 
         // File setters
         setGlobalFiles: (files: Asset[], reset: boolean = false) =>
-          set((state) => ({
-            globalFiles: reset ? files : [...state.globalFiles, ...files],
-          })),
+          set((state) => {
+            if (reset) {
+              return { globalFiles: files };
+            }
+
+            const existingKeys = new Set(
+              state.globalFiles.map((asset) => getAssetKey(asset)),
+            );
+            const incomingUnique = files.filter((asset) => {
+              const assetKey = getAssetKey(asset);
+              if (existingKeys.has(assetKey)) {
+                return false;
+              }
+
+              existingKeys.add(assetKey);
+              return true;
+            });
+
+            return {
+              globalFiles: [...state.globalFiles, ...incomingUnique],
+            };
+          }),
+
+        mergeGlobalFiles: (files: Asset[], totalCount?: number) =>
+          set((state) => {
+            if (files.length === 0) {
+              return { globalFiles: [] };
+            }
+
+            const incomingKeys = new Set(
+              files.map((asset) => getAssetKey(asset)),
+            );
+            const preservedExisting = state.globalFiles.filter(
+              (asset) => !incomingKeys.has(getAssetKey(asset)),
+            );
+
+            const mergedFiles = [...files, ...preservedExisting];
+            if (typeof totalCount !== "number") {
+              return { globalFiles: mergedFiles };
+            }
+
+            return {
+              globalFiles: mergedFiles.slice(0, Math.max(0, totalCount)),
+            };
+          }),
 
         // Search count setters
         setGlobalSearchCount: (count: number) =>
@@ -202,8 +258,22 @@ const useAssetStore = create<AssetStore>()(
           const state = get();
           if (!state.parentPath) return;
 
-          state.setGlobalFiles([], true);
-          await state.fetchGlobalAssets(page, pageSize, assetType, true);
+          if (page !== 1) {
+            await state.fetchGlobalAssets(page, pageSize, assetType);
+            return;
+          }
+
+          await fetchAssetsWithSearch(
+            page,
+            pageSize,
+            assetType,
+            state.globalSearch,
+            (files, _reset, totalCount) => {
+              state.mergeGlobalFiles(files, totalCount);
+            },
+            state.setGlobalSearchCount,
+            "global assets",
+          );
         },
       };
     },

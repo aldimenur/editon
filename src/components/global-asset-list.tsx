@@ -183,6 +183,18 @@ export default function GlobalAssetList({
   const virtualizer = useVirtualizer({
     count: listItemCount,
     getScrollElement: () => scrollElementRef.current,
+    getItemKey: (index) => {
+      const asset = assets[index];
+      if (!asset) {
+        return "loader";
+      }
+
+      if (typeof asset.id === "number") {
+        return `asset:${asset.id}`;
+      }
+
+      return `asset:${asset.original_path}`;
+    },
     estimateSize: (index) => {
       if (index >= assets.length) return 44;
       if (isLarge) return 340;
