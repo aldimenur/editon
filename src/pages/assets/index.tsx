@@ -44,6 +44,7 @@ export default function AssetsPage() {
   >(null);
   const [sliderValue, setSliderValue] = useState(0.5);
   const [selectedImage, setSelectedImage] = useState<Asset | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<Asset | null>(null);
 
   const {
     selectedAssetIds,
@@ -217,12 +218,15 @@ export default function AssetsPage() {
         onAssetDragStart={handleAssetDragStart}
         onAssetDragEnd={handleAssetDragEnd}
         onOpenImagePreview={setSelectedImage}
+        onOpenVideoPreview={setSelectedVideo}
         onTrimApplied={handleTrimApplied}
       />
 
       <AssetsPageDialogs
         selectedImage={selectedImage}
+        selectedVideo={selectedVideo}
         onCloseImagePreview={() => setSelectedImage(null)}
+        onCloseVideoPreview={() => setSelectedVideo(null)}
         tagsDialogOpen={tagsDialogOpen}
         onTagsDialogOpenChange={handleTagsDialogOpenChange}
         tagsDialogAssetIds={tagsDialogAssetIds}

@@ -22,6 +22,7 @@ type AssetTypeRendererProps = {
   ) => void;
   onAssetDragEnd: (event: ReactDragEvent<HTMLDivElement>) => void;
   onOpenImagePreview: (file: Asset) => void;
+  onOpenVideoPreview: (file: Asset) => void;
   onTrimApplied: (outputPath: string) => void | Promise<void>;
   formatVideoTime: (seconds: number) => string;
 };
@@ -38,6 +39,7 @@ function AssetTypeRenderer({
   onAssetDragStart,
   onAssetDragEnd,
   onOpenImagePreview,
+  onOpenVideoPreview,
   onTrimApplied,
   formatVideoTime,
 }: AssetTypeRendererProps) {
@@ -67,6 +69,7 @@ function AssetTypeRenderer({
         onDeleteAsset={onDeleteAsset}
         onAssetDragStart={onAssetDragStart}
         onAssetDragEnd={onAssetDragEnd}
+        onOpenVideoPreview={onOpenVideoPreview}
         onTrimApplied={onTrimApplied}
         formatVideoTime={formatVideoTime}
       />

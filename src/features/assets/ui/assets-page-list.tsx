@@ -25,6 +25,7 @@ type AssetsPageListProps = {
   ) => void;
   onAssetDragEnd: (event: ReactDragEvent<HTMLDivElement>) => void;
   onOpenImagePreview: (asset: Asset) => void;
+  onOpenVideoPreview: (asset: Asset) => void;
   onTrimApplied: (outputPath: string) => void | Promise<void>;
 };
 
@@ -54,6 +55,7 @@ export default function AssetsPageList({
   onAssetDragStart,
   onAssetDragEnd,
   onOpenImagePreview,
+  onOpenVideoPreview,
   onTrimApplied,
 }: AssetsPageListProps) {
   const renderAsset = useCallback(
@@ -70,6 +72,7 @@ export default function AssetsPageList({
         onAssetDragStart={onAssetDragStart}
         onAssetDragEnd={onAssetDragEnd}
         onOpenImagePreview={onOpenImagePreview}
+        onOpenVideoPreview={onOpenVideoPreview}
         onTrimApplied={onTrimApplied}
         formatVideoTime={formatVideoTime}
       />
@@ -81,6 +84,7 @@ export default function AssetsPageList({
       onDeleteTrimmed,
       onOpenContextMenu,
       onOpenImagePreview,
+      onOpenVideoPreview,
       onTrimApplied,
       searchValue,
       sliderValue,

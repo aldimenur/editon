@@ -18,6 +18,7 @@ type VideoAssetRendererProps = {
     file: Asset,
   ) => void;
   onAssetDragEnd: (event: ReactDragEvent<HTMLDivElement>) => void;
+  onOpenVideoPreview: (asset: Asset) => void;
   onTrimApplied: (outputPath: string) => void | Promise<void>;
   formatVideoTime: (seconds: number) => string;
 };
@@ -31,6 +32,7 @@ export default function VideoAssetRenderer({
   onDeleteAsset,
   onAssetDragStart,
   onAssetDragEnd,
+  onOpenVideoPreview,
   onTrimApplied,
   formatVideoTime,
 }: VideoAssetRendererProps) {
@@ -49,7 +51,7 @@ export default function VideoAssetRenderer({
       onOpenContextMenu={onOpenContextMenu}
       onAssetDragStart={onAssetDragStart}
       onAssetDragEnd={onAssetDragEnd}
-      onOpenFullscreen={() => {}}
+      onOpenFullscreen={onOpenVideoPreview}
       onDeleteClick={onDeleteAsset}
       onTrimApplied={onTrimApplied}
     />
