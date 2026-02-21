@@ -1,22 +1,17 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+
 import App from "./App";
-import { isTauriRuntime } from "./lib/runtime";
-import useEventListenerStore from "./stores/event-listener-store";
+import "./App.css";
 
-const tauriRuntime = isTauriRuntime();
+const rootElement = document.getElementById("root");
 
-// Activate Tauri event listeners for the full app lifetime (no cleanup until app closes)
-if (tauriRuntime) {
-  useEventListenerStore.getState().initEventListeners();
+if (!rootElement) {
+  throw new Error("Root element not found");
 }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  tauriRuntime ? (
+createRoot(rootElement).render(
+  <StrictMode>
     <App />
-  ) : (
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  ),
+  </StrictMode>,
 );
