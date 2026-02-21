@@ -173,6 +173,15 @@ function collectAssets(dir) {
   return files;
 }
 
+function filterAssetsByVersion(assets, version) {
+  const needle = version.toLowerCase();
+
+  return assets.filter((assetPath) => {
+    const fileName = path.basename(assetPath).toLowerCase();
+    return fileName.includes(needle);
+  });
+}
+
 function main() {
   const packageJsonPath = path.join(rootDir, "package.json");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
@@ -210,6 +219,15 @@ function main() {
   } catch {
     console.warn(`[release] Bundle directory not found: ${bundleDir}`);
   }
+
+  const versionedAssets = filterAssetsByVersion(assets, version);
+  if (assets.length > 0 && versionedAssets.length === 0) {
+    console.warn(
+      `[release] No assets matched version ${version}. Skipping upload to avoid attaching older builds.`,
+    );
+  }
+
+  assets = versionedAssets;
 
   const releaseExists = runCapture("gh", ["release", "view", tag]).status === 0;
 
