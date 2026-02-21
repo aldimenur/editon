@@ -5,12 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "fs:default",
-    "fs:allow-read-dir",
-    "fs:scope",
+    "dialog:default",
     "dialog:allow-open",
-    "drag:default",
     "core:window:default",
     "core:window:allow-minimize",
     "core:window:allow-maximize",
@@ -20,60 +16,6 @@
     "core:window:allow-set-fullscreen",
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
-    "dialog:allow-message",
-    "dialog:default",
-    "core:window:allow-set-always-on-top",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "$HOME/**"
-        },
-        {
-          "path": "$DESKTOP/**"
-        },
-        {
-          "path": "$DOCUMENT/**"
-        },
-        {
-          "path": "$DOWNLOAD/**"
-        },
-        {
-          "path": "$PICTURE/**"
-        },
-        {
-          "path": "$VIDEO/**"
-        },
-        {
-          "path": "$MUSIC/**"
-        }
-      ]
-    },
-    {
-      "identifier": "opener:allow-reveal-item-in-dir",
-      "allow": [
-        {
-          "path": "$HOME/**"
-        },
-        {
-          "path": "$DESKTOP/**"
-        },
-        {
-          "path": "$DOCUMENT/**"
-        },
-        {
-          "path": "$DOWNLOAD/**"
-        },
-        {
-          "path": "$PICTURE/**"
-        },
-        {
-          "path": "$VIDEO/**"
-        },
-        {
-          "path": "$MUSIC/**"
-        }
-      ]
-    }
+    "core:window:allow-set-always-on-top"
   ]
 }
