@@ -281,6 +281,22 @@ thead th {
   letter-spacing: 0.06em;
 }
 
+.thumb-mini {
+  width: 68px;
+  height: 38px;
+  object-fit: cover;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.thumb-placeholder {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .btn {
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
   background: var(--accent-soft);

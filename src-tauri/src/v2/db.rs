@@ -33,6 +33,18 @@ pub fn get_bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(bin_dir)
 }
 
+pub fn get_thumbnail_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    let dir = app_data_dir.join("thumbnails");
+    if !dir.exists() {
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    }
+    Ok(dir)
+}
+
 fn create_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         r#"
@@ -69,6 +81,8 @@ fn create_schema(conn: &Connection) -> Result<(), String> {
             waveform_bars        INTEGER,
             generator_version    TEXT,
             waveform_mtime_ms    INTEGER,
+            thumbnail_mtime_ms   INTEGER,
+            thumbnail_version    TEXT,
             generated_at         TEXT,
             FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE
         );
@@ -143,6 +157,8 @@ fn ensure_preview_columns(conn: &Connection) -> Result<(), String> {
     let mut has_waveform_data = false;
     let mut has_waveform_bars = false;
     let mut has_waveform_mtime_ms = false;
+    let mut has_thumbnail_mtime_ms = false;
+    let mut has_thumbnail_version = false;
 
     let mut stmt = conn
         .prepare("PRAGMA table_info(asset_previews)")
@@ -161,6 +177,12 @@ fn ensure_preview_columns(conn: &Connection) -> Result<(), String> {
         }
         if name == "waveform_mtime_ms" {
             has_waveform_mtime_ms = true;
+        }
+        if name == "thumbnail_mtime_ms" {
+            has_thumbnail_mtime_ms = true;
+        }
+        if name == "thumbnail_version" {
+            has_thumbnail_version = true;
         }
     }
 
@@ -181,6 +203,20 @@ fn ensure_preview_columns(conn: &Connection) -> Result<(), String> {
     if !has_waveform_mtime_ms {
         conn.execute(
             "ALTER TABLE asset_previews ADD COLUMN waveform_mtime_ms INTEGER",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if !has_thumbnail_mtime_ms {
+        conn.execute(
+            "ALTER TABLE asset_previews ADD COLUMN thumbnail_mtime_ms INTEGER",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if !has_thumbnail_version {
+        conn.execute(
+            "ALTER TABLE asset_previews ADD COLUMN thumbnail_version TEXT",
             [],
         )
         .map_err(|e| e.to_string())?;

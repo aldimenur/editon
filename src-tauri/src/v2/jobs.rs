@@ -1,6 +1,6 @@
 use crate::v2::models::{JobDto, JobEvent};
-use crate::v2::process_generate_waveform_job;
 use crate::v2::state::AppState;
+use crate::v2::{process_generate_video_thumbnail_job, process_generate_waveform_job};
 use rusqlite::{params, OptionalExtension};
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -155,6 +155,9 @@ fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
             Ok(())
         }
         "generate_waveform" => process_generate_waveform_job(app, state, &job.payload),
+        "generate_video_thumbnail" => {
+            process_generate_video_thumbnail_job(app, state, &job.payload)
+        }
         "trim_media" => {
             thread::sleep(Duration::from_millis(20));
             Ok(())

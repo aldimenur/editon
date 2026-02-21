@@ -4,7 +4,7 @@ mod models;
 mod state;
 mod waveform;
 
-use crate::v2::db::{classify_media_type, get_bin_dir, init_database};
+use crate::v2::db::{classify_media_type, get_bin_dir, get_thumbnail_dir, init_database};
 use crate::v2::jobs::{enqueue_job, list_jobs, start_worker};
 use crate::v2::models::{
     AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput, ScanProgress,
@@ -13,12 +13,14 @@ use crate::v2::models::{
 use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
 use std::path::Path;
+use std::process::Command;
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
 const WAVEFORM_VERSION: &str = "v2.1";
 const WAVEFORM_BARS: usize = 192;
+const THUMBNAIL_VERSION: &str = "v2.1";
 
 pub fn setup(app: AppHandle) -> Result<AppState, String> {
     let conn = init_database(&app)?;
@@ -131,7 +133,7 @@ pub fn v2_scan_start(
                     params![filename.clone(), ext.to_lowercase(), original_path.clone(), media_type, file_size, mtime_ms],
                 );
 
-                if media_type == "audio" {
+                if media_type == "audio" || media_type == "video" {
                     let asset_id: Result<i64, _> = conn.query_row(
                         "SELECT id FROM assets WHERE original_path = ?1",
                         params![original_path],
@@ -139,20 +141,40 @@ pub fn v2_scan_start(
                     );
 
                     if let Ok(asset_id) = asset_id {
-                        let payload = serde_json::json!({ "assetId": asset_id }).to_string();
-                        let queued: i64 = conn
-                            .query_row(
-                                "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_waveform' AND payload = ?1 AND status IN ('queued', 'running')",
-                                params![payload.clone()],
-                                |row| row.get(0),
-                            )
-                            .unwrap_or(0);
+                        if media_type == "audio" {
+                            let payload = serde_json::json!({ "assetId": asset_id }).to_string();
+                            let queued: i64 = conn
+                                .query_row(
+                                    "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_waveform' AND payload = ?1 AND status IN ('queued', 'running')",
+                                    params![payload.clone()],
+                                    |row| row.get(0),
+                                )
+                                .unwrap_or(0);
 
-                        if queued == 0 {
-                            let _ = conn.execute(
-                                "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_waveform', ?1, 'queued', 1)",
-                                params![payload],
-                            );
+                            if queued == 0 {
+                                let _ = conn.execute(
+                                    "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_waveform', ?1, 'queued', 1)",
+                                    params![payload],
+                                );
+                            }
+                        }
+
+                        if media_type == "video" {
+                            let payload = serde_json::json!({ "assetId": asset_id }).to_string();
+                            let queued: i64 = conn
+                                .query_row(
+                                    "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_video_thumbnail' AND payload = ?1 AND status IN ('queued', 'running')",
+                                    params![payload.clone()],
+                                    |row| row.get(0),
+                                )
+                                .unwrap_or(0);
+
+                            if queued == 0 {
+                                let _ = conn.execute(
+                                    "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_video_thumbnail', ?1, 'queued', 1)",
+                                    params![payload],
+                                );
+                            }
                         }
                     }
                 }
@@ -267,7 +289,7 @@ pub fn v2_assets_query(
     let page_offset = (effective_page.saturating_sub(1) * page_size) as i64;
 
     let sql = format!(
-        "SELECT assets.id, assets.filename, assets.extension, assets.original_path, assets.type, assets.file_size, assets.mtime_ms, assets.tags, assets.date_modified, asset_previews.waveform_data
+        "SELECT assets.id, assets.filename, assets.extension, assets.original_path, assets.type, asset_previews.thumbnail_path, assets.file_size, assets.mtime_ms, assets.tags, assets.date_modified, asset_previews.waveform_data
          FROM assets
          LEFT JOIN asset_previews ON asset_previews.asset_id = assets.id
          {}
@@ -280,8 +302,9 @@ pub fn v2_assets_query(
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(params_refs.as_slice(), |row| {
-            let tags_csv: Option<String> = row.get(7)?;
-            let waveform_json: Option<String> = row.get(9)?;
+            let thumbnail_path: Option<String> = row.get(5)?;
+            let tags_csv: Option<String> = row.get(8)?;
+            let waveform_json: Option<String> = row.get(10)?;
             let tags = tags_csv
                 .unwrap_or_default()
                 .split(',')
@@ -308,11 +331,12 @@ pub fn v2_assets_query(
                 extension: row.get(2)?,
                 original_path: row.get(3)?,
                 type_name: row.get(4)?,
-                file_size: row.get(5)?,
-                mtime_ms: row.get(6)?,
+                thumbnail_path,
+                file_size: row.get(6)?,
+                mtime_ms: row.get(7)?,
                 tags,
                 waveform_data,
-                date_modified: row.get(8)?,
+                date_modified: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -348,6 +372,9 @@ pub fn v2_asset_prefetch(
         if enqueue_waveform_job_if_needed(&state, asset_id, 0)? {
             count += 1;
         }
+        if enqueue_video_thumbnail_job_if_needed(&state, asset_id, 0)? {
+            count += 1;
+        }
     }
     Ok(format!("Enqueued {} prefetch jobs", count))
 }
@@ -365,6 +392,8 @@ pub fn v2_jobs_subscribe() -> Result<Vec<String>, String> {
     Ok(vec![
         "v2-job-updated".to_string(),
         "v2-scan-progress".to_string(),
+        "v2-waveform-ready".to_string(),
+        "v2-thumbnail-ready".to_string(),
     ])
 }
 
@@ -616,6 +645,103 @@ pub(crate) fn process_generate_waveform_job(
     Ok(())
 }
 
+pub(crate) fn process_generate_video_thumbnail_job(
+    app: &AppHandle,
+    state: &AppState,
+    payload: &str,
+) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ThumbnailPayload {
+        asset_id: i64,
+    }
+
+    let parsed: ThumbnailPayload = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+
+    let (original_path, asset_type, mtime_ms) = {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT original_path, type, mtime_ms FROM assets WHERE id = ?1",
+            params![parsed.asset_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    if asset_type != "video" {
+        return Ok(());
+    }
+
+    let thumb_dir = get_thumbnail_dir(app)?;
+    let thumb_path = thumb_dir.join(format!("{}_thumb.jpg", parsed.asset_id));
+    let thumb_path_str = thumb_path.to_string_lossy().to_string();
+
+    let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
+    let ffmpeg_output = Command::new(&ffmpeg_bin)
+        .args([
+            "-y",
+            "-ss",
+            "00:00:01",
+            "-i",
+            &original_path,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=480:-1",
+            &thumb_path_str,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+    if !ffmpeg_output.status.success() {
+        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr).to_string();
+        return Err(format!("ffmpeg thumbnail failed: {}", stderr));
+    }
+
+    {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO asset_previews(asset_id, thumbnail_path, thumbnail_mtime_ms, thumbnail_version, generated_at)
+             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)
+             ON CONFLICT(asset_id) DO UPDATE SET
+               thumbnail_path = excluded.thumbnail_path,
+               thumbnail_mtime_ms = excluded.thumbnail_mtime_ms,
+               thumbnail_version = excluded.thumbnail_version,
+               generated_at = CURRENT_TIMESTAMP",
+            params![parsed.asset_id, thumb_path_str, mtime_ms, THUMBNAIL_VERSION],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let _ = app.emit(
+        "v2-thumbnail-ready",
+        serde_json::json!({ "assetId": parsed.asset_id }),
+    );
+
+    Ok(())
+}
+
+fn resolve_ffmpeg_bin(app: &AppHandle) -> Result<String, String> {
+    let bin_dir = get_bin_dir(app)?;
+    let ffmpeg_name = if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
+    let candidate = bin_dir.join(ffmpeg_name);
+    if candidate.exists() {
+        return Ok(candidate.to_string_lossy().to_string());
+    }
+
+    Ok("ffmpeg".to_string())
+}
+
 fn enqueue_waveform_job_if_needed(
     state: &AppState,
     asset_id: i64,
@@ -661,6 +787,58 @@ fn enqueue_waveform_job_if_needed(
 
     conn.execute(
         "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_waveform', ?1, 'queued', ?2)",
+        params![payload, priority],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+fn enqueue_video_thumbnail_job_if_needed(
+    state: &AppState,
+    asset_id: i64,
+    priority: i64,
+) -> Result<bool, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    let (asset_type, mtime_ms): (String, i64) = conn
+        .query_row(
+            "SELECT type, mtime_ms FROM assets WHERE id = ?1",
+            params![asset_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    if asset_type != "video" {
+        return Ok(false);
+    }
+
+    let preview_fresh: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM asset_previews WHERE asset_id = ?1 AND thumbnail_mtime_ms = ?2 AND thumbnail_path IS NOT NULL AND thumbnail_path != ''",
+            params![asset_id, mtime_ms],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if preview_fresh > 0 {
+        return Ok(false);
+    }
+
+    let payload = serde_json::json!({ "assetId": asset_id }).to_string();
+    let already_queued: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_video_thumbnail' AND payload = ?1 AND status IN ('queued', 'running')",
+            params![payload.clone()],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    if already_queued > 0 {
+        return Ok(false);
+    }
+
+    conn.execute(
+        "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_video_thumbnail', ?1, 'queued', ?2)",
         params![payload, priority],
     )
     .map_err(|e| e.to_string())?;

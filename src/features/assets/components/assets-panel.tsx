@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 import {
   onScanProgress,
@@ -27,6 +28,22 @@ function WaveformMini({ data }: { data: number[] | null }) {
         />
       ))}
     </div>
+  );
+}
+
+function ThumbnailMini({ path, type }: { path: string | null; type: string }) {
+  if (type !== "video") {
+    return <span className="thumb-placeholder">-</span>;
+  }
+
+  if (!path) {
+    return <span className="thumb-placeholder">pending</span>;
+  }
+
+  const src = canUseTauri() ? convertFileSrc(path) : path;
+
+  return (
+    <img className="thumb-mini" src={src} alt="thumbnail" loading="lazy" />
   );
 }
 
@@ -231,6 +248,7 @@ export function AssetsPanel() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Size</th>
+                <th>Thumbnail</th>
                 <th>Waveform</th>
                 <th>Updated</th>
               </tr>
@@ -241,6 +259,12 @@ export function AssetsPanel() {
                   <td>{asset.filename}</td>
                   <td>{asset.typeName}</td>
                   <td>{Math.max(0, Math.round(asset.fileSize / 1024))} KB</td>
+                  <td>
+                    <ThumbnailMini
+                      path={asset.thumbnailPath}
+                      type={asset.typeName}
+                    />
+                  </td>
                   <td>
                     <WaveformMini data={asset.waveformData} />
                   </td>

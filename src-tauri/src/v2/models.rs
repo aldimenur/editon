@@ -8,6 +8,7 @@ pub struct AssetDto {
     pub extension: String,
     pub original_path: String,
     pub type_name: String,
+    pub thumbnail_path: Option<String>,
     pub file_size: i64,
     pub mtime_ms: i64,
     pub tags: Vec<String>,
