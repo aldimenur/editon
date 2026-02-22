@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Focus, Maximize2, Minimize2, Minus, Pin, PinOff, X } from "lucide-react";
+import { Focus, Maximize2, Minus, Pin, PinOff, X } from "lucide-react";
 
 import { BrowserPage } from "@/pages/browser-page";
 import { JobsPage } from "@/pages/jobs-page";

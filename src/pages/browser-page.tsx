@@ -82,7 +82,9 @@ export function BrowserPage() {
         />
       ) : null}
       {error ? <StatusText text={error} isError /> : null}
-      <AssetsTable items={items} />
+      <div className="table-container">
+        <AssetsTable items={items} />
+      </div>
       <AssetPagination
         page={page}
         totalPages={totalPages}

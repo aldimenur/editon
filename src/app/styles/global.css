@@ -1,5 +1,10 @@
+@import "tailwindcss";
+
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 30%, transparent)
+    transparent;
 }
 
 html,
@@ -8,6 +13,37 @@ body,
   margin: 0;
   height: 100vh;
   overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background-color 150ms ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 body {
@@ -23,8 +59,7 @@ table {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 200px 2fr;
+  display: flex;
   height: calc(100vh - 34px);
   overflow: hidden;
 }
@@ -138,7 +173,6 @@ table {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
 }
 
 .brand,
@@ -178,12 +212,15 @@ table {
 }
 
 .content-frame {
+  flex: 1;
   height: 100%;
   padding: 4px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .pane {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
@@ -255,6 +292,11 @@ table {
   border: 1px solid var(--line);
   border-radius: 4px;
   overflow: auto;
+}
+
+.table-container {
+  overflow: auto;
+  max-height: calc(100vh - 150px);
 }
 
 table {
