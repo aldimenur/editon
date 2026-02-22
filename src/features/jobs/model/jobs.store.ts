@@ -16,13 +16,16 @@ type JobsStore = {
   }>;
   loading: boolean;
   error: string | null;
+  liveStatus: string | null;
   refresh: () => Promise<void>;
+  setLiveStatus: (value: string | null) => void;
 };
 
 export const useJobsStore = create<JobsStore>((set) => ({
   items: [],
   loading: false,
   error: null,
+  liveStatus: null,
   refresh: async () => {
     set({ loading: true });
     try {
@@ -35,5 +38,8 @@ export const useJobsStore = create<JobsStore>((set) => ({
     } finally {
       set({ loading: false });
     }
+  },
+  setLiveStatus: (value) => {
+    set({ liveStatus: value });
   },
 }));

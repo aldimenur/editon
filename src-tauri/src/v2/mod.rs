@@ -21,6 +21,11 @@ use walkdir::WalkDir;
 const WAVEFORM_VERSION: &str = "v2.1";
 const WAVEFORM_BARS: usize = 192;
 const THUMBNAIL_VERSION: &str = "v2.1";
+const YT_DLP_WINDOWS_URL: &str =
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+const FFMPEG_WINDOWS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip";
+const DENO_WINDOWS_URL: &str =
+    "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
 
 pub fn setup(app: AppHandle) -> Result<AppState, String> {
     let conn = init_database(&app)?;
@@ -725,6 +730,174 @@ pub(crate) fn process_generate_video_thumbnail_job(
     );
 
     Ok(())
+}
+
+pub(crate) fn process_dependencies_install_job<F>(
+    app: &AppHandle,
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(&str),
+{
+    if !cfg!(target_os = "windows") {
+        return Err("Dependency installer currently supports Windows only".to_string());
+    }
+
+    let bin_dir = get_bin_dir(app)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let temp_root = std::env::temp_dir().join(format!("editon-deps-{}", stamp));
+    std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
+
+    let yt_file = temp_root.join("yt-dlp.exe");
+    let ffmpeg_zip = temp_root.join("ffmpeg.zip");
+    let ffmpeg_extract_dir = temp_root.join("ffmpeg");
+    let deno_zip = temp_root.join("deno.zip");
+    let deno_extract_dir = temp_root.join("deno");
+
+    let install_result = (|| -> Result<(), String> {
+        on_progress("10% Downloading yt-dlp.exe");
+        download_file_with_powershell(YT_DLP_WINDOWS_URL, &yt_file)?;
+        on_progress("25% Downloading ffmpeg build archive");
+        download_file_with_powershell(FFMPEG_WINDOWS_URL, &ffmpeg_zip)?;
+        on_progress("40% Downloading deno archive");
+        download_file_with_powershell(DENO_WINDOWS_URL, &deno_zip)?;
+
+        std::fs::create_dir_all(&ffmpeg_extract_dir).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&deno_extract_dir).map_err(|e| e.to_string())?;
+        on_progress("55% Extracting ffmpeg archive");
+        expand_archive_with_powershell(&ffmpeg_zip, &ffmpeg_extract_dir)?;
+        on_progress("65% Extracting deno archive");
+        expand_archive_with_powershell(&deno_zip, &deno_extract_dir)?;
+
+        let ffmpeg_src = find_file_recursive(&ffmpeg_extract_dir, "ffmpeg.exe")
+            .ok_or("ffmpeg.exe not found after extraction")?;
+        let ffprobe_src = find_file_recursive(&ffmpeg_extract_dir, "ffprobe.exe")
+            .ok_or("ffprobe.exe not found after extraction")?;
+        let deno_src = find_file_recursive(&deno_extract_dir, "deno.exe")
+            .ok_or("deno.exe not found after extraction")?;
+
+        on_progress("78% Copying binaries to app bin folder");
+        copy_binary(&yt_file, &bin_dir.join("yt-dlp.exe"))?;
+        copy_binary(&ffmpeg_src, &bin_dir.join("ffmpeg.exe"))?;
+        copy_binary(&ffprobe_src, &bin_dir.join("ffprobe.exe"))?;
+        copy_binary(&deno_src, &bin_dir.join("deno.exe"))?;
+
+        on_progress("90% Verifying installed binaries");
+        verify_binary(&bin_dir.join("yt-dlp.exe"), "--version")?;
+        verify_binary(&bin_dir.join("ffmpeg.exe"), "-version")?;
+        verify_binary(&bin_dir.join("ffprobe.exe"), "-version")?;
+        verify_binary(&bin_dir.join("deno.exe"), "--version")?;
+
+        on_progress("100% Dependencies installed successfully");
+
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&temp_root);
+    install_result
+}
+
+fn find_file_recursive(root: &Path, file_name: &str) -> Option<std::path::PathBuf> {
+    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_file() {
+            let name = path.file_name().and_then(|v| v.to_str());
+            if name == Some(file_name) {
+                return Some(path.to_path_buf());
+            }
+        }
+    }
+    None
+}
+
+fn copy_binary(source: &Path, destination: &Path) -> Result<(), String> {
+    if destination.exists() {
+        std::fs::remove_file(destination).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(source, destination).map(|_| ()).map_err(|e| {
+        format!(
+            "Failed to copy {} to {}: {}",
+            source.display(),
+            destination.display(),
+            e
+        )
+    })
+}
+
+fn verify_binary(path: &Path, version_arg: &str) -> Result<(), String> {
+    let output = Command::new(path)
+        .arg(version_arg)
+        .output()
+        .map_err(|e| format!("Failed to run {}: {}", path.display(), e))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    Err(format!(
+        "Validation failed for {}: {}",
+        path.display(),
+        stderr
+    ))
+}
+
+fn download_file_with_powershell(url: &str, destination: &Path) -> Result<(), String> {
+    let script = format!(
+        "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+        ps_quote_single(url),
+        ps_quote_single(&destination.to_string_lossy())
+    );
+    run_powershell_script(&script)
+}
+
+fn expand_archive_with_powershell(zip_path: &Path, destination_dir: &Path) -> Result<(), String> {
+    let script = format!(
+        "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+        ps_quote_single(&zip_path.to_string_lossy()),
+        ps_quote_single(&destination_dir.to_string_lossy())
+    );
+    run_powershell_script(&script)
+}
+
+fn run_powershell_script(script: &str) -> Result<(), String> {
+    let mut last_error = String::new();
+    for shell in ["powershell", "pwsh"] {
+        let output = Command::new(shell)
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => return Ok(()),
+            Ok(result) => {
+                let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+                let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+                last_error = format!(
+                    "{} failed. stdout: {} stderr: {}",
+                    shell,
+                    stdout.trim(),
+                    stderr.trim()
+                );
+            }
+            Err(error) => {
+                last_error = format!("{} unavailable: {}", shell, error);
+            }
+        }
+    }
+
+    Err(format!("PowerShell execution failed: {}", last_error))
+}
+
+fn ps_quote_single(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn resolve_ffmpeg_bin(app: &AppHandle) -> Result<String, String> {
