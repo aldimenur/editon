@@ -102,3 +102,19 @@ pub struct ScanProgress {
     pub last_file: String,
     pub status: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanRootDto {
+    pub root_path: String,
+    pub date_added: String,
+    pub date_last_scanned: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootCleanupResult {
+    pub removed_root: String,
+    pub deleted_assets: usize,
+    pub deleted_jobs: usize,
+}

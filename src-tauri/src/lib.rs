@@ -13,7 +13,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             v2::v2_scan_start,
+            v2::v2_scan_sync_root,
             v2::v2_scan_stop,
+            v2::v2_scan_roots_list,
+            v2::v2_scan_root_remove,
+            v2::v2_scan_cleanup_orphans,
             v2::v2_assets_query,
             v2::v2_asset_prefetch,
             v2::v2_jobs_list,

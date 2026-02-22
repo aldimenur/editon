@@ -1,9 +1,14 @@
 import { create } from "zustand";
 
 import {
+  cleanupOrphanAssets,
+  listScanRoots,
   queryAssets,
+  removeScanRoot,
   startScan,
+  syncScanRoot,
   stopScan,
+  type ScanRoot,
   type ScanProgress,
 } from "@/features/assets/api/assets-api";
 import { appConfig } from "@/shared/config/app-config";
@@ -28,6 +33,9 @@ type AssetsStore = {
   rootPath: string;
   scanId: string | null;
   scanProgress: ScanProgress | null;
+  scanRoots: ScanRoot[];
+  syncingRootPath: string | null;
+  removingRootPath: string | null;
   loading: boolean;
   error: string | null;
   setRootPath: (value: string) => void;
@@ -35,7 +43,10 @@ type AssetsStore = {
   setError: (value: string) => void;
   clearError: () => void;
   refresh: (targetPage?: number) => Promise<void>;
+  refreshScanRoots: () => Promise<void>;
   beginScan: () => Promise<void>;
+  syncRoot: (rootPath: string) => Promise<void>;
+  removeRoot: (rootPath: string) => Promise<void>;
   haltScan: () => Promise<void>;
 };
 
@@ -47,6 +58,9 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
   rootPath: "F:/",
   scanId: null,
   scanProgress: null,
+  scanRoots: [],
+  syncingRootPath: null,
+  removingRootPath: null,
   loading: false,
   error: null,
   setRootPath: (value) => set({ rootPath: value }),
@@ -76,6 +90,20 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
       set({ loading: false });
     }
   },
+  refreshScanRoots: async () => {
+    try {
+      await cleanupOrphanAssets();
+      const roots = await listScanRoots();
+      set({ scanRoots: roots, error: null });
+    } catch (reason) {
+      set({
+        error:
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load scan roots",
+      });
+    }
+  },
   beginScan: async () => {
     const rootPath = get().rootPath.trim();
 
@@ -97,6 +125,7 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
           status: "processing",
         },
       });
+      await get().refreshScanRoots();
     } catch (reason) {
       set({
         error:
@@ -104,6 +133,56 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
       });
     } finally {
       set({ loading: false });
+    }
+  },
+  syncRoot: async (rootPath: string) => {
+    const path = rootPath.trim();
+    if (!path) {
+      set({ error: "Root path is required." });
+      return;
+    }
+
+    set({ syncingRootPath: path, error: null });
+    try {
+      const id = await syncScanRoot(path);
+      set({
+        scanId: id,
+        scanProgress: {
+          scanId: id,
+          count: 0,
+          lastFile: "",
+          status: "processing",
+        },
+      });
+    } catch (reason) {
+      set({
+        error: reason instanceof Error ? reason.message : "Failed to sync root",
+      });
+    } finally {
+      set({ syncingRootPath: null });
+    }
+  },
+  removeRoot: async (rootPath: string) => {
+    const path = rootPath.trim();
+    if (!path) {
+      set({ error: "Root path is required." });
+      return;
+    }
+
+    set({ removingRootPath: path, error: null });
+    try {
+      await removeScanRoot(path);
+      await get().refreshScanRoots();
+      await get().refresh(1);
+    } catch (reason) {
+      set({
+        error:
+          reason instanceof Error
+            ? reason.message
+            : "Failed to remove scan root",
+      });
+    } finally {
+      set({ removingRootPath: null });
     }
   },
   haltScan: async () => {

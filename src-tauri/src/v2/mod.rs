@@ -7,8 +7,8 @@ mod waveform;
 use crate::v2::db::{classify_media_type, get_bin_dir, get_thumbnail_dir, init_database};
 use crate::v2::jobs::{enqueue_job, list_jobs, start_worker};
 use crate::v2::models::{
-    AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput, ScanProgress,
-    TrimInput,
+    AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput,
+    RootCleanupResult, ScanProgress, ScanRootDto, TrimInput,
 };
 use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
@@ -55,7 +55,8 @@ pub fn v2_scan_start(
     state: State<'_, AppState>,
     root_path: String,
 ) -> Result<String, String> {
-    let path = Path::new(&root_path);
+    let normalized_root_path = normalize_root_path(&root_path);
+    let path = Path::new(&normalized_root_path);
     if !path.exists() || !path.is_dir() {
         return Err("Scan root path is not a valid directory".to_string());
     }
@@ -77,10 +78,23 @@ pub fn v2_scan_start(
     let cancel = state.cancel_scan.clone();
     let emit_app = app.clone();
     let emit_scan_id = scan_id.clone();
+    let root_path_for_db = normalized_root_path.clone();
+
+    if let Ok(conn) = db.lock() {
+        let _ = conn.execute(
+            "INSERT INTO scan_roots(root_path, date_last_scanned)
+             VALUES (?1, NULL)
+             ON CONFLICT(root_path) DO NOTHING",
+            params![root_path_for_db.clone()],
+        );
+    }
 
     std::thread::spawn(move || {
         let mut count = 0usize;
-        for entry in WalkDir::new(&root_path).into_iter().filter_map(Result::ok) {
+        for entry in WalkDir::new(&normalized_root_path)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
             if cancel.load(Ordering::SeqCst) {
                 let _ = emit_app.emit(
                     "v2-scan-progress",
@@ -126,16 +140,25 @@ pub fn v2_scan_start(
 
             if let Ok(conn) = db.lock() {
                 let _ = conn.execute(
-                    "INSERT INTO assets(filename, extension, original_path, type, file_size, mtime_ms)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(original_path) DO UPDATE SET
-                        filename = excluded.filename,
-                        extension = excluded.extension,
-                        type = excluded.type,
-                        file_size = excluded.file_size,
-                        mtime_ms = excluded.mtime_ms,
-                        date_modified = CURRENT_TIMESTAMP",
-                    params![filename.clone(), ext.to_lowercase(), original_path.clone(), media_type, file_size, mtime_ms],
+                         filename = excluded.filename,
+                         extension = excluded.extension,
+                         root_path = excluded.root_path,
+                         type = excluded.type,
+                         file_size = excluded.file_size,
+                         mtime_ms = excluded.mtime_ms,
+                         date_modified = CURRENT_TIMESTAMP",
+                    params![
+                        filename.clone(),
+                        ext.to_lowercase(),
+                        original_path.clone(),
+                        root_path_for_db.clone(),
+                        media_type,
+                        file_size,
+                        mtime_ms
+                    ],
                 );
 
                 if media_type == "audio" || media_type == "video" {
@@ -208,9 +231,27 @@ pub fn v2_scan_start(
                 status: "done".to_string(),
             },
         );
+
+        if let Ok(conn) = db.lock() {
+            let _ = conn.execute(
+                "UPDATE scan_roots
+                 SET date_last_scanned = CURRENT_TIMESTAMP
+                 WHERE root_path = ?1",
+                params![root_path_for_db],
+            );
+        }
     });
 
     Ok(scan_id)
+}
+
+#[tauri::command]
+pub fn v2_scan_sync_root(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    root_path: String,
+) -> Result<String, String> {
+    v2_scan_start(app, state, root_path)
 }
 
 #[tauri::command]
@@ -220,6 +261,131 @@ pub fn v2_scan_stop(
 ) -> Result<String, String> {
     state.cancel_scan.store(true, Ordering::SeqCst);
     Ok("Scan cancellation requested".to_string())
+}
+
+#[tauri::command]
+pub fn v2_scan_roots_list(state: State<'_, AppState>) -> Result<Vec<ScanRootDto>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT root_path, date_added, date_last_scanned
+             FROM scan_roots
+             ORDER BY COALESCE(date_last_scanned, date_added) DESC, id DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(ScanRootDto {
+                root_path: row.get(0)?,
+                date_added: row.get(1)?,
+                date_last_scanned: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut roots = Vec::new();
+    for row in rows {
+        roots.push(row.map_err(|e| e.to_string())?);
+    }
+
+    Ok(roots)
+}
+
+#[tauri::command]
+pub fn v2_scan_root_remove(
+    state: State<'_, AppState>,
+    root_path: String,
+) -> Result<RootCleanupResult, String> {
+    let normalized = normalize_root_path(&root_path);
+    if normalized.is_empty() {
+        return Err("Root path is required".to_string());
+    }
+
+    let normalized_like = format!("{}/%", normalized);
+
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let deleted_jobs = tx
+        .execute(
+            "DELETE FROM jobs
+             WHERE json_valid(payload) = 1
+               AND json_extract(payload, '$.assetId') IN (
+                 SELECT id FROM assets
+                 WHERE REPLACE(COALESCE(root_path, ''), '\\', '/') = ?1
+                    OR REPLACE(original_path, '\\', '/') = ?1
+                    OR REPLACE(original_path, '\\', '/') LIKE ?2
+               )",
+            params![normalized.clone(), normalized_like.clone()],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let deleted_assets = tx
+        .execute(
+            "DELETE FROM assets
+             WHERE REPLACE(COALESCE(root_path, ''), '\\', '/') = ?1
+                OR REPLACE(original_path, '\\', '/') = ?1
+                OR REPLACE(original_path, '\\', '/') LIKE ?2",
+            params![normalized.clone(), normalized_like],
+        )
+        .map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM scan_roots WHERE REPLACE(root_path, '\\', '/') = ?1",
+        params![normalized.clone()],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(RootCleanupResult {
+        removed_root: normalized,
+        deleted_assets,
+        deleted_jobs,
+    })
+}
+
+#[tauri::command]
+pub fn v2_scan_cleanup_orphans(state: State<'_, AppState>) -> Result<RootCleanupResult, String> {
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let deleted_jobs = tx
+        .execute(
+            "DELETE FROM jobs
+             WHERE json_valid(payload) = 1
+               AND json_extract(payload, '$.assetId') IN (
+                 SELECT id FROM assets a
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM scan_roots r
+                     WHERE REPLACE(a.original_path, '\\', '/') = REPLACE(r.root_path, '\\', '/')
+                        OR REPLACE(a.original_path, '\\', '/') LIKE REPLACE(r.root_path, '\\', '/') || '/%'
+                   )
+               )",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let deleted_assets = tx
+        .execute(
+            "DELETE FROM assets
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM scan_roots
+                 WHERE REPLACE(assets.original_path, '\\', '/') = REPLACE(scan_roots.root_path, '\\', '/')
+                    OR REPLACE(assets.original_path, '\\', '/') LIKE REPLACE(scan_roots.root_path, '\\', '/') || '/%'
+               )",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(RootCleanupResult {
+        removed_root: "<orphans>".to_string(),
+        deleted_assets,
+        deleted_jobs,
+    })
 }
 
 #[tauri::command]
@@ -913,6 +1079,16 @@ fn resolve_ffmpeg_bin(app: &AppHandle) -> Result<String, String> {
     }
 
     Ok("ffmpeg".to_string())
+}
+
+fn normalize_root_path(value: &str) -> String {
+    let normalized = value.trim().replace('\\', "/");
+    let trimmed = normalized.trim_end_matches('/');
+    if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {
+        format!("{}/", trimmed)
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn enqueue_waveform_job_if_needed(

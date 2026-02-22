@@ -19,13 +19,19 @@ export function BrowserPage() {
     rootPath,
     scanId,
     scanProgress,
+    scanRoots,
+    syncingRootPath,
+    removingRootPath,
     loading,
     error,
     setRootPath,
     setScanProgress,
     setError,
     refresh,
+    refreshScanRoots,
     beginScan,
+    syncRoot,
+    removeRoot,
     haltScan,
   } = useAssetsStore();
 
@@ -35,6 +41,7 @@ export function BrowserPage() {
     }
 
     void refresh(1);
+    void refreshScanRoots();
 
     let unlisten: (() => void) | undefined;
     onScanProgress((payload) => {
@@ -42,6 +49,7 @@ export function BrowserPage() {
 
       if (payload.status === "done" || payload.status === "cancelled") {
         void refresh(1);
+        void refreshScanRoots();
       }
     })
       .then((stop) => {
@@ -56,7 +64,7 @@ export function BrowserPage() {
         unlisten();
       }
     };
-  }, [refresh, setError, setScanProgress]);
+  }, [refresh, refreshScanRoots, setError, setScanProgress]);
 
   return (
     <section className="pane">
@@ -70,9 +78,14 @@ export function BrowserPage() {
         rootPath={rootPath}
         loading={loading || !isTauriRuntime()}
         canStop={scanId !== null}
+        scanRoots={scanRoots}
+        syncingRootPath={syncingRootPath}
+        removingRootPath={removingRootPath}
         onRootPathChange={setRootPath}
         onBrowsePath={setRootPath}
         onStartScan={() => void beginScan()}
+        onSyncRoot={(targetPath) => void syncRoot(targetPath)}
+        onRemoveRoot={(targetPath) => void removeRoot(targetPath)}
         onStopScan={() => void haltScan()}
         onReload={() => void refresh(page)}
       />

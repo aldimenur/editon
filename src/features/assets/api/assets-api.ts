@@ -10,6 +10,18 @@ export type ScanProgress = {
   status: string;
 };
 
+export type ScanRoot = {
+  rootPath: string;
+  dateAdded: string;
+  dateLastScanned: string | null;
+};
+
+export type RootCleanupResult = {
+  removedRoot: string;
+  deletedAssets: number;
+  deletedJobs: number;
+};
+
 export type AssetsResult = {
   data: AssetItem[];
   nextCursor: number | null;
@@ -43,6 +55,22 @@ export async function startScan(rootPath: string) {
 
 export async function stopScan(scanId?: string) {
   return tauriInvoke<string>("v2_scan_stop", { scanId });
+}
+
+export async function listScanRoots() {
+  return tauriInvoke<ScanRoot[]>("v2_scan_roots_list");
+}
+
+export async function syncScanRoot(rootPath: string) {
+  return tauriInvoke<string>("v2_scan_sync_root", { rootPath });
+}
+
+export async function removeScanRoot(rootPath: string) {
+  return tauriInvoke<RootCleanupResult>("v2_scan_root_remove", { rootPath });
+}
+
+export async function cleanupOrphanAssets() {
+  return tauriInvoke<RootCleanupResult>("v2_scan_cleanup_orphans");
 }
 
 export async function onScanProgress(

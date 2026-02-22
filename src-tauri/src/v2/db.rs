@@ -53,6 +53,7 @@ fn create_schema(conn: &Connection) -> Result<(), String> {
             filename        TEXT NOT NULL,
             extension       TEXT NOT NULL,
             original_path   TEXT NOT NULL UNIQUE,
+            root_path       TEXT,
             type            TEXT NOT NULL,
             file_size       INTEGER NOT NULL DEFAULT 0,
             mtime_ms        INTEGER NOT NULL DEFAULT 0,
@@ -116,9 +117,17 @@ fn create_schema(conn: &Connection) -> Result<(), String> {
             updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS scan_roots (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            root_path         TEXT NOT NULL UNIQUE,
+            date_added        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            date_last_scanned TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_assets_type_id ON assets(type, id DESC);
         CREATE INDEX IF NOT EXISTS idx_assets_modified ON assets(date_modified DESC);
         CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority, id);
+        CREATE INDEX IF NOT EXISTS idx_scan_roots_last_scanned ON scan_roots(date_last_scanned DESC, id DESC);
 
         CREATE VIRTUAL TABLE IF NOT EXISTS assets_fts USING fts5(
             filename,
@@ -149,6 +158,39 @@ fn create_schema(conn: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     ensure_preview_columns(conn)?;
+    ensure_assets_root_path_column(conn)?;
+
+    Ok(())
+}
+
+fn ensure_assets_root_path_column(conn: &Connection) -> Result<(), String> {
+    let mut has_root_path = false;
+
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(assets)")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let name = row.map_err(|e| e.to_string())?;
+        if name == "root_path" {
+            has_root_path = true;
+            break;
+        }
+    }
+
+    if !has_root_path {
+        conn.execute("ALTER TABLE assets ADD COLUMN root_path TEXT", [])
+            .map_err(|e| e.to_string())?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_assets_root_path ON assets(root_path)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
