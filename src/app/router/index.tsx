@@ -107,8 +107,16 @@ export function AppRouter() {
     void (async () => {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const appWindow = getCurrentWindow();
-      await appWindow.toggleMaximize();
-      setIsMaximized(await appWindow.isMaximized());
+      const maximized = await appWindow.isMaximized();
+
+      if (maximized) {
+        await appWindow.unmaximize();
+        setIsMaximized(false);
+        return;
+      }
+
+      await appWindow.maximize();
+      setIsMaximized(true);
     })();
   };
 
