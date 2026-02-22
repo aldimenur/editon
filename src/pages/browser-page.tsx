@@ -1,10 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Eye,
   FolderPlus,
   Image as ImageIcon,
   Music2,
+  MoreHorizontal,
   Play,
   RefreshCw,
   Scissors,
@@ -23,6 +25,12 @@ import type { ScanRoot } from "@/features/assets/api/assets-api";
 import { formatDate } from "@/shared/lib/format/date";
 import { formatFileSize } from "@/shared/lib/format/file-size";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
+import { Button } from "@/shared/ui/button";
+import { Dialog } from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
+import { Progress } from "@/shared/ui/progress";
+import { Separator } from "@/shared/ui/separator";
+import { Slider } from "@/shared/ui/slider";
 import { StatusText } from "@/shared/ui/status-text";
 
 type AssetKind = "all" | "audio" | "video" | "image";
@@ -130,23 +138,24 @@ function RootItem({
           ? `Last sync ${formatDate(root.dateLastScanned)}`
           : `Added ${formatDate(root.dateAdded)}`}
       </p>
+      <Separator />
       <div className="root-item-actions">
-        <button
+        <Button
           type="button"
-          className="button button-ghost"
+          variant="ghost"
           disabled={loading || isSyncing || isRemoving}
           onClick={() => onSync(root.rootPath)}
         >
           {isSyncing ? "Syncing..." : "Sync"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="button button-ghost"
+          variant="ghost"
           disabled={loading || isSyncing || isRemoving}
           onClick={() => onRemove(root.rootPath)}
         >
           {isRemoving ? "Removing..." : "Remove"}
-        </button>
+        </Button>
       </div>
     </article>
   );
@@ -181,6 +190,7 @@ export function BrowserPage() {
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
   const [trimAssetId, setTrimAssetId] = useState<number | null>(null);
+  const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
   const [trimByAssetId, setTrimByAssetId] = useState<Record<number, TrimState>>(
     {},
   );
@@ -266,6 +276,16 @@ export function BrowserPage() {
     });
   };
 
+  const quicklookAsset =
+    quicklookAssetId === null
+      ? null
+      : (visibleAssets.find((asset) => asset.id === quicklookAssetId) ?? null);
+
+  const scanProgressValue = Math.max(
+    5,
+    Math.min(95, scanProgress ? (scanProgress.count % 100) + 5 : 5),
+  );
+
   return (
     <section className="explore-shell">
       <header className="explore-header">
@@ -281,47 +301,45 @@ export function BrowserPage() {
 
       <section className="import-shell">
         <div className="import-controls">
-          <input
-            className="path-input"
+          <Input
             value={rootPath}
             onChange={(event) => setRootPath(event.target.value)}
             placeholder="F:/Projects/Assets"
             aria-label="Parent folder path"
           />
-          <button
+          <Button
             type="button"
-            className="button button-ghost"
+            variant="ghost"
             disabled={loading || !isTauriRuntime()}
             onClick={() => void importRoot()}
           >
             <FolderPlus size={15} aria-hidden="true" />
             Import Folder
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="button"
             disabled={loading || !isTauriRuntime()}
             onClick={() => void beginScan()}
           >
             Scan Recursive
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="button button-ghost"
+            variant="ghost"
             disabled={!scanId || loading || !isTauriRuntime()}
             onClick={() => void haltScan()}
           >
             Stop
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="button button-ghost"
+            variant="ghost"
             disabled={loading || !isTauriRuntime()}
             onClick={() => void refresh(page)}
           >
             <RefreshCw size={15} aria-hidden="true" />
             Reload
-          </button>
+          </Button>
         </div>
 
         <div className="root-grid">
@@ -342,12 +360,13 @@ export function BrowserPage() {
       <section className="search-shell">
         <label className="search-input" htmlFor="asset-search-input">
           <Search size={15} aria-hidden="true" />
-          <input
+          <Input
             id="asset-search-input"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Fuzzy search filename, path, tags"
+            className="search-input-control"
           />
         </label>
         <div
@@ -356,22 +375,27 @@ export function BrowserPage() {
           aria-label="Asset type filter"
         >
           {(["all", "audio", "video", "image"] as AssetKind[]).map((kind) => (
-            <button
+            <Button
               key={kind}
               type="button"
+              size="sm"
+              variant="ghost"
               className={`chip ${typeFilter === kind ? "is-active" : ""}`}
               onClick={() => setTypeFilter(kind)}
             >
               {kind} ({counts[kind]})
-            </button>
+            </Button>
           ))}
         </div>
       </section>
 
       {scanProgress ? (
-        <StatusText
-          text={`scan ${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files · ${scanProgress.lastFile}`}
-        />
+        <>
+          <StatusText
+            text={`scan ${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files · ${scanProgress.lastFile}`}
+          />
+          <Progress value={scanProgressValue} />
+        </>
       ) : null}
       {error ? <StatusText text={error} isError /> : null}
 
@@ -428,10 +452,12 @@ export function BrowserPage() {
                     </div>
                   ) : null}
 
+                  <Separator />
+
                   <div className="gallery-actions">
-                    <button
+                    <Button
                       type="button"
-                      className="button button-ghost"
+                      variant="ghost"
                       onClick={() =>
                         setPreviewAssetId((current) =>
                           current === asset.id ? null : asset.id,
@@ -440,21 +466,21 @@ export function BrowserPage() {
                     >
                       <Eye size={14} aria-hidden="true" />
                       Preview
-                    </button>
+                    </Button>
                     {(kind === "audio" || kind === "video") && sourceSrc ? (
-                      <button
+                      <Button
                         type="button"
-                        className="button button-ghost"
+                        variant="ghost"
                         onClick={() => setPreviewAssetId(asset.id)}
                       >
                         <Play size={14} aria-hidden="true" />
                         Play
-                      </button>
+                      </Button>
                     ) : null}
                     {(kind === "audio" || kind === "video") && sourceSrc ? (
-                      <button
+                      <Button
                         type="button"
-                        className="button button-ghost"
+                        variant="ghost"
                         onClick={() =>
                           setTrimAssetId((current) =>
                             current === asset.id ? null : asset.id,
@@ -463,8 +489,34 @@ export function BrowserPage() {
                       >
                         <Scissors size={14} aria-hidden="true" />
                         Trim
-                      </button>
+                      </Button>
                     ) : null}
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <Button type="button" variant="ghost" size="sm">
+                          <MoreHorizontal size={14} aria-hidden="true" />
+                        </Button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          className="dropdown-content"
+                          sideOffset={6}
+                        >
+                          <DropdownMenu.Item
+                            className="dropdown-item"
+                            onSelect={() => setQuicklookAssetId(asset.id)}
+                          >
+                            Quicklook
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="dropdown-item"
+                            onSelect={() => setPreviewAssetId(asset.id)}
+                          >
+                            Open Preview
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
                   </div>
 
                   {isPreviewOpen && sourceSrc ? (
@@ -496,38 +548,37 @@ export function BrowserPage() {
                         <strong>
                           In {trimState.inPoint}% · Out {trimState.outPoint}%
                         </strong>
-                        <button
+                        <Button
                           type="button"
-                          className="button button-ghost"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setTrimAssetId(null)}
                         >
                           <X size={14} aria-hidden="true" />
-                        </button>
+                        </Button>
                       </div>
                       <label>
                         In-point
-                        <input
-                          type="range"
+                        <Slider
+                          value={[trimState.inPoint]}
                           min={0}
                           max={99}
-                          value={trimState.inPoint}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             updateTrim(asset.id, {
-                              inPoint: Number(event.target.value),
+                              inPoint: value[0] ?? trimState.inPoint,
                             })
                           }
                         />
                       </label>
                       <label>
                         Out-point
-                        <input
-                          type="range"
+                        <Slider
+                          value={[trimState.outPoint]}
                           min={1}
                           max={100}
-                          value={trimState.outPoint}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             updateTrim(asset.id, {
-                              outPoint: Number(event.target.value),
+                              outPoint: value[0] ?? trimState.outPoint,
                             })
                           }
                         />
@@ -540,6 +591,28 @@ export function BrowserPage() {
           })}
         </div>
       </section>
+
+      <Dialog
+        open={quicklookAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuicklookAssetId(null);
+          }
+        }}
+        title={quicklookAsset ? quicklookAsset.filename : "Quicklook"}
+      >
+        {quicklookAsset ? (
+          <div className="quicklook-panel">
+            <p className="meta" title={quicklookAsset.originalPath}>
+              {quicklookAsset.originalPath}
+            </p>
+            <p className="meta">
+              {formatFileSize(quicklookAsset.fileSize)} ·{" "}
+              {formatDate(quicklookAsset.dateModified)}
+            </p>
+          </div>
+        ) : null}
+      </Dialog>
 
       <AssetPagination
         page={page}

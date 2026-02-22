@@ -1,19 +1,43 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import type { ButtonHTMLAttributes } from "react";
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "solid" | "ghost";
-  children: ReactNode;
-};
+import { cn } from "@/shared/lib/cn";
+
+const buttonVariants = cva("button", {
+  variants: {
+    variant: {
+      solid: "",
+      ghost: "button-ghost",
+    },
+    size: {
+      sm: "button-sm",
+      md: "",
+    },
+  },
+  defaultVariants: {
+    variant: "solid",
+    size: "md",
+  },
+});
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  };
 
 export function Button({
-  variant = "solid",
+  asChild = false,
   className,
+  variant,
+  size,
   ...props
 }: ButtonProps) {
-  const variantClass = variant === "ghost" ? "button button-ghost" : "button";
-  const mergedClassName = className
-    ? `${variantClass} ${className}`
-    : variantClass;
-
-  return <button {...props} className={mergedClassName} />;
+  const Comp = asChild ? Slot : "button";
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  );
 }
