@@ -21,6 +21,7 @@ pub fn run() {
             v2::v2_assets_query,
             v2::v2_asset_prefetch,
             v2::v2_jobs_list,
+            v2::v2_jobs_cancel,
             v2::v2_jobs_subscribe,
             v2::v2_asset_mutation,
             v2::v2_media_trim,

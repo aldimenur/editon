@@ -5,7 +5,7 @@ mod state;
 mod waveform;
 
 use crate::v2::db::{classify_media_type, get_bin_dir, get_thumbnail_dir, init_database};
-use crate::v2::jobs::{enqueue_job, list_jobs, start_worker};
+use crate::v2::jobs::{cancel_job, enqueue_job, list_jobs, start_worker};
 use crate::v2::models::{
     AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput,
     RootCleanupResult, ScanProgress, ScanRootDto, TrimInput,
@@ -28,23 +28,16 @@ const DENO_WINDOWS_URL: &str =
     "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
 
 pub fn setup(app: AppHandle) -> Result<AppState, String> {
-    let conn = init_database(&app)?;
+    let db_handles = tauri::async_runtime::block_on(init_database(&app))?;
     let state = AppState {
-        conn: Arc::new(Mutex::new(conn)),
+        db_pool: db_handles.pool,
+        conn: Arc::new(Mutex::new(db_handles.legacy_conn)),
         cancel_scan: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         worker_shutdown: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         active_scan_id: Arc::new(Mutex::new(None)),
     };
 
-    start_worker(
-        app,
-        AppState {
-            conn: state.conn.clone(),
-            cancel_scan: state.cancel_scan.clone(),
-            worker_shutdown: state.worker_shutdown.clone(),
-            active_scan_id: state.active_scan_id.clone(),
-        },
-    );
+    start_worker(app, state.clone());
 
     Ok(state)
 }
@@ -555,11 +548,21 @@ pub fn v2_asset_prefetch(
 }
 
 #[tauri::command]
-pub fn v2_jobs_list(
+pub async fn v2_jobs_list(
     state: State<'_, AppState>,
     limit: Option<u32>,
 ) -> Result<Vec<models::JobDto>, String> {
-    list_jobs(&state, limit.unwrap_or(100).clamp(1, 500))
+    list_jobs(&state, limit.unwrap_or(100).clamp(1, 500)).await
+}
+
+#[tauri::command]
+pub async fn v2_jobs_cancel(state: State<'_, AppState>, job_id: i64) -> Result<String, String> {
+    let cancelled = cancel_job(&state, job_id).await?;
+    if cancelled {
+        Ok(format!("Cancellation requested for job {}", job_id))
+    } else {
+        Ok(format!("No cancellable job found for id {}", job_id))
+    }
 }
 
 #[tauri::command]
@@ -689,12 +692,12 @@ pub fn v2_asset_mutation(
 }
 
 #[tauri::command]
-pub fn v2_media_trim(state: State<'_, AppState>, input: TrimInput) -> Result<String, String> {
+pub async fn v2_media_trim(state: State<'_, AppState>, input: TrimInput) -> Result<String, String> {
     if input.start_sec < 0.0 || input.end_sec <= input.start_sec {
         return Err("Invalid trim range".to_string());
     }
     let payload = serde_json::to_string(&input).map_err(|e| e.to_string())?;
-    let job_id = enqueue_job(&state, "trim_media", &payload, 2)?;
+    let job_id = enqueue_job(&state, "trim_media", &payload, 2).await?;
     Ok(format!("Queued trim job {}", job_id))
 }
 
@@ -749,14 +752,14 @@ pub fn v2_dependencies_status(app: AppHandle) -> Result<DependencyStatus, String
 }
 
 #[tauri::command]
-pub fn v2_dependencies_install(state: State<'_, AppState>) -> Result<String, String> {
-    let id = enqueue_job(&state, "dependencies_install", "{}", 1)?;
+pub async fn v2_dependencies_install(state: State<'_, AppState>) -> Result<String, String> {
+    let id = enqueue_job(&state, "dependencies_install", "{}", 1).await?;
     Ok(format!("Queued dependency install job {}", id))
 }
 
 #[tauri::command]
-pub fn v2_dependencies_update(state: State<'_, AppState>) -> Result<String, String> {
-    let id = enqueue_job(&state, "dependencies_update", "{}", 1)?;
+pub async fn v2_dependencies_update(state: State<'_, AppState>) -> Result<String, String> {
+    let id = enqueue_job(&state, "dependencies_update", "{}", 1).await?;
     Ok(format!("Queued dependency update job {}", id))
 }
 
