@@ -299,7 +299,6 @@ pub fn v2_scan_root_remove(
 
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let preview_paths = collect_preview_paths_for_root(&tx, &normalized, &normalized_like)?;
 
     let deleted_jobs = tx
         .execute(
@@ -332,7 +331,6 @@ pub fn v2_scan_root_remove(
     .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
-    cleanup_preview_files(&preview_paths);
 
     Ok(RootCleanupResult {
         removed_root: normalized,
@@ -345,7 +343,6 @@ pub fn v2_scan_root_remove(
 pub fn v2_scan_cleanup_orphans(state: State<'_, AppState>) -> Result<RootCleanupResult, String> {
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let preview_paths = collect_preview_paths_for_orphans(&tx)?;
 
     let deleted_jobs = tx
         .execute(
@@ -376,7 +373,6 @@ pub fn v2_scan_cleanup_orphans(state: State<'_, AppState>) -> Result<RootCleanup
         .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
-    cleanup_preview_files(&preview_paths);
 
     Ok(RootCleanupResult {
         removed_root: "<orphans>".to_string(),
@@ -1095,90 +1091,6 @@ fn normalize_root_path(value: &str) -> String {
         format!("{}/", trimmed)
     } else {
         trimmed.to_string()
-    }
-}
-
-fn collect_preview_paths_for_root(
-    tx: &rusqlite::Transaction<'_>,
-    normalized: &str,
-    normalized_like: &str,
-) -> Result<Vec<String>, String> {
-    let mut stmt = tx
-        .prepare(
-            "SELECT asset_previews.thumbnail_path, asset_previews.waveform_path
-             FROM asset_previews
-             JOIN assets ON assets.id = asset_previews.asset_id
-             WHERE REPLACE(COALESCE(assets.root_path, ''), '\\', '/') = ?1
-                OR REPLACE(assets.original_path, '\\', '/') = ?1
-                OR REPLACE(assets.original_path, '\\', '/') LIKE ?2",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(params![normalized, normalized_like], |row| {
-            Ok((
-                row.get::<_, Option<String>>(0)?,
-                row.get::<_, Option<String>>(1)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut paths = Vec::new();
-    for row in rows {
-        let (thumbnail_path, waveform_path) = row.map_err(|e| e.to_string())?;
-        if let Some(path) = thumbnail_path.filter(|v| !v.trim().is_empty()) {
-            paths.push(path);
-        }
-        if let Some(path) = waveform_path.filter(|v| !v.trim().is_empty()) {
-            paths.push(path);
-        }
-    }
-
-    Ok(paths)
-}
-
-fn collect_preview_paths_for_orphans(
-    tx: &rusqlite::Transaction<'_>,
-) -> Result<Vec<String>, String> {
-    let mut stmt = tx
-        .prepare(
-            "SELECT asset_previews.thumbnail_path, asset_previews.waveform_path
-             FROM asset_previews
-             JOIN assets ON assets.id = asset_previews.asset_id
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM scan_roots
-                 WHERE REPLACE(assets.original_path, '\\', '/') = REPLACE(scan_roots.root_path, '\\', '/')
-                    OR REPLACE(assets.original_path, '\\', '/') LIKE REPLACE(scan_roots.root_path, '\\', '/') || '/%'
-               )",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, Option<String>>(0)?,
-                row.get::<_, Option<String>>(1)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut paths = Vec::new();
-    for row in rows {
-        let (thumbnail_path, waveform_path) = row.map_err(|e| e.to_string())?;
-        if let Some(path) = thumbnail_path.filter(|v| !v.trim().is_empty()) {
-            paths.push(path);
-        }
-        if let Some(path) = waveform_path.filter(|v| !v.trim().is_empty()) {
-            paths.push(path);
-        }
-    }
-
-    Ok(paths)
-}
-
-fn cleanup_preview_files(paths: &[String]) {
-    for path in paths {
-        let _ = std::fs::remove_file(path);
     }
 }
 
