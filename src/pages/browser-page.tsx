@@ -250,7 +250,6 @@ export function BrowserPage() {
     null,
   );
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
-  const previousVisibleCountRef = useRef(0);
   const [galleryViewportWidth, setGalleryViewportWidth] = useState(0);
 
   const queryFilters = useMemo<QueryAssetsInput>(
@@ -826,14 +825,8 @@ export function BrowserPage() {
   );
   const galleryCardWidth =
     galleryViewportWidth > 0
-      ? Math.max(
-          120,
-          Math.floor(
-            (galleryViewportWidth - (galleryColumnCount - 1) * galleryGap) /
-              galleryColumnCount,
-          ),
-        )
-      : galleryColumnWidth;
+      ? Math.max(96, galleryColumnWidth)
+      : Math.max(96, galleryColumnWidth);
   const virtualOverscan = Math.max(6, galleryColumnCount * 2);
   const loadAheadItems = Math.max(galleryColumnCount * 4, 12);
 
@@ -850,7 +843,7 @@ export function BrowserPage() {
     const mediaHeight =
       galleryCardWidth / Math.max(0.45, Math.min(3.4, aspect));
 
-    return Math.round(mediaHeight + 18 + galleryCardVerticalGap);
+    return Math.round(mediaHeight + galleryCardVerticalGap);
   };
 
   useEffect(() => {
@@ -879,24 +872,27 @@ export function BrowserPage() {
     };
   }, [galleryColumnWidth, debouncedQuery, selectedRootPath, typeFilter]);
 
+  const virtualizerLayoutKey = `${typeFilter}|${selectedRootPath ?? "all"}|${debouncedQuery}`;
+
   const virtualizer = useVirtualizer({
     count: visibleAssets.length,
     getScrollElement: () => galleryScrollRef.current,
     estimateSize: estimateItemSize,
     overscan: virtualOverscan,
     lanes: galleryColumnCount,
-    getItemKey: (index) => visibleAssets[index]?.id ?? index,
+    getItemKey: (index) =>
+      `${virtualizerLayoutKey}:${visibleAssets[index]?.id ?? index}`,
   });
   const virtualItems = virtualizer.getVirtualItems();
   const lastVirtualItemIndex =
     virtualItems[virtualItems.length - 1]?.index ?? -1;
-  const virtualizerLayoutKey = `${typeFilter}|${selectedRootPath ?? "all"}|${debouncedQuery}`;
 
   useEffect(() => {
     const node = galleryScrollRef.current;
     if (node) {
       node.scrollTop = 0;
     }
+    virtualizer.scrollToOffset(0);
 
     setPreviewAssetId(null);
     setPlayingAssetId(null);
@@ -917,9 +913,15 @@ export function BrowserPage() {
         }
         return current === nextWidth ? current : nextWidth;
       });
+      virtualizer.scrollToOffset(0);
       virtualizer.measure();
       frameB = window.requestAnimationFrame(() => {
+        virtualizer.scrollToOffset(0);
         virtualizer.measure();
+        window.requestAnimationFrame(() => {
+          virtualizer.scrollToOffset(0);
+          virtualizer.measure();
+        });
       });
     });
 
@@ -934,13 +936,6 @@ export function BrowserPage() {
   }, [virtualizerLayoutKey]);
 
   useEffect(() => {
-    const previousCount = previousVisibleCountRef.current;
-    previousVisibleCountRef.current = visibleAssets.length;
-
-    if (visibleAssets.length >= previousCount) {
-      return;
-    }
-
     const node = galleryScrollRef.current;
     if (!node) {
       virtualizer.measure();
@@ -952,7 +947,7 @@ export function BrowserPage() {
       node.scrollTop = Math.max(0, maxScroll);
     }
     virtualizer.measure();
-  }, [visibleAssets.length]);
+  }, [items, virtualizerLayoutKey]);
 
   useEffect(() => {
     if (
@@ -1109,12 +1104,9 @@ export function BrowserPage() {
           ) : null}
           {error ? <StatusText text={error} isError /> : null}
 
-          <section
-            key={virtualizerLayoutKey}
-            className="gallery-scroll"
-            ref={galleryScrollRef}
-          >
+          <section className="gallery-scroll" ref={galleryScrollRef}>
             <div
+              key={virtualizerLayoutKey}
               className="gallery-virtualizer"
               style={{
                 height: `${virtualizer.getTotalSize()}px`,
@@ -1148,7 +1140,7 @@ export function BrowserPage() {
 
                 return (
                   <div
-                    key={asset.id}
+                    key={`${virtualizerLayoutKey}:${asset.id}`}
                     data-index={virtualItem.index}
                     ref={virtualizer.measureElement}
                     className="gallery-virtual-item"
