@@ -15,7 +15,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { onScanProgress, useAssetsStore } from "@/features/assets";
 import type {
@@ -250,6 +250,7 @@ export function BrowserPage() {
     null,
   );
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
+  const previousVisibleCountRef = useRef(0);
   const [galleryViewportWidth, setGalleryViewportWidth] = useState(0);
 
   const queryFilters = useMemo<QueryAssetsInput>(
@@ -261,7 +262,7 @@ export function BrowserPage() {
     [debouncedQuery, selectedRootPath, typeFilter],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previewAssetId === null) {
       if (playingTrimAssetId !== null) {
         const trimMedia = mediaElementByAssetIdRef.current[playingTrimAssetId];
@@ -859,7 +860,14 @@ export function BrowserPage() {
     }
 
     const updateViewportWidth = () => {
-      setGalleryViewportWidth(node.clientWidth);
+      const nextWidth = Math.round(node.getBoundingClientRect().width);
+      if (nextWidth <= 0) {
+        return;
+      }
+
+      setGalleryViewportWidth((current) =>
+        current === nextWidth ? current : nextWidth,
+      );
     };
 
     updateViewportWidth();
@@ -869,7 +877,7 @@ export function BrowserPage() {
     return () => {
       observer.disconnect();
     };
-  }, [galleryColumnWidth]);
+  }, [galleryColumnWidth, debouncedQuery, selectedRootPath, typeFilter]);
 
   const virtualizer = useVirtualizer({
     count: visibleAssets.length,
@@ -882,6 +890,69 @@ export function BrowserPage() {
   const virtualItems = virtualizer.getVirtualItems();
   const lastVirtualItemIndex =
     virtualItems[virtualItems.length - 1]?.index ?? -1;
+  const virtualizerLayoutKey = `${typeFilter}|${selectedRootPath ?? "all"}|${debouncedQuery}`;
+
+  useEffect(() => {
+    const node = galleryScrollRef.current;
+    if (node) {
+      node.scrollTop = 0;
+    }
+
+    setPreviewAssetId(null);
+    setPlayingAssetId(null);
+    setPlayingTrimAssetId(null);
+    let frameA = 0;
+    let frameB = 0;
+    frameA = window.requestAnimationFrame(() => {
+      const nextNode = galleryScrollRef.current;
+      if (!nextNode) {
+        return;
+      }
+
+      nextNode.scrollTop = 0;
+      setGalleryViewportWidth((current) => {
+        const nextWidth = Math.round(nextNode.getBoundingClientRect().width);
+        if (nextWidth <= 0) {
+          return current;
+        }
+        return current === nextWidth ? current : nextWidth;
+      });
+      virtualizer.measure();
+      frameB = window.requestAnimationFrame(() => {
+        virtualizer.measure();
+      });
+    });
+
+    return () => {
+      if (frameA) {
+        window.cancelAnimationFrame(frameA);
+      }
+      if (frameB) {
+        window.cancelAnimationFrame(frameB);
+      }
+    };
+  }, [virtualizerLayoutKey]);
+
+  useEffect(() => {
+    const previousCount = previousVisibleCountRef.current;
+    previousVisibleCountRef.current = visibleAssets.length;
+
+    if (visibleAssets.length >= previousCount) {
+      return;
+    }
+
+    const node = galleryScrollRef.current;
+    if (!node) {
+      virtualizer.measure();
+      return;
+    }
+
+    const maxScroll = Math.max(0, node.scrollHeight - node.clientHeight);
+    if (node.scrollTop > maxScroll) {
+      node.scrollTop = Math.max(0, maxScroll);
+    }
+    virtualizer.measure();
+  }, [visibleAssets.length]);
 
   useEffect(() => {
     if (
@@ -1038,7 +1109,11 @@ export function BrowserPage() {
           ) : null}
           {error ? <StatusText text={error} isError /> : null}
 
-          <section className="gallery-scroll" ref={galleryScrollRef}>
+          <section
+            key={virtualizerLayoutKey}
+            className="gallery-scroll"
+            ref={galleryScrollRef}
+          >
             <div
               className="gallery-virtualizer"
               style={{

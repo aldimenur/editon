@@ -518,6 +518,7 @@ table {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
   min-height: 0;
   padding-right: 1px;
 }
