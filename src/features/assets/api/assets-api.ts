@@ -10,6 +10,41 @@ export type ScanProgress = {
   status: string;
 };
 
+type ScanProgressEventPayload = {
+  scanId?: string;
+  scan_id?: string;
+  count?: number | string;
+  lastFile?: string;
+  last_file?: string;
+  status?: string;
+};
+
+function normalizeCount(value: number | string | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function normalizeScanProgress(
+  payload: ScanProgressEventPayload,
+): ScanProgress {
+  return {
+    scanId: payload.scanId ?? payload.scan_id ?? "",
+    count: normalizeCount(payload.count),
+    lastFile: payload.lastFile ?? payload.last_file ?? "",
+    status: payload.status ?? "processing",
+  };
+}
+
 export type ScanRoot = {
   rootPath: string;
   dateAdded: string;
@@ -76,7 +111,7 @@ export async function cleanupOrphanAssets() {
 export async function onScanProgress(
   handler: (payload: ScanProgress) => void,
 ): Promise<() => void> {
-  return listen<ScanProgress>("v2-scan-progress", (event) => {
-    handler(event.payload);
+  return listen<ScanProgressEventPayload>("v2-scan-progress", (event) => {
+    handler(normalizeScanProgress(event.payload));
   });
 }

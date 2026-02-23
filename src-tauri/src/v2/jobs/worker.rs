@@ -31,6 +31,7 @@ pub async fn run_worker(app: AppHandle, state: AppState) {
                     "worker".to_string(),
                     "error".to_string(),
                     error,
+                    None,
                 );
                 thread::sleep(Duration::from_millis(500));
             }
@@ -96,18 +97,49 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
         job.job_type.clone(),
         "running".to_string(),
         format!("Running {}", job.job_type),
+        Some(0),
     );
 
     let app_for_task = app.clone();
     let state_for_task = state.clone();
     let payload = job.payload.clone();
     let job_type = job.job_type.clone();
+    let job_id = job.id;
 
     let result = tauri::async_runtime::spawn_blocking(move || match job_type.as_str() {
         "prefetch_preview" => Ok(()),
-        "generate_waveform" => process_generate_waveform_job(&app_for_task, &state_for_task, &payload),
+        "generate_waveform" => {
+            let progress_app = app_for_task.clone();
+            let progress_job_type = job_type.clone();
+            process_generate_waveform_job(&app_for_task, &state_for_task, &payload, move |progress, phase| {
+                emit_job_event(
+                    &progress_app,
+                    job_id,
+                    progress_job_type.clone(),
+                    "running".to_string(),
+                    phase.to_string(),
+                    Some(progress),
+                );
+            })
+        }
         "generate_video_thumbnail" => {
-            process_generate_video_thumbnail_job(&app_for_task, &state_for_task, &payload)
+            let progress_app = app_for_task.clone();
+            let progress_job_type = job_type.clone();
+            process_generate_video_thumbnail_job(
+                &app_for_task,
+                &state_for_task,
+                &payload,
+                move |progress, phase| {
+                    emit_job_event(
+                        &progress_app,
+                        job_id,
+                        progress_job_type.clone(),
+                        "running".to_string(),
+                        phase.to_string(),
+                        Some(progress),
+                    );
+                },
+            )
         }
         "trim_media" => Ok(()),
         "dependencies_install" => process_dependencies_install_job(&app_for_task, |_| {}),
@@ -146,6 +178,7 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
                 job.job_type,
                 "cancelled".to_string(),
                 "Job cancelled".to_string(),
+                None,
             );
         }
         (Ok(()), false) => {
@@ -167,6 +200,7 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
                 job.job_type,
                 "done".to_string(),
                 "Job completed".to_string(),
+                Some(100),
             );
         }
         (Err(error), false) => {
@@ -185,7 +219,14 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
                 .execute(&state.db_pool)
                 .await;
 
-                emit_job_event(app, job.id, job.job_type, "failed".to_string(), error);
+                emit_job_event(
+                    app,
+                    job.id,
+                    job.job_type,
+                    "failed".to_string(),
+                    error,
+                    None,
+                );
             } else {
                 let delay = backoff_seconds(next_attempt);
                 let _ = sqlx::query(
@@ -208,13 +249,21 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
                     job.job_type,
                     "queued".to_string(),
                     format!("Retry in {}s: {}", delay, error),
+                    None,
                 );
             }
         }
     }
 }
 
-fn emit_job_event(app: &AppHandle, id: i64, job_type: String, status: String, message: String) {
+fn emit_job_event(
+    app: &AppHandle,
+    id: i64,
+    job_type: String,
+    status: String,
+    message: String,
+    progress: Option<u8>,
+) {
     let _ = app.emit(
         "v2-job-updated",
         JobEvent {
@@ -222,6 +271,7 @@ fn emit_job_event(app: &AppHandle, id: i64, job_type: String, status: String, me
             job_type,
             status,
             message,
+            progress,
         },
     );
 }

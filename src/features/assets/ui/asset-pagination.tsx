@@ -24,33 +24,45 @@ export function AssetPagination({
       <Button
         type="button"
         variant="ghost"
+        size="sm"
         onClick={onFirst}
         disabled={page <= 1 || loading}
+        title="First page"
       >
-        First
+        <span aria-hidden="true">|&lt;</span>
+        <span className="button-label">First</span>
       </Button>
       <Button
         type="button"
         variant="ghost"
+        size="sm"
         onClick={onPrev}
         disabled={page <= 1 || loading}
+        title="Previous page"
       >
-        Prev
+        <span aria-hidden="true">&lt;</span>
+        <span className="button-label">Prev</span>
       </Button>
       <Button
         type="button"
+        size="sm"
         onClick={onNext}
         disabled={page >= totalPages || loading}
+        title="Next page"
       >
-        Next
+        <span className="button-label">Next</span>
+        <span aria-hidden="true">&gt;</span>
       </Button>
       <Button
         type="button"
         variant="ghost"
+        size="sm"
         onClick={onLast}
         disabled={page >= totalPages || loading}
+        title="Last page"
       >
-        Last
+        <span className="button-label">Last</span>
+        <span aria-hidden="true">&gt;|</span>
       </Button>
     </footer>
   );

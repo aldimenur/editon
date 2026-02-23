@@ -61,6 +61,7 @@ pub struct JobEvent {
     pub job_type: String,
     pub status: String,
     pub message: String,
+    pub progress: Option<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

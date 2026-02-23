@@ -39,7 +39,7 @@ type AssetsStore = {
   loading: boolean;
   error: string | null;
   setRootPath: (value: string) => void;
-  setScanProgress: (value: ScanProgress) => void;
+  setScanProgress: (value: ScanProgress | null) => void;
   setError: (value: string) => void;
   clearError: () => void;
   refresh: (targetPage?: number) => Promise<void>;
@@ -64,7 +64,25 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
   loading: false,
   error: null,
   setRootPath: (value) => set({ rootPath: value }),
-  setScanProgress: (value) => set({ scanProgress: value }),
+  setScanProgress: (value) =>
+    set((state) => {
+      if (
+        value === null ||
+        value.status === "done" ||
+        value.status === "cancelled" ||
+        value.status === "failed"
+      ) {
+        return {
+          scanId: null,
+          scanProgress: null,
+        };
+      }
+
+      return {
+        scanId: value.scanId || state.scanId,
+        scanProgress: value,
+      };
+    }),
   setError: (value) => set({ error: value }),
   clearError: () => set({ error: null }),
   refresh: async (targetPage = 1) => {
@@ -121,13 +139,15 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
         scanProgress: {
           scanId: id,
           count: 0,
-          lastFile: "",
+          lastFile: "Scanning...",
           status: "processing",
         },
       });
       await get().refreshScanRoots();
     } catch (reason) {
       set({
+        scanId: null,
+        scanProgress: null,
         error:
           reason instanceof Error ? reason.message : "Failed to start scan",
       });
@@ -150,12 +170,14 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
         scanProgress: {
           scanId: id,
           count: 0,
-          lastFile: "",
+          lastFile: "Scanning...",
           status: "processing",
         },
       });
     } catch (reason) {
       set({
+        scanId: null,
+        scanProgress: null,
         error: reason instanceof Error ? reason.message : "Failed to sync root",
       });
     } finally {
@@ -189,7 +211,7 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
     set({ loading: true });
     try {
       await stopScan(get().scanId ?? undefined);
-      set({ error: null });
+      set({ error: null, scanId: null, scanProgress: null });
     } catch (reason) {
       set({
         error: reason instanceof Error ? reason.message : "Failed to stop scan",

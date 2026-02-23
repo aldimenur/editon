@@ -18,6 +18,30 @@ use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
+struct ActiveScanGuard {
+    active_scan_id: Arc<Mutex<Option<String>>>,
+    scan_id: String,
+}
+
+impl ActiveScanGuard {
+    fn new(active_scan_id: Arc<Mutex<Option<String>>>, scan_id: String) -> Self {
+        Self {
+            active_scan_id,
+            scan_id,
+        }
+    }
+}
+
+impl Drop for ActiveScanGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active_scan_id.lock() {
+            if active.as_deref() == Some(self.scan_id.as_str()) {
+                *active = None;
+            }
+        }
+    }
+}
+
 const WAVEFORM_VERSION: &str = "v2.1";
 const WAVEFORM_BARS: usize = 192;
 const THUMBNAIL_VERSION: &str = "v2.1";
@@ -64,11 +88,15 @@ pub fn v2_scan_start(
     );
     {
         let mut active = state.active_scan_id.lock().map_err(|e| e.to_string())?;
+        if active.is_some() {
+            return Err("A scan is already running. Stop it before starting a new one.".to_string());
+        }
         *active = Some(scan_id.clone());
     }
 
     let db = state.conn.clone();
     let cancel = state.cancel_scan.clone();
+    let state_for_jobs = state.inner().clone();
     let emit_app = app.clone();
     let emit_scan_id = scan_id.clone();
     let root_path_for_db = normalized_root_path.clone();
@@ -83,155 +111,162 @@ pub fn v2_scan_start(
     }
 
     std::thread::spawn(move || {
+        let _active_scan_guard =
+            ActiveScanGuard::new(state_for_jobs.active_scan_id.clone(), emit_scan_id.clone());
         let mut count = 0usize;
-        for entry in WalkDir::new(&normalized_root_path)
-            .into_iter()
-            .filter_map(Result::ok)
-        {
-            if cancel.load(Ordering::SeqCst) {
-                let _ = emit_app.emit(
-                    "v2-scan-progress",
-                    ScanProgress {
-                        scan_id: emit_scan_id.clone(),
-                        count,
-                        last_file: String::new(),
-                        status: "cancelled".to_string(),
-                    },
-                );
-                return;
-            }
+        let mut cancelled = false;
 
-            let file_path = entry.path();
-            if !file_path.is_file() {
-                continue;
-            }
+        let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = emit_app.emit(
+                "v2-scan-progress",
+                ScanProgress {
+                    scan_id: emit_scan_id.clone(),
+                    count,
+                    last_file: "Scanning...".to_string(),
+                    status: "processing".to_string(),
+                },
+            );
 
-            let ext = match file_path.extension().and_then(|x| x.to_str()) {
-                Some(value) => value,
-                None => continue,
-            };
+            for entry in WalkDir::new(&normalized_root_path)
+                .into_iter()
+                .filter_map(Result::ok)
+            {
+                if cancel.load(Ordering::SeqCst) {
+                    cancelled = true;
+                    let _ = emit_app.emit(
+                        "v2-scan-progress",
+                        ScanProgress {
+                            scan_id: emit_scan_id.clone(),
+                            count,
+                            last_file: String::new(),
+                            status: "cancelled".to_string(),
+                        },
+                    );
+                    return;
+                }
 
-            let media_type = match classify_media_type(ext) {
-                Some(value) => value,
-                None => continue,
-            };
+                let file_path = entry.path();
+                if !file_path.is_file() {
+                    continue;
+                }
 
-            let filename = file_path
-                .file_name()
-                .and_then(|x| x.to_str())
-                .unwrap_or_default()
-                .to_string();
-            let original_path = file_path.to_string_lossy().to_string();
-            let file_size = entry.metadata().map(|m| m.len() as i64).unwrap_or(0);
-            let mtime_ms = entry
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|ts| ts.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
+                let filename = file_path
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                count += 1;
 
-            if let Ok(conn) = db.lock() {
-                let _ = conn.execute(
-                    "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                     ON CONFLICT(original_path) DO UPDATE SET
-                         filename = excluded.filename,
-                         extension = excluded.extension,
-                         root_path = excluded.root_path,
-                         type = excluded.type,
-                         file_size = excluded.file_size,
-                         mtime_ms = excluded.mtime_ms,
-                         date_modified = CURRENT_TIMESTAMP",
-                    params![
-                        filename.clone(),
-                        ext.to_lowercase(),
-                        original_path.clone(),
-                        root_path_for_db.clone(),
-                        media_type,
-                        file_size,
-                        mtime_ms
-                    ],
-                );
+                if count <= 10 || count % 25 == 0 {
+                    let _ = emit_app.emit(
+                        "v2-scan-progress",
+                        ScanProgress {
+                            scan_id: emit_scan_id.clone(),
+                            count,
+                            last_file: filename.clone(),
+                            status: "processing".to_string(),
+                        },
+                    );
+                }
 
-                if media_type == "audio" || media_type == "video" {
-                    let asset_id: Result<i64, _> = conn.query_row(
-                        "SELECT id FROM assets WHERE original_path = ?1",
-                        params![original_path],
-                        |row| row.get(0),
+                let ext = match file_path.extension().and_then(|x| x.to_str()) {
+                    Some(value) => value,
+                    None => continue,
+                };
+
+                let media_type = match classify_media_type(ext) {
+                    Some(value) => value,
+                    None => continue,
+                };
+
+                let original_path = file_path.to_string_lossy().to_string();
+                let file_size = entry.metadata().map(|m| m.len() as i64).unwrap_or(0);
+                let mtime_ms = entry
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|ts| ts.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0);
+
+                let mut queued_asset_id: Option<i64> = None;
+
+                if let Ok(conn) = db.lock() {
+                    let _ = conn.execute(
+                        "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                         ON CONFLICT(original_path) DO UPDATE SET
+                             filename = excluded.filename,
+                             extension = excluded.extension,
+                             root_path = excluded.root_path,
+                             type = excluded.type,
+                             file_size = excluded.file_size,
+                             mtime_ms = excluded.mtime_ms,
+                             date_modified = CURRENT_TIMESTAMP",
+                        params![
+                            filename.clone(),
+                            ext.to_lowercase(),
+                            original_path.clone(),
+                            root_path_for_db.clone(),
+                            media_type,
+                            file_size,
+                            mtime_ms
+                        ],
                     );
 
-                    if let Ok(asset_id) = asset_id {
-                        if media_type == "audio" {
-                            let payload = serde_json::json!({ "assetId": asset_id }).to_string();
-                            let queued: i64 = conn
-                                .query_row(
-                                    "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_waveform' AND payload = ?1 AND status IN ('queued', 'running')",
-                                    params![payload.clone()],
-                                    |row| row.get(0),
-                                )
-                                .unwrap_or(0);
+                    if media_type == "audio" || media_type == "video" {
+                        let asset_id: Result<i64, _> = conn.query_row(
+                            "SELECT id FROM assets WHERE original_path = ?1",
+                            params![original_path],
+                            |row| row.get(0),
+                        );
 
-                            if queued == 0 {
-                                let _ = conn.execute(
-                                    "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_waveform', ?1, 'queued', 1)",
-                                    params![payload],
-                                );
-                            }
-                        }
-
-                        if media_type == "video" {
-                            let payload = serde_json::json!({ "assetId": asset_id }).to_string();
-                            let queued: i64 = conn
-                                .query_row(
-                                    "SELECT COUNT(*) FROM jobs WHERE job_type = 'generate_video_thumbnail' AND payload = ?1 AND status IN ('queued', 'running')",
-                                    params![payload.clone()],
-                                    |row| row.get(0),
-                                )
-                                .unwrap_or(0);
-
-                            if queued == 0 {
-                                let _ = conn.execute(
-                                    "INSERT INTO jobs(job_type, payload, status, priority) VALUES ('generate_video_thumbnail', ?1, 'queued', 1)",
-                                    params![payload],
-                                );
-                            }
+                        if let Ok(asset_id) = asset_id {
+                            queued_asset_id = Some(asset_id);
                         }
                     }
                 }
-            }
 
-            count += 1;
-            if count % 30 == 0 {
+                if let Some(asset_id) = queued_asset_id {
+                    let _ = enqueue_waveform_job_if_needed(&state_for_jobs, asset_id, 1);
+                    let _ = enqueue_video_thumbnail_job_if_needed(&state_for_jobs, asset_id, 1);
+                }
+            }
+        }));
+
+        match scan_result {
+            Ok(()) if !cancelled => {
                 let _ = emit_app.emit(
                     "v2-scan-progress",
                     ScanProgress {
-                        scan_id: emit_scan_id.clone(),
+                        scan_id: emit_scan_id,
                         count,
-                        last_file: filename,
-                        status: "processing".to_string(),
+                        last_file: String::new(),
+                        status: "done".to_string(),
+                    },
+                );
+
+                if let Ok(conn) = db.lock() {
+                    let _ = conn.execute(
+                        "UPDATE scan_roots
+                         SET date_last_scanned = CURRENT_TIMESTAMP
+                         WHERE root_path = ?1",
+                        params![root_path_for_db],
+                    );
+                }
+            }
+            Ok(()) => {}
+            Err(_) => {
+                let _ = emit_app.emit(
+                    "v2-scan-progress",
+                    ScanProgress {
+                        scan_id: emit_scan_id,
+                        count,
+                        last_file: "Scan worker crashed".to_string(),
+                        status: "failed".to_string(),
                     },
                 );
             }
-        }
-
-        let _ = emit_app.emit(
-            "v2-scan-progress",
-            ScanProgress {
-                scan_id: emit_scan_id,
-                count,
-                last_file: String::new(),
-                status: "done".to_string(),
-            },
-        );
-
-        if let Ok(conn) = db.lock() {
-            let _ = conn.execute(
-                "UPDATE scan_roots
-                 SET date_last_scanned = CURRENT_TIMESTAMP
-                 WHERE root_path = ?1",
-                params![root_path_for_db],
-            );
         }
     });
 
@@ -759,11 +794,15 @@ pub async fn v2_dependencies_update(state: State<'_, AppState>) -> Result<String
     Ok(format!("Queued dependency update job {}", id))
 }
 
-pub(crate) fn process_generate_waveform_job(
+pub(crate) fn process_generate_waveform_job<F>(
     app: &AppHandle,
     state: &AppState,
     payload: &str,
-) -> Result<(), String> {
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(u8, &str),
+{
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct WaveformPayload {
@@ -771,6 +810,8 @@ pub(crate) fn process_generate_waveform_job(
     }
 
     let parsed: WaveformPayload = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+
+    on_progress(12, "Preparing waveform source");
 
     let (original_path, asset_type, mtime_ms) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -792,9 +833,11 @@ pub(crate) fn process_generate_waveform_job(
         return Ok(());
     }
 
+    on_progress(48, "Generating waveform");
     let waveform = waveform::generate_waveform(&original_path, WAVEFORM_BARS)?;
     let waveform_json = serde_json::to_string(&waveform).map_err(|e| e.to_string())?;
 
+    on_progress(86, "Saving waveform preview");
     {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
@@ -816,14 +859,20 @@ pub(crate) fn process_generate_waveform_job(
         serde_json::json!({ "assetId": parsed.asset_id }),
     );
 
+    on_progress(97, "Waveform ready");
+
     Ok(())
 }
 
-pub(crate) fn process_generate_video_thumbnail_job(
+pub(crate) fn process_generate_video_thumbnail_job<F>(
     app: &AppHandle,
     state: &AppState,
     payload: &str,
-) -> Result<(), String> {
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(u8, &str),
+{
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct ThumbnailPayload {
@@ -831,6 +880,8 @@ pub(crate) fn process_generate_video_thumbnail_job(
     }
 
     let parsed: ThumbnailPayload = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+
+    on_progress(10, "Preparing thumbnail source");
 
     let (original_path, asset_type, mtime_ms) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -852,11 +903,13 @@ pub(crate) fn process_generate_video_thumbnail_job(
         return Ok(());
     }
 
+    on_progress(32, "Resolving ffmpeg");
     let thumb_dir = get_thumbnail_dir(app)?;
     let thumb_path = thumb_dir.join(format!("{}_thumb.jpg", parsed.asset_id));
     let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
     let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
+    on_progress(58, "Rendering video thumbnail");
     let ffmpeg_output = Command::new(&ffmpeg_bin)
         .args([
             "-y",
@@ -878,6 +931,7 @@ pub(crate) fn process_generate_video_thumbnail_job(
         return Err(format!("ffmpeg thumbnail failed: {}", stderr));
     }
 
+    on_progress(88, "Saving thumbnail preview");
     {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
@@ -897,6 +951,8 @@ pub(crate) fn process_generate_video_thumbnail_job(
         "v2-thumbnail-ready",
         serde_json::json!({ "assetId": parsed.asset_id }),
     );
+
+    on_progress(97, "Thumbnail ready");
 
     Ok(())
 }
