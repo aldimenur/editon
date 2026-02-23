@@ -464,6 +464,34 @@ table {
   flex-wrap: wrap;
 }
 
+.gallery-zoom-control {
+  min-width: 170px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gallery-zoom-label,
+.gallery-zoom-value {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gallery-zoom-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gallery-zoom-slider {
+  flex: 1;
+  min-width: 70px;
+}
+
 .chip {
   border: 1px solid var(--line);
   border-radius: 5px;
@@ -472,6 +500,13 @@ table {
   padding: 2px 6px;
   font-size: 0.64rem;
   cursor: pointer;
+}
+
+.chip-icon {
+  min-width: 24px;
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
 }
 
 .chip.is-active {
@@ -487,7 +522,8 @@ table {
 }
 
 .gallery-grid {
-  column-count: 6;
+  column-count: auto;
+  column-width: 180px;
   column-gap: 4px;
 }
 
@@ -650,12 +686,6 @@ table {
 .gallery-actions .button {
   backdrop-filter: blur(6px);
   background: color-mix(in srgb, var(--panel) 72%, transparent);
-}
-
-@media (min-width: 1600px) {
-  .gallery-grid {
-    column-count: 8;
-  }
 }
 
 .gallery-preview-inline,
@@ -901,20 +931,12 @@ table {
 }
 
 @media (max-width: 1200px) {
-  .gallery-grid {
-    column-count: 5;
-  }
-
   .explorer-workspace {
     grid-template-columns: 190px minmax(0, 1fr);
   }
 }
 
 @media (max-width: 960px) {
-  .gallery-grid {
-    column-count: 4;
-  }
-
   .explorer-workspace {
     grid-template-columns: 160px minmax(0, 1fr);
   }
@@ -950,17 +972,9 @@ table {
   .status {
     font-size: 0.58rem;
   }
-
-  .gallery-grid {
-    column-count: 3;
-  }
 }
 
 @media (max-width: 400px), (max-height: 400px) {
-  .gallery-grid {
-    column-count: 2;
-  }
-
   .explorer-workspace {
     grid-template-columns: 120px minmax(0, 1fr);
   }

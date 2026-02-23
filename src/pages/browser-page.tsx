@@ -31,9 +31,20 @@ import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Progress } from "@/shared/ui/progress";
+import { Slider } from "@/shared/ui/slider";
 import { StatusText } from "@/shared/ui/status-text";
 
 type AssetKind = "all" | "audio" | "video" | "image";
+
+const ASSET_KIND_META: Record<
+  AssetKind,
+  { label: string; icon: typeof Compass }
+> = {
+  all: { label: "All assets", icon: Compass },
+  audio: { label: "Audio assets", icon: Music2 },
+  video: { label: "Video assets", icon: Video },
+  image: { label: "Image assets", icon: ImageIcon },
+};
 
 function classifyAsset(typeName: string): Exclude<AssetKind, "all"> {
   const lowered = typeName.toLowerCase();
@@ -202,6 +213,7 @@ export function BrowserPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
+  const [galleryZoom, setGalleryZoom] = useState(100);
   const [selectedRootPath, setSelectedRootPath] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
   const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
@@ -471,6 +483,7 @@ export function BrowserPage() {
     quicklookAssetId === null
       ? null
       : (visibleAssets.find((asset) => asset.id === quicklookAssetId) ?? null);
+  const galleryColumnWidth = Math.round(180 * (galleryZoom / 100));
 
   return (
     <section className="explorer-shell">
@@ -542,19 +555,42 @@ export function BrowserPage() {
               aria-label="Asset type filter"
             >
               {(["all", "audio", "video", "image"] as AssetKind[]).map(
-                (kind) => (
-                  <Button
-                    key={kind}
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className={`chip ${typeFilter === kind ? "is-active" : ""}`}
-                    onClick={() => setTypeFilter(kind)}
-                  >
-                    {kind}
-                  </Button>
-                ),
+                (kind) => {
+                  const kindMeta = ASSET_KIND_META[kind];
+                  const KindIcon = kindMeta.icon;
+                  return (
+                    <Button
+                      key={kind}
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className={`chip chip-icon ${typeFilter === kind ? "is-active" : ""}`}
+                      onClick={() => setTypeFilter(kind)}
+                      title={kindMeta.label}
+                      aria-label={kindMeta.label}
+                    >
+                      <KindIcon size={13} aria-hidden="true" />
+                    </Button>
+                  );
+                },
               )}
+            </div>
+            <div className="gallery-zoom-control">
+              <Search
+                size={12}
+                aria-hidden="true"
+                className="gallery-zoom-icon"
+              />
+              <Slider
+                value={[galleryZoom]}
+                min={60}
+                max={180}
+                step={5}
+                onValueChange={(value) => {
+                  setGalleryZoom(value[0] ?? 100);
+                }}
+                className="gallery-zoom-slider"
+              />
             </div>
           </section>
 
@@ -580,7 +616,10 @@ export function BrowserPage() {
           {error ? <StatusText text={error} isError /> : null}
 
           <section className="gallery-scroll">
-            <div className="gallery-grid">
+            <div
+              className="gallery-grid"
+              style={{ columnWidth: `${galleryColumnWidth}px` }}
+            >
               {visibleAssets.map((asset) => {
                 const kind = classifyAsset(asset.typeName);
                 const thumbSrc = toFileSrc(asset.thumbnailPath);
