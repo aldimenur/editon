@@ -1,17 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Compass,
-  Eye,
   Folder,
   FolderPlus,
   Image as ImageIcon,
   Music2,
-  MoreHorizontal,
-  Play,
   RefreshCw,
-  Scissors,
   Search,
   Trash2,
   Video,
@@ -33,15 +28,9 @@ import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Progress } from "@/shared/ui/progress";
-import { Slider } from "@/shared/ui/slider";
 import { StatusText } from "@/shared/ui/status-text";
 
 type AssetKind = "all" | "audio" | "video" | "image";
-
-type TrimState = {
-  inPoint: number;
-  outPoint: number;
-};
 
 function classifyAsset(typeName: string): Exclude<AssetKind, "all"> {
   const lowered = typeName.toLowerCase();
@@ -231,12 +220,11 @@ export function BrowserPage() {
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
   const [selectedRootPath, setSelectedRootPath] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
-  const [trimAssetId, setTrimAssetId] = useState<number | null>(null);
   const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
   const [previewJobEvent, setPreviewJobEvent] = useState<JobEvent | null>(null);
-  const [trimByAssetId, setTrimByAssetId] = useState<Record<number, TrimState>>(
-    {},
-  );
+  const [assetAspectById, setAssetAspectById] = useState<
+    Record<number, number>
+  >({});
   const liveRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -416,6 +404,58 @@ export function BrowserPage() {
     });
   }, [items, query, selectedRootPath, typeFilter]);
 
+  useEffect(() => {
+    let disposed = false;
+
+    visibleAssets.forEach((asset) => {
+      const kind = classifyAsset(asset.typeName);
+      if (kind === "audio") {
+        setAssetAspectById((current) => {
+          if (current[asset.id]) {
+            return current;
+          }
+          return { ...current, [asset.id]: 2.8 };
+        });
+        return;
+      }
+
+      const thumbSrc = toFileSrc(asset.thumbnailPath);
+      const sourceSrc = toFileSrc(asset.originalPath);
+      const imageSource = thumbSrc ?? (kind === "image" ? sourceSrc : null);
+
+      if (!imageSource) {
+        return;
+      }
+
+      const probe = new Image();
+      probe.decoding = "async";
+      probe.onload = () => {
+        if (disposed) {
+          return;
+        }
+
+        const width = probe.naturalWidth;
+        const height = probe.naturalHeight;
+        if (!width || !height) {
+          return;
+        }
+
+        const ratio = Math.max(0.45, Math.min(3.4, width / height));
+        setAssetAspectById((current) => {
+          if (current[asset.id] === ratio) {
+            return current;
+          }
+          return { ...current, [asset.id]: ratio };
+        });
+      };
+      probe.src = imageSource;
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [visibleAssets]);
+
   const importRoot = async () => {
     const selected = await open({
       directory: true,
@@ -426,22 +466,6 @@ export function BrowserPage() {
       setRootPath(selected);
       void beginScan();
     }
-  };
-
-  const updateTrim = (assetId: number, partial: Partial<TrimState>) => {
-    setTrimByAssetId((current) => {
-      const base = current[assetId] ?? { inPoint: 0, outPoint: 100 };
-      const merged = { ...base, ...partial };
-      const boundedIn = Math.max(0, Math.min(99, merged.inPoint));
-      const boundedOut = Math.min(100, Math.max(1, merged.outPoint));
-      return {
-        ...current,
-        [assetId]: {
-          inPoint: Math.min(boundedIn, boundedOut - 1),
-          outPoint: Math.max(boundedOut, boundedIn + 1),
-        },
-      };
-    });
   };
 
   const quicklookAsset =
@@ -563,15 +587,40 @@ export function BrowserPage() {
                 const thumbSrc = toFileSrc(asset.thumbnailPath);
                 const sourceSrc = toFileSrc(asset.originalPath);
                 const isPreviewOpen = previewAssetId === asset.id;
-                const isTrimOpen = trimAssetId === asset.id;
-                const trimState = trimByAssetId[asset.id] ?? {
-                  inPoint: 0,
-                  outPoint: 100,
-                };
 
                 return (
-                  <article key={asset.id} className="gallery-card">
-                    <div className="gallery-card-media">
+                  <article
+                    key={asset.id}
+                    className="gallery-card"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() =>
+                      setPreviewAssetId((current) =>
+                        current === asset.id ? null : asset.id,
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setPreviewAssetId((current) =>
+                          current === asset.id ? null : asset.id,
+                        );
+                      }
+                    }}
+                  >
+                    <div
+                      className="gallery-card-media"
+                      style={{
+                        aspectRatio: String(
+                          assetAspectById[asset.id] ??
+                            (kind === "audio"
+                              ? 2.8
+                              : kind === "video"
+                                ? 16 / 9
+                                : 4 / 3),
+                        ),
+                      }}
+                    >
                       {kind === "audio" ? (
                         <Waveform data={asset.waveformData} />
                       ) : thumbSrc ? (
@@ -590,169 +639,39 @@ export function BrowserPage() {
                           <span>Thumbnail pending</span>
                         </div>
                       )}
-                    </div>
 
-                    <div className="gallery-card-body">
-                      <div className="gallery-title-row">
-                        <h3 title={asset.filename}>{asset.filename}</h3>
-                        <span className="gallery-kind">{kind}</span>
-                      </div>
-                      <p className="gallery-path" title={asset.originalPath}>
-                        {asset.originalPath}
-                      </p>
-                      <p className="gallery-meta">
-                        {formatFileSize(asset.fileSize)} ·{" "}
-                        {formatDate(asset.dateModified)}
-                      </p>
-
-                      {asset.tags.length > 0 ? (
-                        <div className="gallery-tags">
-                          {asset.tags.slice(0, 4).map((tag) => (
-                            <span key={tag}>{tag}</span>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      <div className="gallery-actions">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setPreviewAssetId((current) =>
-                              current === asset.id ? null : asset.id,
-                            )
-                          }
+                      <div className="gallery-card-overlay">
+                        <h3
+                          className="gallery-overlay-title"
+                          title={asset.filename}
                         >
-                          <Eye size={14} aria-hidden="true" />
-                          Preview
-                        </Button>
-                        {(kind === "audio" || kind === "video") && sourceSrc ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPreviewAssetId(asset.id)}
-                          >
-                            <Play size={14} aria-hidden="true" />
-                            Play
-                          </Button>
-                        ) : null}
-                        {(kind === "audio" || kind === "video") && sourceSrc ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setTrimAssetId((current) =>
-                                current === asset.id ? null : asset.id,
-                              )
-                            }
-                          >
-                            <Scissors size={14} aria-hidden="true" />
-                            Trim
-                          </Button>
-                        ) : null}
-                        <DropdownMenu.Root>
-                          <DropdownMenu.Trigger asChild>
-                            <Button type="button" variant="ghost" size="sm">
-                              <MoreHorizontal size={14} aria-hidden="true" />
-                            </Button>
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Portal>
-                            <DropdownMenu.Content
-                              className="dropdown-content"
-                              sideOffset={6}
-                            >
-                              <DropdownMenu.Item
-                                className="dropdown-item"
-                                onSelect={() => setQuicklookAssetId(asset.id)}
-                              >
-                                Quicklook
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Item
-                                className="dropdown-item"
-                                onSelect={() => setPreviewAssetId(asset.id)}
-                              >
-                                Open Preview
-                              </DropdownMenu.Item>
-                            </DropdownMenu.Content>
-                          </DropdownMenu.Portal>
-                        </DropdownMenu.Root>
+                          {asset.filename}
+                        </h3>
                       </div>
-
-                      {isPreviewOpen && sourceSrc ? (
-                        <div className="gallery-preview-inline">
-                          {kind === "audio" ? (
-                            <audio
-                              controls
-                              preload="metadata"
-                              src={sourceSrc}
-                            />
-                          ) : null}
-                          {kind === "video" ? (
-                            <video
-                              controls
-                              preload="metadata"
-                              src={sourceSrc}
-                              poster={thumbSrc ?? undefined}
-                            />
-                          ) : null}
-                          {kind === "image" ? (
-                            <img
-                              src={sourceSrc}
-                              alt={asset.filename}
-                              loading="lazy"
-                            />
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      {isTrimOpen ? (
-                        <div className="gallery-trim-inline">
-                          <div className="gallery-trim-head">
-                            <strong>
-                              In {trimState.inPoint}% · Out {trimState.outPoint}
-                              %
-                            </strong>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setTrimAssetId(null)}
-                            >
-                              <X size={14} aria-hidden="true" />
-                            </Button>
-                          </div>
-                          <label>
-                            In-point
-                            <Slider
-                              value={[trimState.inPoint]}
-                              min={0}
-                              max={99}
-                              onValueChange={(value) =>
-                                updateTrim(asset.id, {
-                                  inPoint: value[0] ?? trimState.inPoint,
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            Out-point
-                            <Slider
-                              value={[trimState.outPoint]}
-                              min={1}
-                              max={100}
-                              onValueChange={(value) =>
-                                updateTrim(asset.id, {
-                                  outPoint: value[0] ?? trimState.outPoint,
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
-                      ) : null}
                     </div>
+
+                    {isPreviewOpen && sourceSrc ? (
+                      <div className="gallery-preview-inline">
+                        {kind === "audio" ? (
+                          <audio controls preload="metadata" src={sourceSrc} />
+                        ) : null}
+                        {kind === "video" ? (
+                          <video
+                            controls
+                            preload="metadata"
+                            src={sourceSrc}
+                            poster={thumbSrc ?? undefined}
+                          />
+                        ) : null}
+                        {kind === "image" ? (
+                          <img
+                            src={sourceSrc}
+                            alt={asset.filename}
+                            loading="lazy"
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}
@@ -791,8 +710,6 @@ export function BrowserPage() {
           </div>
         ) : null}
       </Dialog>
-
-
     </section>
   );
 }
