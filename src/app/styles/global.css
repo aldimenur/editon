@@ -544,11 +544,30 @@ table {
   position: relative;
 }
 
+.gallery-card.is-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .gallery-card-media {
   min-height: 48px;
   background: color-mix(in srgb, var(--panel-muted) 78%, var(--panel));
   overflow: hidden;
   position: relative;
+}
+
+.gallery-inline-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-inline-audio {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .gallery-card-media img,
@@ -628,6 +647,11 @@ table {
   pointer-events: auto;
 }
 
+.gallery-card.is-active .gallery-card-overlay {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .gallery-card-meta {
   display: grid;
   gap: 4px;
@@ -697,6 +721,101 @@ table {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.gallery-inline-playfab {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  color: color-mix(in srgb, var(--text) 92%, white);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 18px color-mix(in srgb, black 28%, transparent);
+}
+
+.gallery-inline-playfab.is-active {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
+  color: var(--accent);
+}
+
+.gallery-inline-trim-bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 5;
+  height: 5px;
+  display: grid;
+  overflow: visible;
+}
+
+.gallery-inline-trim-bar .slider-root.gallery-inline-trim-slider {
+  grid-area: 1 / 1;
+  height: 5px;
+  align-items: flex-end;
+}
+
+.gallery-inline-trim-slider .slider-track {
+  height: 5px;
+  border-radius: 0;
+  background: color-mix(in srgb, black 46%, var(--line));
+}
+
+.gallery-inline-trim-slider .slider-range {
+  background: color-mix(in srgb, var(--accent) 88%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent) inset;
+}
+
+.gallery-inline-trim-slider .slider-thumb {
+  width: 8px;
+  height: 16px;
+  border-radius: 1px;
+  border: 1px solid color-mix(in srgb, var(--accent) 78%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, white);
+}
+
+.gallery-inline-playhead-track {
+  grid-area: 1 / 1;
+  position: relative;
+  height: 5px;
+  pointer-events: none;
+}
+
+.gallery-inline-playhead {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 18px;
+  border-radius: 1px;
+  border: none;
+  background: color-mix(in srgb, white 88%, var(--accent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, black 35%, transparent);
+  cursor: ew-resize;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.gallery-inline-playhead::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -16px;
+  width: 1px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, white 84%, var(--accent));
+}
+
+.gallery-inline-playhead.is-active {
+  background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
 .gallery-trim-inline {

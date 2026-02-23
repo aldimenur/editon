@@ -31,7 +31,13 @@ export function Slider({
       <SliderPrimitive.Track className="slider-track">
         <SliderPrimitive.Range className="slider-range" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="slider-thumb" aria-label="Value" />
+      {value.map((_, index) => (
+        <SliderPrimitive.Thumb
+          key={index}
+          className="slider-thumb"
+          aria-label={`Value ${index + 1}`}
+        />
+      ))}
     </SliderPrimitive.Root>
   );
 }
