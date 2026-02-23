@@ -758,6 +758,15 @@ export function BrowserPage() {
               })}
             </div>
           </section>
+          <AssetPagination
+            page={page}
+            totalPages={totalPages}
+            loading={loading}
+            onFirst={() => void refresh(1)}
+            onPrev={() => void refresh(page - 1)}
+            onNext={() => void refresh(page + 1)}
+            onLast={() => void refresh(totalPages)}
+          />
         </section>
       </div>
 
@@ -783,15 +792,7 @@ export function BrowserPage() {
         ) : null}
       </Dialog>
 
-      <AssetPagination
-        page={page}
-        totalPages={totalPages}
-        loading={loading}
-        onFirst={() => void refresh(1)}
-        onPrev={() => void refresh(page - 1)}
-        onNext={() => void refresh(page + 1)}
-        onLast={() => void refresh(totalPages)}
-      />
+
     </section>
   );
 }

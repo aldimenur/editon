@@ -327,9 +327,7 @@ export function AppRouter() {
       )}
 
       <main className="app-shell">
-        <section className="content-frame">
-          <BrowserPage />
-        </section>
+        <BrowserPage />
       </main>
       {isConsoleOpen ? (
         <section

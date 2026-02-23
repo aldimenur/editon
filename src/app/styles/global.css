@@ -147,10 +147,12 @@ table {
   height: 100vh;
 }
 
-.content-frame {
-  height: 100%;
-  padding: 8px;
-  overflow: hidden;
+.is-zen-mode .explorer-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.is-zen-mode .explorer-sidebar {
+  display: none;
 }
 
 .button {
@@ -217,14 +219,7 @@ table {
   height: 100%;
   display: grid;
   grid-template-rows: 1fr auto;
-  border: 1px solid var(--line);
-  border-radius: 10px;
   overflow: hidden;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--panel-muted) 88%, var(--panel)) 0%,
-    var(--panel) 65%
-  );
 }
 
 .explorer-toolbar {
