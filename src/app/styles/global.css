@@ -516,15 +516,21 @@ table {
 
 .gallery-scroll {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   padding-right: 1px;
 }
 
-.gallery-grid {
-  column-count: auto;
-  column-width: 180px;
-  column-gap: 4px;
+.gallery-virtualizer {
+  position: relative;
+  margin: 0 auto;
+}
+
+.gallery-virtual-item {
+  position: absolute;
+  top: 0;
+  padding-bottom: 4px;
 }
 
 .gallery-card {
@@ -532,11 +538,9 @@ table {
   border-radius: 5px;
   background: var(--panel);
   overflow: hidden;
-  display: inline-grid;
+  display: grid;
   width: 100%;
-  margin: 0 0 4px;
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
+  margin: 0;
   position: relative;
 }
 

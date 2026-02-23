@@ -44,6 +44,7 @@ type AssetsStore = {
   setError: (value: string) => void;
   clearError: () => void;
   refresh: (targetPage?: number, filters?: QueryAssetsInput) => Promise<void>;
+  loadMore: (filters?: QueryAssetsInput) => Promise<void>;
   refreshScanRoots: () => Promise<void>;
   beginScan: () => Promise<void>;
   syncRoot: (rootPath: string) => Promise<void>;
@@ -108,6 +109,45 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
       set({
         error:
           reason instanceof Error ? reason.message : "Failed to load assets",
+      });
+    } finally {
+      set({ loading: false });
+    }
+  },
+  loadMore: async (filters) => {
+    const { loading, page, totalPages } = get();
+    if (loading || page >= totalPages) {
+      return;
+    }
+
+    const nextPage = page + 1;
+    set({ loading: true });
+    try {
+      const result = await queryAssets({
+        page: nextPage,
+        limit: appConfig.pageSize,
+        search: filters?.search,
+        assetType: filters?.assetType,
+        rootPath: filters?.rootPath,
+        tags: filters?.tags,
+      });
+      set((state) => {
+        const seenIds = new Set(state.items.map((item) => item.id));
+        const appended = result.data.filter((item) => !seenIds.has(item.id));
+        return {
+          items: [...state.items, ...appended],
+          page: result.currentPage,
+          totalPages: result.totalPages,
+          totalItems: result.totalItems,
+          error: null,
+        };
+      });
+    } catch (reason) {
+      set({
+        error:
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load more assets",
       });
     } finally {
       set({ loading: false });

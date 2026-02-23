@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Compass,
   Folder,
@@ -14,11 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  AssetPagination,
-  onScanProgress,
-  useAssetsStore,
-} from "@/features/assets";
+import { onScanProgress, useAssetsStore } from "@/features/assets";
 import type {
   QueryAssetsInput,
   ScanRoot,
@@ -203,6 +200,7 @@ export function BrowserPage() {
     setScanProgress,
     setError,
     refresh,
+    loadMore,
     refreshScanRoots,
     beginScan,
     syncRoot,
@@ -221,12 +219,17 @@ export function BrowserPage() {
   const [assetAspectById, setAssetAspectById] = useState<
     Record<number, number>
   >({});
+  const assetAspectByIdRef = useRef<Record<number, number>>({});
+  const probingAssetIdsRef = useRef<Set<number>>(new Set());
+  const aspectFlushFrameRef = useRef<number | null>(null);
   const liveRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const previewJobClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const galleryScrollRef = useRef<HTMLDivElement | null>(null);
+  const [galleryViewportWidth, setGalleryViewportWidth] = useState(0);
 
   const queryFilters = useMemo<QueryAssetsInput>(
     () => ({
@@ -318,7 +321,7 @@ export function BrowserPage() {
 
       liveRefreshTimerRef.current = setTimeout(() => {
         liveRefreshTimerRef.current = null;
-        void refresh(page, queryFilters);
+        void refresh(1, queryFilters);
       }, 220);
     };
 
@@ -381,7 +384,7 @@ export function BrowserPage() {
         previewJobClearTimerRef.current = null;
       }
     };
-  }, [page, queryFilters, refresh, setError]);
+  }, [queryFilters, refresh, setError]);
 
   useEffect(() => {
     if (!selectedRootPath) {
@@ -416,17 +419,67 @@ export function BrowserPage() {
   const visibleAssets = useMemo(() => items, [items]);
 
   useEffect(() => {
-    let disposed = false;
+    assetAspectByIdRef.current = assetAspectById;
+  }, [assetAspectById]);
 
-    visibleAssets.forEach((asset) => {
-      const kind = classifyAsset(asset.typeName);
-      if (kind === "audio") {
+  useEffect(() => {
+    let disposed = false;
+    const pendingAspectUpdates: Record<number, number> = {};
+
+    const flushAspectUpdates = () => {
+      if (aspectFlushFrameRef.current !== null) {
+        return;
+      }
+
+      aspectFlushFrameRef.current = window.requestAnimationFrame(() => {
+        aspectFlushFrameRef.current = null;
+        if (disposed) {
+          return;
+        }
+
+        const entries = Object.entries(pendingAspectUpdates);
+        if (entries.length === 0) {
+          return;
+        }
+
         setAssetAspectById((current) => {
-          if (current[asset.id]) {
+          let changed = false;
+          const next = { ...current };
+          for (const [idText, ratio] of entries) {
+            const id = Number(idText);
+            if (!Number.isFinite(id) || next[id] === ratio) {
+              continue;
+            }
+            next[id] = ratio;
+            changed = true;
+          }
+
+          for (const key of Object.keys(pendingAspectUpdates)) {
+            delete pendingAspectUpdates[Number(key)];
+          }
+
+          if (!changed) {
             return current;
           }
-          return { ...current, [asset.id]: 2.8 };
+
+          assetAspectByIdRef.current = next;
+          return next;
         });
+      });
+    };
+
+    visibleAssets.forEach((asset) => {
+      const knownAspects = assetAspectByIdRef.current;
+      const kind = classifyAsset(asset.typeName);
+      if (kind === "audio") {
+        if (!knownAspects[asset.id]) {
+          pendingAspectUpdates[asset.id] = 2.8;
+          flushAspectUpdates();
+        }
+        return;
+      }
+
+      if (knownAspects[asset.id] || probingAssetIdsRef.current.has(asset.id)) {
         return;
       }
 
@@ -438,9 +491,14 @@ export function BrowserPage() {
         return;
       }
 
+      probingAssetIdsRef.current.add(asset.id);
       const probe = new Image();
       probe.decoding = "async";
+      probe.onerror = () => {
+        probingAssetIdsRef.current.delete(asset.id);
+      };
       probe.onload = () => {
+        probingAssetIdsRef.current.delete(asset.id);
         if (disposed) {
           return;
         }
@@ -452,18 +510,18 @@ export function BrowserPage() {
         }
 
         const ratio = Math.max(0.45, Math.min(3.4, width / height));
-        setAssetAspectById((current) => {
-          if (current[asset.id] === ratio) {
-            return current;
-          }
-          return { ...current, [asset.id]: ratio };
-        });
+        pendingAspectUpdates[asset.id] = ratio;
+        flushAspectUpdates();
       };
       probe.src = imageSource;
     });
 
     return () => {
       disposed = true;
+      if (aspectFlushFrameRef.current !== null) {
+        window.cancelAnimationFrame(aspectFlushFrameRef.current);
+        aspectFlushFrameRef.current = null;
+      }
     };
   }, [visibleAssets]);
 
@@ -484,6 +542,106 @@ export function BrowserPage() {
       ? null
       : (visibleAssets.find((asset) => asset.id === quicklookAssetId) ?? null);
   const galleryColumnWidth = Math.round(180 * (galleryZoom / 100));
+  const galleryGap = 4;
+  const galleryCardVerticalGap = 4;
+  const galleryColumnCount = Math.max(
+    1,
+    Math.floor(
+      (galleryViewportWidth + galleryGap) / (galleryColumnWidth + galleryGap),
+    ),
+  );
+  const galleryCardWidth =
+    galleryViewportWidth > 0
+      ? Math.max(
+          120,
+          Math.floor(
+            (galleryViewportWidth - (galleryColumnCount - 1) * galleryGap) /
+              galleryColumnCount,
+          ),
+        )
+      : galleryColumnWidth;
+  const virtualOverscan = Math.max(6, galleryColumnCount * 2);
+  const loadAheadItems = Math.max(galleryColumnCount * 4, 12);
+
+  const estimateItemSize = (index: number) => {
+    const asset = visibleAssets[index];
+    if (!asset) {
+      return 240;
+    }
+
+    const kind = classifyAsset(asset.typeName);
+    const fallbackAspect =
+      kind === "audio" ? 2.8 : kind === "video" ? 16 / 9 : 4 / 3;
+    const aspect = assetAspectById[asset.id] ?? fallbackAspect;
+    const mediaHeight =
+      galleryCardWidth / Math.max(0.45, Math.min(3.4, aspect));
+    const previewHeight =
+      previewAssetId === asset.id
+        ? kind === "audio"
+          ? 48
+          : Math.round(galleryCardWidth * 0.62)
+        : 0;
+
+    return Math.round(
+      mediaHeight + previewHeight + 18 + galleryCardVerticalGap,
+    );
+  };
+
+  useEffect(() => {
+    const node = galleryScrollRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateViewportWidth = () => {
+      setGalleryViewportWidth(node.clientWidth);
+    };
+
+    updateViewportWidth();
+    const observer = new ResizeObserver(updateViewportWidth);
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [galleryColumnWidth]);
+
+  const virtualizer = useVirtualizer({
+    count: visibleAssets.length,
+    getScrollElement: () => galleryScrollRef.current,
+    estimateSize: estimateItemSize,
+    overscan: virtualOverscan,
+    lanes: galleryColumnCount,
+    getItemKey: (index) => visibleAssets[index]?.id ?? index,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+  const lastVirtualItemIndex =
+    virtualItems[virtualItems.length - 1]?.index ?? -1;
+
+  useEffect(() => {
+    if (
+      !isTauriRuntime() ||
+      loading ||
+      page >= totalPages ||
+      visibleAssets.length === 0
+    ) {
+      return;
+    }
+
+    const triggerIndex = Math.max(0, visibleAssets.length - loadAheadItems);
+    if (lastVirtualItemIndex >= triggerIndex) {
+      void loadMore(queryFilters);
+    }
+  }, [
+    lastVirtualItemIndex,
+    loadAheadItems,
+    loadMore,
+    loading,
+    page,
+    queryFilters,
+    totalPages,
+    visibleAssets.length,
+  ]);
 
   return (
     <section className="explorer-shell">
@@ -615,115 +773,133 @@ export function BrowserPage() {
           ) : null}
           {error ? <StatusText text={error} isError /> : null}
 
-          <section className="gallery-scroll">
+          <section className="gallery-scroll" ref={galleryScrollRef}>
             <div
-              className="gallery-grid"
-              style={{ columnWidth: `${galleryColumnWidth}px` }}
+              className="gallery-virtualizer"
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: `${galleryColumnCount * galleryCardWidth + (galleryColumnCount - 1) * galleryGap}px`,
+              }}
             >
-              {visibleAssets.map((asset) => {
+              {virtualItems.map((virtualItem) => {
+                const asset = visibleAssets[virtualItem.index];
+                if (!asset) {
+                  return null;
+                }
                 const kind = classifyAsset(asset.typeName);
                 const thumbSrc = toFileSrc(asset.thumbnailPath);
                 const sourceSrc = toFileSrc(asset.originalPath);
                 const isPreviewOpen = previewAssetId === asset.id;
+                const lane =
+                  typeof virtualItem.lane === "number"
+                    ? virtualItem.lane
+                    : virtualItem.index % galleryColumnCount;
+                const left = lane * (galleryCardWidth + galleryGap);
 
                 return (
-                  <article
+                  <div
                     key={asset.id}
-                    className="gallery-card"
-                    tabIndex={0}
-                    role="button"
-                    onClick={() =>
-                      setPreviewAssetId((current) =>
-                        current === asset.id ? null : asset.id,
-                      )
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setPreviewAssetId((current) =>
-                          current === asset.id ? null : asset.id,
-                        );
-                      }
+                    data-index={virtualItem.index}
+                    ref={virtualizer.measureElement}
+                    className="gallery-virtual-item"
+                    style={{
+                      width: `${galleryCardWidth}px`,
+                      transform: `translateY(${virtualItem.start}px)`,
+                      left: `${left}px`,
                     }}
                   >
-                    <div
-                      className="gallery-card-media"
-                      style={{
-                        aspectRatio: String(
-                          assetAspectById[asset.id] ??
-                            (kind === "audio"
-                              ? 2.8
-                              : kind === "video"
-                                ? 16 / 9
-                                : 4 / 3),
-                        ),
+                    <article
+                      className="gallery-card"
+                      tabIndex={0}
+                      role="button"
+                      onClick={() =>
+                        setPreviewAssetId((current) =>
+                          current === asset.id ? null : asset.id,
+                        )
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setPreviewAssetId((current) =>
+                            current === asset.id ? null : asset.id,
+                          );
+                        }
                       }}
                     >
-                      {kind === "audio" ? (
-                        <Waveform data={asset.waveformData} />
-                      ) : thumbSrc ? (
-                        <img
-                          src={thumbSrc}
-                          alt={asset.filename}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="explore-wave-empty">
-                          {kind === "video" ? (
-                            <Video size={20} aria-hidden="true" />
-                          ) : (
-                            <ImageIcon size={20} aria-hidden="true" />
-                          )}
-                          <span>Thumbnail pending</span>
-                        </div>
-                      )}
-
-                      <div className="gallery-card-overlay">
-                        <h3
-                          className="gallery-overlay-title"
-                          title={asset.filename}
-                        >
-                          {asset.filename}
-                        </h3>
-                      </div>
-                    </div>
-
-                    {isPreviewOpen && sourceSrc ? (
-                      <div className="gallery-preview-inline">
+                      <div
+                        className="gallery-card-media"
+                        style={{
+                          aspectRatio: String(
+                            assetAspectById[asset.id] ??
+                              (kind === "audio"
+                                ? 2.8
+                                : kind === "video"
+                                  ? 16 / 9
+                                  : 4 / 3),
+                          ),
+                        }}
+                      >
                         {kind === "audio" ? (
-                          <audio controls preload="metadata" src={sourceSrc} />
-                        ) : null}
-                        {kind === "video" ? (
-                          <video
-                            controls
-                            preload="metadata"
-                            src={sourceSrc}
-                            poster={thumbSrc ?? undefined}
-                          />
-                        ) : null}
-                        {kind === "image" ? (
+                          <Waveform data={asset.waveformData} />
+                        ) : thumbSrc ? (
                           <img
-                            src={sourceSrc}
+                            src={thumbSrc}
                             alt={asset.filename}
                             loading="lazy"
                           />
-                        ) : null}
+                        ) : (
+                          <div className="explore-wave-empty">
+                            {kind === "video" ? (
+                              <Video size={20} aria-hidden="true" />
+                            ) : (
+                              <ImageIcon size={20} aria-hidden="true" />
+                            )}
+                            <span>Thumbnail pending</span>
+                          </div>
+                        )}
+
+                        <div className="gallery-card-overlay">
+                          <h3
+                            className="gallery-overlay-title"
+                            title={asset.filename}
+                          >
+                            {asset.filename}
+                          </h3>
+                        </div>
                       </div>
-                    ) : null}
-                  </article>
+
+                      {isPreviewOpen && sourceSrc ? (
+                        <div className="gallery-preview-inline">
+                          {kind === "audio" ? (
+                            <audio
+                              controls
+                              preload="metadata"
+                              src={sourceSrc}
+                            />
+                          ) : null}
+                          {kind === "video" ? (
+                            <video
+                              controls
+                              preload="metadata"
+                              src={sourceSrc}
+                              poster={thumbSrc ?? undefined}
+                            />
+                          ) : null}
+                          {kind === "image" ? (
+                            <img
+                              src={sourceSrc}
+                              alt={asset.filename}
+                              loading="lazy"
+                            />
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  </div>
                 );
               })}
             </div>
           </section>
-          <AssetPagination
-            page={page}
-            totalPages={totalPages}
-            loading={loading}
-            onFirst={() => void refresh(1, queryFilters)}
-            onPrev={() => void refresh(page - 1, queryFilters)}
-            onNext={() => void refresh(page + 1, queryFilters)}
-            onLast={() => void refresh(totalPages, queryFilters)}
-          />
         </section>
       </div>
 
