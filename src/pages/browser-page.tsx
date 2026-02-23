@@ -19,7 +19,10 @@ import {
   onScanProgress,
   useAssetsStore,
 } from "@/features/assets";
-import type { ScanRoot } from "@/features/assets/api/assets-api";
+import type {
+  QueryAssetsInput,
+  ScanRoot,
+} from "@/features/assets/api/assets-api";
 import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
 import { formatDate } from "@/shared/lib/format/date";
 import { formatFileSize } from "@/shared/lib/format/file-size";
@@ -48,26 +51,6 @@ function toFileSrc(path: string | null): string | null {
     return null;
   }
   return isTauriRuntime() ? convertFileSrc(path) : path;
-}
-
-function fuzzyMatch(value: string, query: string): boolean {
-  const target = value.toLowerCase();
-  const needle = query.toLowerCase().trim();
-  if (!needle) {
-    return true;
-  }
-  if (target.includes(needle)) {
-    return true;
-  }
-  let cursor = 0;
-  for (const char of needle) {
-    cursor = target.indexOf(char, cursor);
-    if (cursor === -1) {
-      return false;
-    }
-    cursor += 1;
-  }
-  return true;
 }
 
 function formatRootLabel(rootPath: string): string {
@@ -217,6 +200,7 @@ export function BrowserPage() {
   } = useAssetsStore();
 
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
   const [selectedRootPath, setSelectedRootPath] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
@@ -232,12 +216,20 @@ export function BrowserPage() {
     null,
   );
 
+  const queryFilters = useMemo<QueryAssetsInput>(
+    () => ({
+      search: debouncedQuery,
+      assetType: typeFilter === "all" ? undefined : typeFilter,
+      rootPath: selectedRootPath ?? undefined,
+    }),
+    [debouncedQuery, selectedRootPath, typeFilter],
+  );
+
   useEffect(() => {
     if (!isTauriRuntime()) {
       return;
     }
 
-    void refresh(1);
     void refreshScanRoots();
 
     let unlisten: (() => void) | null = null;
@@ -246,7 +238,7 @@ export function BrowserPage() {
       const terminalStatuses = ["done", "cancelled", "failed"];
       if (terminalStatuses.includes(payload.status.toLowerCase())) {
         setScanProgress(payload);
-        void refresh(1);
+        void refresh(1, queryFilters);
         void refreshScanRoots();
         return;
       }
@@ -274,7 +266,7 @@ export function BrowserPage() {
         unlisten = null;
       }
     };
-  }, [refresh, refreshScanRoots, setError, setScanProgress]);
+  }, [queryFilters, refresh, refreshScanRoots, setError, setScanProgress]);
 
   useEffect(() => {
     if (!scanProgress || scanProgress.status.toLowerCase() !== "processing") {
@@ -286,14 +278,21 @@ export function BrowserPage() {
       setError(
         `Scan ${scanProgress.scanId} timed out waiting for progress updates. Please sync again.`,
       );
-      void refresh(1);
+      void refresh(1, queryFilters);
       void refreshScanRoots();
     }, 20_000);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [refresh, refreshScanRoots, scanProgress, setError, setScanProgress]);
+  }, [
+    queryFilters,
+    refresh,
+    refreshScanRoots,
+    scanProgress,
+    setError,
+    setScanProgress,
+  ]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -307,7 +306,7 @@ export function BrowserPage() {
 
       liveRefreshTimerRef.current = setTimeout(() => {
         liveRefreshTimerRef.current = null;
-        void refresh(page);
+        void refresh(page, queryFilters);
       }, 220);
     };
 
@@ -370,7 +369,7 @@ export function BrowserPage() {
         previewJobClearTimerRef.current = null;
       }
     };
-  }, [page, refresh, setError]);
+  }, [page, queryFilters, refresh, setError]);
 
   useEffect(() => {
     if (!selectedRootPath) {
@@ -385,24 +384,24 @@ export function BrowserPage() {
     }
   }, [scanRoots, selectedRootPath]);
 
-  const visibleAssets = useMemo(() => {
-    return items.filter((asset) => {
-      const kind = classifyAsset(asset.typeName);
-      if (typeFilter !== "all" && kind !== typeFilter) {
-        return false;
-      }
-      if (
-        selectedRootPath &&
-        !asset.originalPath
-          .toLowerCase()
-          .startsWith(selectedRootPath.toLowerCase())
-      ) {
-        return false;
-      }
-      const searchBlob = `${asset.filename} ${asset.originalPath} ${asset.tags.join(" ")}`;
-      return fuzzyMatch(searchBlob, query);
-    });
-  }, [items, query, selectedRootPath, typeFilter]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 220);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [query]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    void refresh(1, queryFilters);
+  }, [queryFilters, refresh]);
+
+  const visibleAssets = useMemo(() => items, [items]);
 
   useEffect(() => {
     let disposed = false;
@@ -681,10 +680,10 @@ export function BrowserPage() {
             page={page}
             totalPages={totalPages}
             loading={loading}
-            onFirst={() => void refresh(1)}
-            onPrev={() => void refresh(page - 1)}
-            onNext={() => void refresh(page + 1)}
-            onLast={() => void refresh(totalPages)}
+            onFirst={() => void refresh(1, queryFilters)}
+            onPrev={() => void refresh(page - 1, queryFilters)}
+            onNext={() => void refresh(page + 1, queryFilters)}
+            onLast={() => void refresh(totalPages, queryFilters)}
           />
         </section>
       </div>

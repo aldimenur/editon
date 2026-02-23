@@ -66,18 +66,27 @@ export type AssetsResult = {
   pageSize: number;
 };
 
-type QueryAssetsInput = {
+export type QueryAssetsInput = {
   cursor?: number;
   page?: number;
   limit?: number;
+  search?: string;
+  assetType?: string;
+  rootPath?: string;
+  tags?: string[];
 };
 
 export async function queryAssets(input?: QueryAssetsInput) {
+  const rootPath = input?.rootPath?.trim();
   return tauriInvoke<AssetsResult>("v2_assets_query", {
     input: {
       cursor: input?.cursor,
       page: input?.page,
       limit: input?.limit ?? 40,
+      search: input?.search?.trim() || undefined,
+      assetType: input?.assetType,
+      rootPath: rootPath && rootPath.length > 0 ? rootPath : undefined,
+      tags: input?.tags,
       sortBy: "id",
       sortOrder: "desc",
     },

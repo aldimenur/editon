@@ -51,6 +51,114 @@ const FFMPEG_WINDOWS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases
 const DENO_WINDOWS_URL: &str =
     "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
 
+fn parse_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetDto> {
+    let thumbnail_path: Option<String> = row.get(5)?;
+    let tags_csv: Option<String> = row.get(8)?;
+    let waveform_json: Option<String> = row.get(10)?;
+    let tags = tags_csv
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|t| {
+            let value = t.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let waveform_data = match waveform_json {
+        Some(value) if !value.trim().is_empty() => serde_json::from_str::<Vec<f32>>(&value).ok(),
+        _ => None,
+    };
+
+    Ok(AssetDto {
+        id: row.get(0)?,
+        filename: row.get(1)?,
+        extension: row.get(2)?,
+        original_path: row.get(3)?,
+        type_name: row.get(4)?,
+        thumbnail_path,
+        file_size: row.get(6)?,
+        mtime_ms: row.get(7)?,
+        tags,
+        waveform_data,
+        date_modified: row.get(9)?,
+    })
+}
+
+fn fuzzy_subsequence_score(value: &str, query: &str) -> Option<i64> {
+    let target = value.to_lowercase();
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Some(0);
+    }
+
+    if let Some(start_idx) = target.find(&needle) {
+        let compact_bonus = (needle.chars().count() as i64) * 40;
+        return Some(10_000 + compact_bonus - start_idx as i64);
+    }
+
+    let target_chars: Vec<char> = target.chars().collect();
+    let needle_chars: Vec<char> = needle.chars().collect();
+    let mut cursor = 0usize;
+    let mut score = 0i64;
+    let mut last_idx: Option<usize> = None;
+
+    for wanted in needle_chars.iter().copied() {
+        let mut found: Option<usize> = None;
+        for (idx, current) in target_chars.iter().enumerate().skip(cursor) {
+            if *current == wanted {
+                found = Some(idx);
+                break;
+            }
+        }
+
+        let idx = found?;
+        score += 25;
+        if let Some(prev) = last_idx {
+            if idx == prev + 1 {
+                score += 30;
+            }
+            let gap_penalty = (idx.saturating_sub(prev + 1) as i64).min(6);
+            score -= gap_penalty;
+        } else {
+            score -= (idx as i64).min(6);
+        }
+
+        last_idx = Some(idx);
+        cursor = idx + 1;
+    }
+
+    score += (needle_chars.len() as i64) * 10;
+    score -= ((target_chars.len() as i64 - needle_chars.len() as i64) / 5).max(0);
+    Some(score.max(1))
+}
+
+fn fuzzy_asset_score(asset: &AssetDto, query: &str) -> Option<i64> {
+    let mut best_score: Option<i64> = None;
+
+    if let Some(score) = fuzzy_subsequence_score(&asset.filename, query) {
+        best_score = Some(score + 500);
+    }
+
+    if let Some(score) = fuzzy_subsequence_score(&asset.original_path, query) {
+        let weighted = score + 150;
+        best_score = Some(best_score.map_or(weighted, |current| current.max(weighted)));
+    }
+
+    if !asset.tags.is_empty() {
+        let tags_blob = asset.tags.join(" ");
+        if let Some(score) = fuzzy_subsequence_score(&tags_blob, query) {
+            let weighted = score + 250;
+            best_score = Some(best_score.map_or(weighted, |current| current.max(weighted)));
+        }
+    }
+
+    best_score
+}
+
 pub fn setup(app: AppHandle) -> Result<AppState, String> {
     let db_handles = tauri::async_runtime::block_on(init_database(&app))?;
     let state = AppState {
@@ -425,6 +533,12 @@ pub fn v2_assets_query(
 
     let page_size = input.limit.unwrap_or(40).clamp(1, 200);
     let current_page = input.page.unwrap_or(1).max(1);
+    let search_query = input
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let mut where_sql = "WHERE 1=1".to_string();
     let mut params_values: Vec<Box<dyn ToSql>> = Vec::new();
 
@@ -438,14 +552,15 @@ pub fn v2_assets_query(
         params_values.push(Box::new(asset_type));
     }
 
-    if let Some(search) = input.search.filter(|s| !s.trim().is_empty()) {
-        where_sql.push_str(" AND id IN (SELECT rowid FROM assets_fts WHERE assets_fts MATCH ?)");
-        let query = search
-            .split_whitespace()
-            .map(|token| format!("{}*", token.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
-        params_values.push(Box::new(query));
+    if let Some(root_path) = input.root_path.filter(|s| !s.trim().is_empty()) {
+        let normalized = root_path.replace('\\', "/");
+        let normalized_like = format!("{}/%", normalized);
+        where_sql.push_str(
+            " AND (REPLACE(COALESCE(root_path, ''), '\\', '/') = ? OR REPLACE(original_path, '\\', '/') = ? OR REPLACE(original_path, '\\', '/') LIKE ?)",
+        );
+        params_values.push(Box::new(normalized.clone()));
+        params_values.push(Box::new(normalized));
+        params_values.push(Box::new(normalized_like));
     }
 
     if let Some(tags) = input.tags {
@@ -470,6 +585,70 @@ pub fn v2_assets_query(
         _ => "DESC",
     };
 
+    let base_sql = format!(
+        "SELECT assets.id, assets.filename, assets.extension, assets.original_path, assets.type, asset_previews.thumbnail_path, assets.file_size, assets.mtime_ms, assets.tags, assets.date_modified, asset_previews.waveform_data
+         FROM assets
+         LEFT JOIN asset_previews ON asset_previews.asset_id = assets.id
+         {}",
+        where_sql
+    );
+
+    let params_refs: Vec<&dyn ToSql> = params_values.iter().map(|v| v.as_ref()).collect();
+
+    if let Some(search) = search_query {
+        let sql = format!("{} ORDER BY id DESC", base_sql);
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_refs.as_slice(), parse_asset_row)
+            .map_err(|e| e.to_string())?;
+
+        let mut ranked_assets: Vec<(i64, AssetDto)> = Vec::new();
+        for row in rows {
+            let asset = row.map_err(|e| e.to_string())?;
+            if let Some(score) = fuzzy_asset_score(&asset, &search) {
+                ranked_assets.push((score, asset));
+            }
+        }
+
+        ranked_assets.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| right.1.id.cmp(&left.1.id))
+        });
+
+        let total_items = ranked_assets.len() as u64;
+        let total_pages = if total_items == 0 {
+            1
+        } else {
+            ((total_items as f64) / (page_size as f64)).ceil() as u32
+        };
+
+        let effective_page = current_page.min(total_pages);
+        let page_offset = effective_page.saturating_sub(1) as usize * page_size as usize;
+        let data = ranked_assets
+            .into_iter()
+            .skip(page_offset)
+            .take(page_size as usize)
+            .map(|(_, asset)| asset)
+            .collect::<Vec<_>>();
+
+        let next_cursor = if effective_page < total_pages {
+            data.last().map(|x| x.id)
+        } else {
+            None
+        };
+
+        return Ok(AssetsQueryResult {
+            data,
+            next_cursor,
+            total_items,
+            total_pages,
+            current_page: effective_page,
+            page_size,
+        });
+    }
+
     let count_sql = format!("SELECT COUNT(*) FROM assets {}", where_sql);
     let count_params_refs: Vec<&dyn ToSql> = params_values.iter().map(|v| v.as_ref()).collect();
     let total_items: u64 = conn
@@ -488,56 +667,15 @@ pub fn v2_assets_query(
     let page_offset = (effective_page.saturating_sub(1) * page_size) as i64;
 
     let sql = format!(
-        "SELECT assets.id, assets.filename, assets.extension, assets.original_path, assets.type, asset_previews.thumbnail_path, assets.file_size, assets.mtime_ms, assets.tags, assets.date_modified, asset_previews.waveform_data
-         FROM assets
-         LEFT JOIN asset_previews ON asset_previews.asset_id = assets.id
-         {}
+        "{}
          ORDER BY {} {} , id DESC
          LIMIT {} OFFSET {}",
-        where_sql, sort_by, sort_order, page_size, page_offset
+        base_sql, sort_by, sort_order, page_size, page_offset
     );
 
-    let params_refs: Vec<&dyn ToSql> = params_values.iter().map(|v| v.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params_refs.as_slice(), |row| {
-            let thumbnail_path: Option<String> = row.get(5)?;
-            let tags_csv: Option<String> = row.get(8)?;
-            let waveform_json: Option<String> = row.get(10)?;
-            let tags = tags_csv
-                .unwrap_or_default()
-                .split(',')
-                .filter_map(|t| {
-                    let v = t.trim();
-                    if v.is_empty() {
-                        None
-                    } else {
-                        Some(v.to_string())
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let waveform_data = match waveform_json {
-                Some(value) if !value.trim().is_empty() => {
-                    serde_json::from_str::<Vec<f32>>(&value).ok()
-                }
-                _ => None,
-            };
-
-            Ok(AssetDto {
-                id: row.get(0)?,
-                filename: row.get(1)?,
-                extension: row.get(2)?,
-                original_path: row.get(3)?,
-                type_name: row.get(4)?,
-                thumbnail_path,
-                file_size: row.get(6)?,
-                mtime_ms: row.get(7)?,
-                tags,
-                waveform_data,
-                date_modified: row.get(9)?,
-            })
-        })
+        .query_map(params_refs.as_slice(), parse_asset_row)
         .map_err(|e| e.to_string())?;
 
     let mut data = Vec::new();

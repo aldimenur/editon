@@ -4,6 +4,7 @@ import {
   cleanupOrphanAssets,
   listScanRoots,
   queryAssets,
+  type QueryAssetsInput,
   removeScanRoot,
   startScan,
   syncScanRoot,
@@ -42,7 +43,7 @@ type AssetsStore = {
   setScanProgress: (value: ScanProgress | null) => void;
   setError: (value: string) => void;
   clearError: () => void;
-  refresh: (targetPage?: number) => Promise<void>;
+  refresh: (targetPage?: number, filters?: QueryAssetsInput) => Promise<void>;
   refreshScanRoots: () => Promise<void>;
   beginScan: () => Promise<void>;
   syncRoot: (rootPath: string) => Promise<void>;
@@ -85,12 +86,16 @@ export const useAssetsStore = create<AssetsStore>((set, get) => ({
     }),
   setError: (value) => set({ error: value }),
   clearError: () => set({ error: null }),
-  refresh: async (targetPage = 1) => {
+  refresh: async (targetPage = 1, filters) => {
     set({ loading: true });
     try {
       const result = await queryAssets({
         page: targetPage,
         limit: appConfig.pageSize,
+        search: filters?.search,
+        assetType: filters?.assetType,
+        rootPath: filters?.rootPath,
+        tags: filters?.tags,
       });
       set({
         items: result.data,

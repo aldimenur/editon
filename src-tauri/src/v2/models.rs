@@ -24,6 +24,7 @@ pub struct AssetsQueryInput {
     pub limit: Option<u32>,
     pub search: Option<String>,
     pub asset_type: Option<String>,
+    pub root_path: Option<String>,
     pub tags: Option<Vec<String>>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
