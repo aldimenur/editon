@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Focus, Maximize2, Minus, Pin, PinOff, X } from "lucide-react";
+import {
+  Focus,
+  Maximize2,
+  Minus,
+  Moon,
+  Pin,
+  PinOff,
+  Sun,
+  X,
+} from "lucide-react";
 
 import { onScanProgress } from "@/features/assets";
 import { onJobUpdated } from "@/features/jobs/api/jobs-api";
 import { BrowserPage } from "@/pages/browser-page";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
+import { useTheme } from "@/shared/hooks/use-theme";
 import { Button } from "@/shared/ui/button";
 
 type ConsoleEntry = {
@@ -14,6 +24,7 @@ type ConsoleEntry = {
 };
 
 export function AppRouter() {
+  const { theme, toggleTheme } = useTheme();
   const [zenMode, setZenMode] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -269,6 +280,19 @@ export function AppRouter() {
           </div>
           <div className="window-drag-area" data-tauri-drag-region />
           <div className="window-topbar-right window-control-group">
+            <button
+              type="button"
+              className={`window-btn ${theme === "dark" ? "is-active" : ""}`}
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              {theme === "dark" ? (
+                <Sun size={14} aria-hidden="true" />
+              ) : (
+                <Moon size={14} aria-hidden="true" />
+              )}
+            </button>
             <button
               type="button"
               className={`window-btn ${alwaysOnTop ? "is-active" : ""}`}

@@ -7,6 +7,8 @@ import {
   FolderPlus,
   Image as ImageIcon,
   Music2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   RefreshCw,
@@ -220,6 +222,7 @@ export function BrowserPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
   const [galleryZoom, setGalleryZoom] = useState(100);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedRootPath, setSelectedRootPath] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
   const [trimByAssetId, setTrimByAssetId] = useState<Record<number, TrimDraft>>(
@@ -260,6 +263,20 @@ export function BrowserPage() {
     }),
     [debouncedQuery, selectedRootPath, typeFilter],
   );
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("editon-sidebar-collapsed");
+    if (stored === "1") {
+      setIsSidebarCollapsed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "editon-sidebar-collapsed",
+      isSidebarCollapsed ? "1" : "0",
+    );
+  }, [isSidebarCollapsed]);
 
   useLayoutEffect(() => {
     if (previewAssetId === null) {
@@ -687,7 +704,7 @@ export function BrowserPage() {
     });
   };
 
-  const playTrimSegment = (assetId: number) => {
+  const playTrimSegment = (assetId: number, startAt?: number) => {
     const media = mediaElementByAssetIdRef.current[assetId];
     const trim = trimByAssetId[assetId];
     if (!media || !trim) {
@@ -698,10 +715,13 @@ export function BrowserPage() {
       mediaElementByAssetIdRef.current[playingAssetId]?.pause();
     }
     const playhead = mediaTimeByAssetId[assetId];
-    const startFrom =
-      typeof playhead === "number"
-        ? Math.max(trim.start, Math.min(playhead, trim.end))
-        : trim.start;
+    const preferredStart =
+      typeof startAt === "number"
+        ? startAt
+        : typeof playhead === "number"
+          ? playhead
+          : trim.start;
+    const startFrom = Math.max(trim.start, Math.min(preferredStart, trim.end));
     media.currentTime = startFrom;
     setMediaTimeByAssetId((current) => ({ ...current, [assetId]: startFrom }));
     void media.play();
@@ -771,12 +791,13 @@ export function BrowserPage() {
     const media = mediaElementByAssetIdRef.current[assetId];
     const trim = trimByAssetId[assetId];
     if (!media || !trim) {
-      return;
+      return null;
     }
 
     const clamped = Math.max(0, Math.min(nextValue, trim.duration));
     media.currentTime = clamped;
     setMediaTimeByAssetId((current) => ({ ...current, [assetId]: clamped }));
+    return clamped;
   };
 
   const setPlayheadFromClientX = (
@@ -786,13 +807,26 @@ export function BrowserPage() {
   ) => {
     const trim = trimByAssetId[assetId];
     if (!trim) {
-      return;
+      return null;
     }
 
     const rect = trackElement.getBoundingClientRect();
     const width = Math.max(1, rect.width);
     const ratio = Math.max(0, Math.min((clientX - rect.left) / width, 1));
-    updatePlayhead(assetId, trim.duration * ratio);
+    return updatePlayhead(assetId, trim.duration * ratio);
+  };
+
+  const seekAndPlayFromClientX = (
+    assetId: number,
+    trackElement: HTMLElement,
+    clientX: number,
+  ) => {
+    const nextTime = setPlayheadFromClientX(assetId, trackElement, clientX);
+    if (typeof nextTime !== "number") {
+      return;
+    }
+
+    playTrimSegment(assetId, nextTime);
   };
 
   const startPlayheadDrag = (
@@ -976,7 +1010,9 @@ export function BrowserPage() {
 
   return (
     <section className="explorer-shell">
-      <div className="explorer-workspace">
+      <div
+        className={`explorer-workspace ${isSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
+      >
         <aside className="explorer-sidebar">
           <div className="sidebar-head">
             <strong>Folders</strong>
@@ -1027,6 +1063,21 @@ export function BrowserPage() {
 
         <section className="explorer-content">
           <section className="search-shell">
+            <button
+              type="button"
+              className={`sidebar-toggle ${isSidebarCollapsed ? "is-active" : ""}`}
+              onClick={() => setIsSidebarCollapsed((current) => !current)}
+              title={isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+              aria-label={
+                isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"
+              }
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen size={13} aria-hidden="true" />
+              ) : (
+                <PanelLeftClose size={13} aria-hidden="true" />
+              )}
+            </button>
             <label className="search-input" htmlFor="asset-search-input">
               <Search size={14} aria-hidden="true" />
               <Input
@@ -1332,6 +1383,22 @@ export function BrowserPage() {
                                 className="gallery-inline-trim-slider"
                               />
                               <div className="gallery-inline-playhead-track">
+                                <div
+                                  className="gallery-inline-playhead-hitbox"
+                                  onPointerDown={(event) => {
+                                    if (event.button !== 0) {
+                                      return;
+                                    }
+
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    seekAndPlayFromClientX(
+                                      asset.id,
+                                      event.currentTarget,
+                                      event.clientX,
+                                    );
+                                  }}
+                                />
                                 <button
                                   type="button"
                                   className={`gallery-inline-playhead ${isMediaPlaying ? "is-active" : ""}`}
