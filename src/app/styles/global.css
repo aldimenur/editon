@@ -48,6 +48,109 @@ table {
   overflow: hidden;
 }
 
+:root {
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.window-btn,
+.button,
+.sidebar-import-button,
+.root-all-button,
+.root-item,
+.root-item-select,
+.chip,
+.sidebar-toggle,
+.search-input,
+.gallery-zoom-control,
+.gallery-card,
+.gallery-inline-playfab,
+.gallery-inline-playhead,
+.slider-thumb,
+.dropdown-item {
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-normal) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+.explorer-workspace {
+  transition: grid-template-columns var(--motion-normal) var(--motion-ease);
+}
+
+.explorer-sidebar {
+  transition:
+    opacity var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+@media (hover: hover) {
+  .window-btn:hover,
+  .button:hover,
+  .sidebar-import-button:hover,
+  .root-all-button:hover,
+  .chip:hover,
+  .sidebar-toggle:hover,
+  .gallery-inline-playfab:hover,
+  .dropdown-item:hover {
+    transform: translateY(-1px);
+  }
+
+  .gallery-card:hover {
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+}
+
+.window-btn:active,
+.button:active,
+.sidebar-import-button:active,
+.root-all-button:active,
+.chip:active,
+.sidebar-toggle:active,
+.gallery-inline-playfab:active,
+.gallery-inline-playhead:active,
+.slider-thumb:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-btn,
+  .button,
+  .sidebar-import-button,
+  .root-all-button,
+  .root-item,
+  .root-item-select,
+  .chip,
+  .sidebar-toggle,
+  .search-input,
+  .gallery-zoom-control,
+  .gallery-card,
+  .gallery-inline-playfab,
+  .gallery-inline-playhead,
+  .slider-thumb,
+  .dropdown-item,
+  .explorer-workspace,
+  .explorer-sidebar {
+    transition: none;
+  }
+
+  .window-btn:active,
+  .button:active,
+  .sidebar-import-button:active,
+  .root-all-button:active,
+  .chip:active,
+  .sidebar-toggle:active,
+  .gallery-inline-playfab:active,
+  .gallery-inline-playhead:active,
+  .slider-thumb:active {
+    transform: none;
+  }
+}
+
 .window-topbar {
   position: sticky;
   top: 0;
