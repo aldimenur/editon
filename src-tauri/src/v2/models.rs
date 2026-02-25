@@ -120,3 +120,45 @@ pub struct RootCleanupResult {
     pub deleted_assets: usize,
     pub deleted_jobs: usize,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YtdlpFormatOption {
+    pub format_id: String,
+    pub ext: String,
+    pub resolution: Option<String>,
+    pub vcodec: Option<String>,
+    pub acodec: Option<String>,
+    pub filesize: Option<i64>,
+    pub format_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YtdlpProbeResult {
+    pub id: Option<String>,
+    pub title: Option<String>,
+    pub uploader: Option<String>,
+    pub duration: Option<f64>,
+    pub thumbnail: Option<String>,
+    pub webpage_url: Option<String>,
+    pub formats: Vec<YtdlpFormatOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YtdlpDownloadInput {
+    pub url: String,
+    pub output_dir: String,
+    pub format: Option<String>,
+    pub mode: Option<String>,
+    pub extract_audio: Option<bool>,
+    pub audio_format: Option<String>,
+    pub audio_quality: Option<String>,
+    pub filename_template: Option<String>,
+    pub no_playlist: Option<bool>,
+    pub embed_thumbnail: Option<bool>,
+    pub embed_metadata: Option<bool>,
+    pub write_subtitles: Option<bool>,
+    pub write_thumbnail: Option<bool>,
+}

@@ -23,6 +23,13 @@ pub struct TrimMediaPayload {
     pub end_sec: f64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeDownloadPayload {
+    pub url: String,
+    pub output_dir: String,
+}
+
 pub fn validate_payload(job_type: &str, payload: &str) -> Result<(), String> {
     match job_type {
         "generate_waveform" | "generate_video_thumbnail" => {
@@ -47,6 +54,17 @@ pub fn validate_payload(job_type: &str, payload: &str) -> Result<(), String> {
         "dependencies_install" | "dependencies_update" | "prefetch_preview" => {
             let _: serde_json::Value =
                 serde_json::from_str(payload).map_err(|e| format!("Invalid payload: {}", e))?;
+            Ok(())
+        }
+        "youtube_download" => {
+            let parsed: YoutubeDownloadPayload =
+                serde_json::from_str(payload).map_err(|e| format!("Invalid payload: {}", e))?;
+            if parsed.url.trim().is_empty() {
+                return Err("url is required".to_string());
+            }
+            if parsed.output_dir.trim().is_empty() {
+                return Err("outputDir is required".to_string());
+            }
             Ok(())
         }
         _ => Err(format!("Unsupported job type: {}", job_type)),

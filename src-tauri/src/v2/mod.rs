@@ -8,12 +8,14 @@ use crate::v2::db::{classify_media_type, get_bin_dir, get_thumbnail_dir, init_da
 use crate::v2::jobs::{cancel_job, enqueue_job, list_jobs, start_worker};
 use crate::v2::models::{
     AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput,
-    RootCleanupResult, ScanProgress, ScanRootDto, TrimInput,
+    RootCleanupResult, ScanProgress, ScanRootDto, TrimInput, YtdlpDownloadInput,
+    YtdlpFormatOption, YtdlpProbeResult,
 };
 use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
@@ -871,6 +873,126 @@ pub async fn v2_media_trim(state: State<'_, AppState>, input: TrimInput) -> Resu
 }
 
 #[tauri::command]
+pub fn v2_ytdlp_probe(app: AppHandle, url: String) -> Result<YtdlpProbeResult, String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("URL is required".to_string());
+    }
+
+    let yt_dlp_bin = resolve_yt_dlp_bin(&app)?;
+    let output = Command::new(&yt_dlp_bin)
+        .args([
+            "--dump-single-json",
+            "--no-playlist",
+            "--no-warnings",
+            trimmed,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "yt-dlp probe failed".to_string()
+        } else {
+            format!("yt-dlp probe failed: {}", stderr)
+        });
+    }
+
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("Invalid yt-dlp JSON: {}", e))?;
+
+    let formats = parsed
+        .get("formats")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let format_id = item.get("format_id")?.as_str()?.trim().to_string();
+                    if format_id.is_empty() {
+                        return None;
+                    }
+
+                    let ext = item
+                        .get("ext")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    Some(YtdlpFormatOption {
+                        format_id,
+                        ext,
+                        resolution: item
+                            .get("resolution")
+                            .and_then(|v| v.as_str())
+                            .map(ToOwned::to_owned),
+                        vcodec: item
+                            .get("vcodec")
+                            .and_then(|v| v.as_str())
+                            .map(ToOwned::to_owned),
+                        acodec: item
+                            .get("acodec")
+                            .and_then(|v| v.as_str())
+                            .map(ToOwned::to_owned),
+                        filesize: item
+                            .get("filesize")
+                            .or_else(|| item.get("filesize_approx"))
+                            .and_then(|v| v.as_i64()),
+                        format_note: item
+                            .get("format_note")
+                            .and_then(|v| v.as_str())
+                            .map(ToOwned::to_owned),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(YtdlpProbeResult {
+        id: parsed
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        title: parsed
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        uploader: parsed
+            .get("uploader")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        duration: parsed.get("duration").and_then(|v| v.as_f64()),
+        thumbnail: parsed
+            .get("thumbnail")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        webpage_url: parsed
+            .get("webpage_url")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        formats,
+    })
+}
+
+#[tauri::command]
+pub async fn v2_ytdlp_download(
+    state: State<'_, AppState>,
+    input: YtdlpDownloadInput,
+) -> Result<String, String> {
+    if input.url.trim().is_empty() {
+        return Err("URL is required".to_string());
+    }
+    if input.output_dir.trim().is_empty() {
+        return Err("Output directory is required".to_string());
+    }
+
+    let payload = serde_json::to_string(&input).map_err(|e| e.to_string())?;
+    let job_id = enqueue_job(&state, "youtube_download", &payload, 2).await?;
+    Ok(format!("Queued YouTube download job {}", job_id))
+}
+
+#[tauri::command]
 pub fn v2_dependencies_status(app: AppHandle) -> Result<DependencyStatus, String> {
     let bin_dir = get_bin_dir(&app)?;
 
@@ -930,6 +1052,173 @@ pub async fn v2_dependencies_install(state: State<'_, AppState>) -> Result<Strin
 pub async fn v2_dependencies_update(state: State<'_, AppState>) -> Result<String, String> {
     let id = enqueue_job(&state, "dependencies_update", "{}", 1).await?;
     Ok(format!("Queued dependency update job {}", id))
+}
+
+pub(crate) fn process_ytdlp_download_job<F>(
+    app: &AppHandle,
+    payload: &str,
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(u8, &str),
+{
+    let parsed: YtdlpDownloadInput =
+        serde_json::from_str(payload).map_err(|e| format!("Invalid download payload: {}", e))?;
+
+    let url = parsed.url.trim();
+    if url.is_empty() {
+        return Err("Download URL is empty".to_string());
+    }
+
+    let output_dir = Path::new(parsed.output_dir.trim());
+    if !output_dir.exists() {
+        std::fs::create_dir_all(output_dir).map_err(|e| {
+            format!(
+                "Failed to create output directory {}: {}",
+                output_dir.display(),
+                e
+            )
+        })?;
+    }
+
+    let yt_dlp_bin = resolve_yt_dlp_bin(app)?;
+    let output_template = parsed
+        .filename_template
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("%(title).200B [%(id)s].%(ext)s")
+        .to_string();
+
+    let mut args: Vec<String> = vec![
+        "--newline".to_string(),
+        "--no-warnings".to_string(),
+        "--progress".to_string(),
+        "--compat-options".to_string(),
+        "no-live-chat".to_string(),
+        "--output".to_string(),
+        output_template,
+        "--paths".to_string(),
+        output_dir.to_string_lossy().to_string(),
+    ];
+
+    if parsed.no_playlist.unwrap_or(true) {
+        args.push("--no-playlist".to_string());
+    }
+
+    if parsed.embed_thumbnail.unwrap_or(false) {
+        args.push("--embed-thumbnail".to_string());
+    }
+
+    if parsed.embed_metadata.unwrap_or(false) {
+        args.push("--embed-metadata".to_string());
+    }
+
+    if parsed.write_thumbnail.unwrap_or(false) {
+        args.push("--write-thumbnail".to_string());
+    }
+
+    if parsed.write_subtitles.unwrap_or(false) {
+        args.push("--write-subs".to_string());
+        args.push("--sub-langs".to_string());
+        args.push("all,-live_chat".to_string());
+    }
+
+    let mode = parsed
+        .mode
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("video")
+        .to_lowercase();
+    let extract_audio = parsed.extract_audio.unwrap_or(mode == "audio");
+
+    if extract_audio {
+        args.push("--extract-audio".to_string());
+        args.push("--audio-format".to_string());
+        args.push(
+            parsed
+                .audio_format
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("mp3")
+                .to_string(),
+        );
+        args.push("--audio-quality".to_string());
+        args.push(
+            parsed
+                .audio_quality
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("0")
+                .to_string(),
+        );
+        args.push("--format".to_string());
+        args.push(
+            parsed
+                .format
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("bestaudio/best")
+                .to_string(),
+        );
+    } else {
+        args.push("--format".to_string());
+        args.push(
+            parsed
+                .format
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("bestvideo*+bestaudio/best")
+                .to_string(),
+        );
+        let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
+        args.push("--ffmpeg-location".to_string());
+        args.push(ffmpeg_bin);
+    }
+
+    args.push(url.to_string());
+
+    on_progress(4, "Preparing yt-dlp download");
+    let mut child = Command::new(&yt_dlp_bin)
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+
+    let mut last_message = String::new();
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            let text = line.unwrap_or_default();
+            if text.trim().is_empty() {
+                continue;
+            }
+
+            if let Some(percent) = parse_progress_percent(&text) {
+                on_progress(percent, &text);
+            } else {
+                on_progress(8, &text);
+            }
+            last_message = text;
+        }
+    }
+
+    let status = child.wait().map_err(|e| format!("yt-dlp wait failed: {}", e))?;
+    if !status.success() {
+        return Err(if last_message.trim().is_empty() {
+            "yt-dlp download failed".to_string()
+        } else {
+            format!("yt-dlp download failed: {}", last_message)
+        });
+    }
+
+    on_progress(100, "Download complete");
+    Ok(())
 }
 
 pub(crate) fn process_generate_waveform_job<F>(
@@ -1276,6 +1565,36 @@ fn resolve_ffmpeg_bin(app: &AppHandle) -> Result<String, String> {
     }
 
     Ok("ffmpeg".to_string())
+}
+
+fn resolve_yt_dlp_bin(app: &AppHandle) -> Result<String, String> {
+    let bin_dir = get_bin_dir(app)?;
+    let yt_name = if cfg!(target_os = "windows") {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    let candidate = bin_dir.join(yt_name);
+    if candidate.exists() {
+        return Ok(candidate.to_string_lossy().to_string());
+    }
+
+    Ok("yt-dlp".to_string())
+}
+
+fn parse_progress_percent(line: &str) -> Option<u8> {
+    let percent_index = line.find('%')?;
+    let value_token = line[..percent_index].split_whitespace().last()?;
+    let normalized = value_token
+        .trim_matches(|c: char| !c.is_ascii_digit() && c != '.' && c != ',')
+        .replace(',', ".");
+    let value = normalized.parse::<f32>().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+
+    let bounded = value.clamp(0.0, 100.0).round() as u8;
+    Some(bounded)
 }
 
 fn normalize_root_path(value: &str) -> String {

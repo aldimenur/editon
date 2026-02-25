@@ -25,6 +25,8 @@ pub fn run() {
             v2::v2_jobs_subscribe,
             v2::v2_asset_mutation,
             v2::v2_media_trim,
+            v2::v2_ytdlp_probe,
+            v2::v2_ytdlp_download,
             v2::v2_dependencies_status,
             v2::v2_dependencies_install,
             v2::v2_dependencies_update,
