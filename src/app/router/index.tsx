@@ -13,9 +13,14 @@ import {
 import { onScanProgress } from "@/features/assets";
 import { onJobUpdated } from "@/features/jobs/api/jobs-api";
 import { BrowserPage } from "@/pages/browser-page";
+import { JobsPage } from "@/pages/jobs-page";
+import { SystemPage } from "@/pages/system-page";
+import { YoutubePage } from "@/pages/youtube-page";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { useTheme } from "@/shared/hooks/use-theme";
 import { Button } from "@/shared/ui/button";
+
+type AppView = "browser" | "youtube" | "jobs" | "system";
 
 type ConsoleEntry = {
   id: number;
@@ -25,6 +30,7 @@ type ConsoleEntry = {
 
 export function AppRouter() {
   const { theme, toggleTheme } = useTheme();
+  const [activeView, setActiveView] = useState<AppView>("browser");
   const [zenMode, setZenMode] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -277,6 +283,36 @@ export function AppRouter() {
             <p className="topbar-title" data-tauri-drag-region>
               Editon
             </p>
+            <div className="app-view-nav">
+              <button
+                type="button"
+                className={`view-tab ${activeView === "browser" ? "is-active" : ""}`}
+                onClick={() => setActiveView("browser")}
+              >
+                Assets
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === "youtube" ? "is-active" : ""}`}
+                onClick={() => setActiveView("youtube")}
+              >
+                YouTube
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === "jobs" ? "is-active" : ""}`}
+                onClick={() => setActiveView("jobs")}
+              >
+                Jobs
+              </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === "system" ? "is-active" : ""}`}
+                onClick={() => setActiveView("system")}
+              >
+                System
+              </button>
+            </div>
           </div>
           <div className="window-drag-area" data-tauri-drag-region />
           <div className="window-topbar-right window-control-group">
@@ -351,7 +387,10 @@ export function AppRouter() {
       )}
 
       <main className="app-shell">
-        <BrowserPage />
+        {activeView === "browser" ? <BrowserPage /> : null}
+        {activeView === "youtube" ? <YoutubePage /> : null}
+        {activeView === "jobs" ? <JobsPage /> : null}
+        {activeView === "system" ? <SystemPage /> : null}
       </main>
       {isConsoleOpen ? (
         <section

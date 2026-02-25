@@ -172,6 +172,31 @@ table {
   height: 100%;
 }
 
+.app-view-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.view-tab {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.view-tab.is-active {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+}
+
 .topbar-title {
   margin: 0;
   font-size: 0.78rem;
@@ -302,6 +327,144 @@ table {
 
 .status-error {
   color: var(--danger);
+}
+
+.page-shell {
+  height: 100%;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  overflow: auto;
+}
+
+.pane {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pane-head h2 {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.kv-grid p,
+.kv-grid strong {
+  margin: 0;
+  font-size: 0.68rem;
+}
+
+.youtube-field-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.youtube-two-cols {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.youtube-field {
+  display: grid;
+  gap: 4px;
+}
+
+.youtube-field > span {
+  font-size: 0.64rem;
+  color: var(--text-muted);
+}
+
+.youtube-url-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 0 6px;
+}
+
+.youtube-url-input .path-input {
+  min-width: 0;
+}
+
+.youtube-select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 5px 7px;
+  font: inherit;
+}
+
+.youtube-output-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.youtube-output-row .path-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.youtube-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.youtube-check-grid label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.66rem;
+}
+
+.youtube-format-list {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.youtube-format-item {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 84px 64px 84px 1fr;
+  gap: 6px;
+  text-align: left;
+  font-size: 0.62rem;
+  padding: 4px 6px;
+  cursor: pointer;
 }
 
 .explorer-shell {
