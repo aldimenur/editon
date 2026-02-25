@@ -252,6 +252,10 @@ export function BrowserPage() {
   const previewJobClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const suppressCardToggleRef = useRef(false);
+  const suppressCardToggleTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const [galleryViewportWidth, setGalleryViewportWidth] = useState(0);
 
@@ -834,6 +838,12 @@ export function BrowserPage() {
     trackElement: HTMLElement,
     startClientX: number,
   ) => {
+    suppressCardToggleRef.current = true;
+    if (suppressCardToggleTimerRef.current) {
+      window.clearTimeout(suppressCardToggleTimerRef.current);
+      suppressCardToggleTimerRef.current = null;
+    }
+
     setPlayheadFromClientX(assetId, trackElement, startClientX);
 
     const onMove = (event: PointerEvent) => {
@@ -842,6 +852,10 @@ export function BrowserPage() {
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      suppressCardToggleTimerRef.current = setTimeout(() => {
+        suppressCardToggleRef.current = false;
+        suppressCardToggleTimerRef.current = null;
+      }, 140);
     };
 
     window.addEventListener("pointermove", onMove);
@@ -879,6 +893,15 @@ export function BrowserPage() {
 
     return Math.round(mediaHeight + galleryCardVerticalGap);
   };
+
+  useEffect(() => {
+    return () => {
+      if (suppressCardToggleTimerRef.current) {
+        window.clearTimeout(suppressCardToggleTimerRef.current);
+        suppressCardToggleTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const node = galleryScrollRef.current;
@@ -1206,6 +1229,12 @@ export function BrowserPage() {
                       tabIndex={0}
                       role="button"
                       onClick={(event) => {
+                        if (suppressCardToggleRef.current) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          return;
+                        }
+
                         const target = event.target as HTMLElement;
                         if (target.closest("[data-inline-control='true']")) {
                           return;
@@ -1403,6 +1432,10 @@ export function BrowserPage() {
                                   type="button"
                                   className={`gallery-inline-playhead ${isMediaPlaying ? "is-active" : ""}`}
                                   style={{ left: `${playheadPercent}%` }}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                  }}
                                   onPointerDown={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
