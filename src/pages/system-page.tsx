@@ -12,6 +12,7 @@ export function SystemPage() {
     error,
     checkDependencies,
     queueInstall,
+    queueUpdate,
   } = useSystemStore();
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export function SystemPage() {
         statusMessage={statusMessage}
         onCheck={() => void checkDependencies()}
         onInstall={() => void queueInstall()}
+        onUpdate={() => void queueUpdate()}
       />
     </>
   );

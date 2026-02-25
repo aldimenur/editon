@@ -40,6 +40,7 @@ export function JobsPage() {
       if (
         payload.jobType === "generate_waveform" ||
         payload.jobType === "generate_video_thumbnail" ||
+        payload.jobType === "youtube_download" ||
         payload.jobType === "dependencies_install" ||
         payload.jobType === "dependencies_update"
       ) {
@@ -52,7 +53,8 @@ export function JobsPage() {
 
       if (
         payload.jobType === "generate_waveform" ||
-        payload.jobType === "generate_video_thumbnail"
+        payload.jobType === "generate_video_thumbnail" ||
+        payload.jobType === "youtube_download"
       ) {
         setActiveJobProgress((current) => {
           const next = {

@@ -18,3 +18,7 @@ export async function getDependenciesStatus() {
 export async function installDependencies() {
   return tauriInvoke<string>("v2_dependencies_install");
 }
+
+export async function updateDependencies() {
+  return tauriInvoke<string>("v2_dependencies_update");
+}

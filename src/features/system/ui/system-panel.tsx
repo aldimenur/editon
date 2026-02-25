@@ -7,6 +7,7 @@ type SystemPanelProps = {
   statusMessage: string;
   onCheck: () => void;
   onInstall: () => void;
+  onUpdate: () => void;
 };
 
 export function SystemPanel({
@@ -15,6 +16,7 @@ export function SystemPanel({
   statusMessage,
   onCheck,
   onInstall,
+  onUpdate,
 }: SystemPanelProps) {
   return (
     <section className="pane">
@@ -31,6 +33,14 @@ export function SystemPanel({
             disabled={loading}
           >
             Install
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onUpdate}
+            disabled={loading}
+          >
+            Update
           </Button>
         </div>
       </header>
