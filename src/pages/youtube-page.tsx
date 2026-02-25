@@ -1,10 +1,16 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleDashed,
   Download,
   FolderOpen,
   Link2,
   ListVideo,
   RefreshCw,
+  Rocket,
+  Settings2,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -51,6 +57,16 @@ type LiveJobProgress = {
 
 function isTerminalJobStatus(status: string): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
+}
+
+function jobTone(status: string): "success" | "error" | "active" {
+  if (status === "done") {
+    return "success";
+  }
+  if (status === "failed" || status === "cancelled") {
+    return "error";
+  }
+  return "active";
 }
 
 export function YoutubePage() {
@@ -330,340 +346,430 @@ export function YoutubePage() {
     }
   };
 
+  const dependencyRows = [
+    {
+      key: "yt-dlp",
+      label: "yt-dlp",
+      installed: Boolean(dependencies?.ytDlpInstalled),
+      path: dependencies?.ytDlpPath,
+    },
+    {
+      key: "ffmpeg",
+      label: "ffmpeg",
+      installed: Boolean(dependencies?.ffmpegInstalled),
+      path: dependencies?.ffmpegPath,
+    },
+    {
+      key: "ffprobe",
+      label: "ffprobe",
+      installed: Boolean(dependencies?.ffprobeInstalled),
+      path: dependencies?.ffprobePath,
+    },
+  ];
+
+  const activeJobs = [dependencyJobProgress, downloadJobProgress].filter(
+    (job): job is LiveJobProgress => job !== null,
+  );
+
+  const canQueueDownload =
+    runtimeEnabled &&
+    allDependenciesReady &&
+    url.trim().length > 0 &&
+    destinationPath.trim().length > 0 &&
+    !downloadLoading;
+
   const showFallbackProgressPane =
     runtimeEnabled &&
+    activeJobs.length === 0 &&
     (probeLoading ||
       (depsLoading && dependencyJobProgress === null) ||
       (downloadLoading && downloadJobProgress === null));
 
   return (
-    <section className="page-shell">
-      <section className="pane">
-        <header className="pane-head">
-          <h2>YouTube Downloader</h2>
-          <div className="row-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void checkDependencies()}
-              disabled={depsLoading || !runtimeEnabled}
-            >
-              <RefreshCw size={13} aria-hidden="true" />
-              Check deps
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void installDeps()}
-              disabled={depsLoading || !runtimeEnabled}
-            >
-              Install deps
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void updateDeps()}
-              disabled={depsLoading || !runtimeEnabled}
-            >
-              Update deps
-            </Button>
+    <section className="page-shell youtube-page-shell">
+      <section className="pane youtube-hero-pane">
+        <div className="youtube-hero-head">
+          <div className="youtube-hero-copy">
+            <p className="explore-kicker">Production Ready</p>
+            <h2>YouTube Downloader</h2>
+            <p className="meta">
+              Probe media, set output strategy, then queue stable yt-dlp jobs
+              with live status tracking.
+            </p>
           </div>
-        </header>
-
-        <div className="kv-grid">
-          <p>yt-dlp</p>
-          <strong>
-            {dependencies?.ytDlpInstalled ? "Installed" : "Missing"}
-          </strong>
-          <p>ffmpeg</p>
-          <strong>
-            {dependencies?.ffmpegInstalled ? "Installed" : "Missing"}
-          </strong>
-          <p>ffprobe</p>
-          <strong>
-            {dependencies?.ffprobeInstalled ? "Installed" : "Missing"}
-          </strong>
-        </div>
-      </section>
-
-      <section className="pane">
-        <header className="pane-head">
-          <h2>Download Setup</h2>
-          <div className="row-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void inspectUrl()}
-              disabled={probeLoading || !runtimeEnabled}
+          <div className="youtube-hero-actions">
+            <span
+              className={`youtube-health-chip ${allDependenciesReady ? "is-ready" : "is-warning"}`}
             >
-              <ListVideo size={13} aria-hidden="true" />
-              Inspect URL
-            </Button>
+              {allDependenciesReady ? (
+                <CheckCircle2 size={14} aria-hidden="true" />
+              ) : (
+                <AlertTriangle size={14} aria-hidden="true" />
+              )}
+              {allDependenciesReady
+                ? "Dependencies ready"
+                : "Dependencies required"}
+            </span>
             <Button
               type="button"
               onClick={() => void queueDownload()}
-              disabled={
-                downloadLoading ||
-                !runtimeEnabled ||
-                !url.trim() ||
-                !destinationPath.trim() ||
-                !allDependenciesReady
-              }
+              disabled={!canQueueDownload}
             >
-              <Download size={13} aria-hidden="true" />
+              <Rocket size={13} aria-hidden="true" />
               Queue Download
             </Button>
           </div>
-        </header>
+        </div>
+      </section>
 
-        <div className="youtube-field-grid">
-          <label className="youtube-field">
-            <span>URL</span>
-            <div className="youtube-url-input">
-              <Link2 size={13} aria-hidden="true" />
-              <Input
-                value={url}
-                onChange={(event) => setUrl(event.currentTarget.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-              />
-            </div>
-          </label>
-
-          <label className="youtube-field">
-            <span>Imported root paths</span>
-            <select
-              className="youtube-select"
-              value={selectedRootPath}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setSelectedRootPath(value);
-                setDestinationPath(value);
-              }}
-            >
-              <option value="">Select imported root path</option>
-              {scanRoots.map((root) => (
-                <option key={root.rootPath} value={root.rootPath}>
-                  {root.rootPath}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="youtube-field">
-            <span>Output directory (manual path)</span>
-            <div className="youtube-output-row">
-              <Input
-                value={destinationPath}
-                onChange={(event) => {
-                  setDestinationPath(event.currentTarget.value);
-                  setSelectedRootPath("");
-                }}
-                placeholder="Select folder or type manually"
-              />
+      <div className="youtube-layout">
+        <section className="pane youtube-main-pane">
+          <header className="pane-head">
+            <h2>
+              <Settings2 size={14} aria-hidden="true" />
+              Download Setup
+            </h2>
+            <div className="row-actions">
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => void pickFolder()}
-                disabled={!runtimeEnabled}
+                onClick={() => void inspectUrl()}
+                disabled={probeLoading || !runtimeEnabled || !url.trim()}
               >
-                <FolderOpen size={13} aria-hidden="true" />
-                Browse
+                <ListVideo size={13} aria-hidden="true" />
+                Inspect URL
               </Button>
             </div>
-          </label>
+          </header>
 
-          <div className="youtube-two-cols">
+          <div className="youtube-field-grid">
             <label className="youtube-field">
-              <span>Mode</span>
-              <select
-                className="youtube-select"
-                value={mode}
-                onChange={(event) =>
-                  setMode(event.currentTarget.value as "video" | "audio")
-                }
-              >
-                <option value="video">Video</option>
-                <option value="audio">Audio</option>
-              </select>
+              <span>Video URL</span>
+              <div className="youtube-url-input">
+                <Link2 size={13} aria-hidden="true" />
+                <Input
+                  value={url}
+                  onChange={(event) => setUrl(event.currentTarget.value)}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                />
+              </div>
             </label>
 
-            <label className="youtube-field">
-              <span>Format selector (-f)</span>
-              <Input
-                value={format}
-                onChange={(event) => setFormat(event.currentTarget.value)}
-                placeholder={
-                  mode === "audio"
-                    ? "bestaudio/best"
-                    : "bestvideo*+bestaudio/best"
-                }
-              />
-            </label>
-          </div>
-
-          <label className="youtube-field">
-            <span>Filename template</span>
-            <Input
-              value={filenameTemplate}
-              onChange={(event) =>
-                setFilenameTemplate(event.currentTarget.value)
-              }
-              placeholder="%(title).200B [%(id)s].%(ext)s"
-            />
-          </label>
-
-          {mode === "audio" ? (
             <div className="youtube-two-cols">
               <label className="youtube-field">
-                <span>Audio format</span>
-                <Input
-                  value={audioFormat}
+                <span>Imported root path</span>
+                <select
+                  className="youtube-select"
+                  value={selectedRootPath}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setSelectedRootPath(value);
+                    setDestinationPath(value);
+                  }}
+                >
+                  <option value="">Select imported root path</option>
+                  {scanRoots.map((root) => (
+                    <option key={root.rootPath} value={root.rootPath}>
+                      {root.rootPath}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="youtube-field">
+                <span>Mode</span>
+                <select
+                  className="youtube-select"
+                  value={mode}
                   onChange={(event) =>
-                    setAudioFormat(event.currentTarget.value)
+                    setMode(event.currentTarget.value as "video" | "audio")
                   }
-                  placeholder="mp3"
+                >
+                  <option value="video">Video</option>
+                  <option value="audio">Audio</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="youtube-field">
+              <span>Output directory (manual path)</span>
+              <div className="youtube-output-row">
+                <Input
+                  value={destinationPath}
+                  onChange={(event) => {
+                    setDestinationPath(event.currentTarget.value);
+                    setSelectedRootPath("");
+                  }}
+                  placeholder="Select folder or type manually"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void pickFolder()}
+                  disabled={!runtimeEnabled}
+                >
+                  <FolderOpen size={13} aria-hidden="true" />
+                  Browse
+                </Button>
+              </div>
+            </label>
+
+            <div className="youtube-two-cols">
+              <label className="youtube-field">
+                <span>Format selector (-f)</span>
+                <Input
+                  value={format}
+                  onChange={(event) => setFormat(event.currentTarget.value)}
+                  placeholder={
+                    mode === "audio"
+                      ? "bestaudio/best"
+                      : "bestvideo*+bestaudio/best"
+                  }
                 />
               </label>
+
               <label className="youtube-field">
-                <span>Audio quality</span>
+                <span>Filename template</span>
                 <Input
-                  value={audioQuality}
+                  value={filenameTemplate}
                   onChange={(event) =>
-                    setAudioQuality(event.currentTarget.value)
+                    setFilenameTemplate(event.currentTarget.value)
                   }
-                  placeholder="0"
+                  placeholder="%(title).200B [%(id)s].%(ext)s"
                 />
               </label>
             </div>
-          ) : null}
 
-          <div className="youtube-check-grid">
-            <label>
-              <input
-                type="checkbox"
-                checked={noPlaylist}
-                onChange={(event) => setNoPlaylist(event.currentTarget.checked)}
-              />
-              No playlist
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={embedMetadata}
-                onChange={(event) =>
-                  setEmbedMetadata(event.currentTarget.checked)
-                }
-              />
-              Embed metadata
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={embedThumbnail}
-                onChange={(event) =>
-                  setEmbedThumbnail(event.currentTarget.checked)
-                }
-              />
-              Embed thumbnail
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={writeSubtitles}
-                onChange={(event) =>
-                  setWriteSubtitles(event.currentTarget.checked)
-                }
-              />
-              Write subtitles
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={writeThumbnail}
-                onChange={(event) =>
-                  setWriteThumbnail(event.currentTarget.checked)
-                }
-              />
-              Write thumbnail
-            </label>
+            {mode === "audio" ? (
+              <div className="youtube-two-cols">
+                <label className="youtube-field">
+                  <span>Audio format</span>
+                  <Input
+                    value={audioFormat}
+                    onChange={(event) =>
+                      setAudioFormat(event.currentTarget.value)
+                    }
+                    placeholder="mp3"
+                  />
+                </label>
+                <label className="youtube-field">
+                  <span>Audio quality</span>
+                  <Input
+                    value={audioQuality}
+                    onChange={(event) =>
+                      setAudioQuality(event.currentTarget.value)
+                    }
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <div className="youtube-options-block">
+              <p className="youtube-options-title">Output options</p>
+              <div className="youtube-check-grid">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={noPlaylist}
+                    onChange={(event) =>
+                      setNoPlaylist(event.currentTarget.checked)
+                    }
+                  />
+                  No playlist
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={embedMetadata}
+                    onChange={(event) =>
+                      setEmbedMetadata(event.currentTarget.checked)
+                    }
+                  />
+                  Embed metadata
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={embedThumbnail}
+                    onChange={(event) =>
+                      setEmbedThumbnail(event.currentTarget.checked)
+                    }
+                  />
+                  Embed thumbnail
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={writeSubtitles}
+                    onChange={(event) =>
+                      setWriteSubtitles(event.currentTarget.checked)
+                    }
+                  />
+                  Write subtitles
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={writeThumbnail}
+                    onChange={(event) =>
+                      setWriteThumbnail(event.currentTarget.checked)
+                    }
+                  />
+                  Write thumbnail
+                </label>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        {!allDependenciesReady ? (
-          <StatusText
-            text="Some dependencies are missing. Install or update dependencies before queueing downloads."
-            isError
-          />
-        ) : null}
-      </section>
-
-      {probeResult ? (
-        <section className="pane">
-          <header className="pane-head">
-            <h2>Detected Media</h2>
-          </header>
-          <div className="kv-grid">
-            <p>Title</p>
-            <strong>{probeResult.title ?? "-"}</strong>
-            <p>Uploader</p>
-            <strong>{probeResult.uploader ?? "-"}</strong>
-            <p>Duration</p>
-            <strong>{formatDuration(probeResult.duration)}</strong>
-          </div>
-
-          {probeResult.formats.length > 0 ? (
-            <div className="youtube-format-list">
-              {probeResult.formats.slice(0, 40).map((item) => (
-                <button
-                  key={`${item.formatId}:${item.ext}`}
+        <aside className="youtube-side-stack">
+          <section className="pane youtube-side-pane">
+            <header className="pane-head">
+              <h2>
+                <ShieldCheck size={14} aria-hidden="true" />
+                Dependencies
+              </h2>
+              <div className="row-actions">
+                <Button
                   type="button"
-                  className="youtube-format-item"
-                  onClick={() => setFormat(item.formatId)}
+                  variant="ghost"
+                  onClick={() => void checkDependencies()}
+                  disabled={depsLoading || !runtimeEnabled}
                 >
-                  <span>{item.formatId}</span>
-                  <span>{item.ext}</span>
-                  <span>{item.resolution ?? "-"}</span>
-                  <span>{item.formatNote ?? ""}</span>
-                </button>
+                  <RefreshCw size={13} aria-hidden="true" />
+                  Check
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void installDeps()}
+                  disabled={depsLoading || !runtimeEnabled}
+                >
+                  Install
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void updateDeps()}
+                  disabled={depsLoading || !runtimeEnabled}
+                >
+                  Update
+                </Button>
+              </div>
+            </header>
+
+            <div className="youtube-dependency-list">
+              {dependencyRows.map((item) => (
+                <article key={item.key} className="youtube-dependency-item">
+                  <div className="youtube-dependency-top">
+                    <span className="youtube-dependency-label">
+                      {item.installed ? (
+                        <CheckCircle2 size={13} aria-hidden="true" />
+                      ) : (
+                        <AlertTriangle size={13} aria-hidden="true" />
+                      )}
+                      {item.label}
+                    </span>
+                    <strong>{item.installed ? "Installed" : "Missing"}</strong>
+                  </div>
+                  {item.path ? (
+                    <p className="meta youtube-dependency-path">{item.path}</p>
+                  ) : null}
+                </article>
               ))}
             </div>
+
+            {!allDependenciesReady ? (
+              <StatusText
+                text="Some dependencies are missing. Install or update dependencies before queueing downloads."
+                isError
+              />
+            ) : null}
+          </section>
+
+          <section className="pane youtube-side-pane">
+            <header className="pane-head">
+              <h2>
+                <Download size={14} aria-hidden="true" />
+                Live Activity
+              </h2>
+            </header>
+
+            {activeJobs.length === 0 ? (
+              <p className="status youtube-empty-state">
+                <CircleDashed size={13} aria-hidden="true" />
+                No active jobs yet. Queue install/update/download to see live
+                progress.
+              </p>
+            ) : (
+              <div className="youtube-job-list">
+                {activeJobs.map((job) => {
+                  const tone = jobTone(job.status);
+                  const key = `${job.jobType}:${job.id ?? "pending"}`;
+                  const heading = `${job.jobType}${job.id ? ` #${job.id}` : ""}`;
+
+                  return (
+                    <article
+                      key={key}
+                      className={`youtube-job-item is-${tone}`}
+                    >
+                      <StatusText
+                        text={`${heading} · ${job.status}${typeof job.progress === "number" ? ` · ${job.progress}%` : ""}`}
+                        isError={tone === "error"}
+                      />
+                      <Progress
+                        indeterminate={typeof job.progress !== "number"}
+                        value={job.progress ?? undefined}
+                      />
+                      <p className="status">{job.message}</p>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {probeResult ? (
+            <section className="pane youtube-side-pane">
+              <header className="pane-head">
+                <h2>
+                  <ListVideo size={14} aria-hidden="true" />
+                  Detected Media
+                </h2>
+              </header>
+              <div className="kv-grid">
+                <p>Title</p>
+                <strong>{probeResult.title ?? "-"}</strong>
+                <p>Uploader</p>
+                <strong>{probeResult.uploader ?? "-"}</strong>
+                <p>Duration</p>
+                <strong>{formatDuration(probeResult.duration)}</strong>
+                <p>Formats</p>
+                <strong>{probeResult.formats.length}</strong>
+              </div>
+
+              {probeResult.formats.length > 0 ? (
+                <div className="youtube-format-list">
+                  {probeResult.formats.slice(0, 40).map((item) => (
+                    <button
+                      key={`${item.formatId}:${item.ext}`}
+                      type="button"
+                      className="youtube-format-item"
+                      onClick={() => setFormat(item.formatId)}
+                    >
+                      <span>{item.formatId}</span>
+                      <span>{item.ext}</span>
+                      <span>{item.resolution ?? "-"}</span>
+                      <span>{item.formatNote ?? ""}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
           ) : null}
-        </section>
-      ) : null}
-
-      {dependencyJobProgress ? (
-        <section className="pane">
-          <header className="pane-head">
-            <h2>Dependency Job Progress</h2>
-          </header>
-          <StatusText
-            text={`${dependencyJobProgress.jobType}${dependencyJobProgress.id ? ` #${dependencyJobProgress.id}` : ""} · ${dependencyJobProgress.status}${typeof dependencyJobProgress.progress === "number" ? ` · ${dependencyJobProgress.progress}%` : ""}`}
-            isError={dependencyJobProgress.status === "failed"}
-          />
-          <Progress
-            indeterminate={typeof dependencyJobProgress.progress !== "number"}
-            value={dependencyJobProgress.progress ?? undefined}
-          />
-          <p className="status">{dependencyJobProgress.message}</p>
-        </section>
-      ) : null}
-
-      {downloadJobProgress ? (
-        <section className="pane">
-          <header className="pane-head">
-            <h2>Download Job Progress</h2>
-          </header>
-          <StatusText
-            text={`${downloadJobProgress.jobType}${downloadJobProgress.id ? ` #${downloadJobProgress.id}` : ""} · ${downloadJobProgress.status}${typeof downloadJobProgress.progress === "number" ? ` · ${downloadJobProgress.progress}%` : ""}`}
-            isError={downloadJobProgress.status === "failed"}
-          />
-          <Progress
-            indeterminate={typeof downloadJobProgress.progress !== "number"}
-            value={downloadJobProgress.progress ?? undefined}
-          />
-          <p className="status">{downloadJobProgress.message}</p>
-        </section>
-      ) : null}
+        </aside>
+      </div>
 
       {showFallbackProgressPane ? (
         <section className="pane">
@@ -671,6 +777,12 @@ export function YoutubePage() {
         </section>
       ) : null}
 
+      {!runtimeEnabled ? (
+        <StatusText
+          text="Tauri runtime is unavailable. Downloader actions are disabled."
+          isError
+        />
+      ) : null}
       {error ? <StatusText text={error} isError /> : null}
       <StatusText text={statusText} />
     </section>
