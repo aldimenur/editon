@@ -142,8 +142,34 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
             )
         }
         "trim_media" => Ok(()),
-        "dependencies_install" => process_dependencies_install_job(&app_for_task, |_| {}),
-        "dependencies_update" => process_dependencies_install_job(&app_for_task, |_| {}),
+        "dependencies_install" => {
+            let progress_app = app_for_task.clone();
+            let progress_job_type = job_type.clone();
+            process_dependencies_install_job(&app_for_task, move |phase| {
+                emit_job_event(
+                    &progress_app,
+                    job_id,
+                    progress_job_type.clone(),
+                    "running".to_string(),
+                    phase.to_string(),
+                    parse_phase_progress(phase),
+                );
+            })
+        }
+        "dependencies_update" => {
+            let progress_app = app_for_task.clone();
+            let progress_job_type = job_type.clone();
+            process_dependencies_install_job(&app_for_task, move |phase| {
+                emit_job_event(
+                    &progress_app,
+                    job_id,
+                    progress_job_type.clone(),
+                    "running".to_string(),
+                    phase.to_string(),
+                    parse_phase_progress(phase),
+                );
+            })
+        }
         "youtube_download" => {
             let progress_app = app_for_task.clone();
             let progress_job_type = job_type.clone();
@@ -268,6 +294,13 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
             }
         }
     }
+}
+
+fn parse_phase_progress(phase: &str) -> Option<u8> {
+    let percent_idx = phase.find('%')?;
+    let token = phase[..percent_idx].split_whitespace().last()?;
+    let value = token.trim().parse::<u8>().ok()?;
+    Some(value.min(100))
 }
 
 fn emit_job_event(

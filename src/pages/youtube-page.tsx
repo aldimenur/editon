@@ -14,6 +14,7 @@ import {
   type YtdlpProbeResult,
 } from "@/features/youtube";
 import { useAssetsStore } from "@/features/assets";
+import { onJobUpdated } from "@/features/jobs/api/jobs-api";
 import {
   getDependenciesStatus,
   installDependencies,
@@ -38,6 +39,18 @@ function formatDuration(seconds: number | null): string {
     return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
   return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+type LiveJobProgress = {
+  id: number | null;
+  jobType: string;
+  status: string;
+  message: string;
+  progress: number | null;
+};
+
+function isTerminalJobStatus(status: string): boolean {
+  return status === "done" || status === "failed" || status === "cancelled";
 }
 
 export function YoutubePage() {
@@ -66,6 +79,10 @@ export function YoutubePage() {
   const [depsLoading, setDepsLoading] = useState(false);
   const [probeLoading, setProbeLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
+  const [dependencyJobProgress, setDependencyJobProgress] =
+    useState<LiveJobProgress | null>(null);
+  const [downloadJobProgress, setDownloadJobProgress] =
+    useState<LiveJobProgress | null>(null);
   const [statusText, setStatusText] = useState("Ready.");
   const [error, setError] = useState<string | null>(null);
 
@@ -110,6 +127,81 @@ export function YoutubePage() {
     void checkDependencies();
   }, [refreshScanRoots, runtimeEnabled]);
 
+  useEffect(() => {
+    if (!runtimeEnabled) {
+      return;
+    }
+
+    let unlisten: (() => void) | undefined;
+    onJobUpdated((payload) => {
+      if (payload.jobType === "youtube_download") {
+        setDownloadJobProgress({
+          id: payload.id,
+          jobType: payload.jobType,
+          status: payload.status,
+          message: payload.message,
+          progress: payload.progress,
+        });
+
+        setStatusText(
+          `youtube_download · ${payload.status}${typeof payload.progress === "number" ? ` · ${payload.progress}%` : ""}${payload.message ? ` · ${payload.message}` : ""}`,
+        );
+
+        if (isTerminalJobStatus(payload.status)) {
+          setDownloadLoading(false);
+        } else {
+          setDownloadLoading(true);
+        }
+      }
+
+      if (
+        payload.jobType === "dependencies_install" ||
+        payload.jobType === "dependencies_update"
+      ) {
+        setDependencyJobProgress({
+          id: payload.id,
+          jobType: payload.jobType,
+          status: payload.status,
+          message: payload.message,
+          progress: payload.progress,
+        });
+
+        setStatusText(
+          `${payload.jobType} · ${payload.status}${typeof payload.progress === "number" ? ` · ${payload.progress}%` : ""}${payload.message ? ` · ${payload.message}` : ""}`,
+        );
+
+        if (isTerminalJobStatus(payload.status)) {
+          setDepsLoading(false);
+
+          if (payload.status === "done") {
+            void (async () => {
+              try {
+                const next = await getDependenciesStatus();
+                setDependencies(next);
+              } catch {
+                // keep previous dependency state if refresh fails
+              }
+            })();
+          }
+        } else {
+          setDepsLoading(true);
+        }
+      }
+    })
+      .then((stop) => {
+        unlisten = stop;
+      })
+      .catch(() => {
+        setError("Failed to subscribe job updates.");
+      });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [runtimeEnabled]);
+
   const pickFolder = async () => {
     if (!runtimeEnabled) {
       return;
@@ -129,6 +221,13 @@ export function YoutubePage() {
 
   const installDeps = async () => {
     setDepsLoading(true);
+    setDependencyJobProgress({
+      id: null,
+      jobType: "dependencies_install",
+      status: "queued",
+      message: "Waiting for installer job to start...",
+      progress: 0,
+    });
     try {
       const message = await installDependencies();
       setStatusText(message);
@@ -139,13 +238,19 @@ export function YoutubePage() {
           ? reason.message
           : "Failed to queue dependency install",
       );
-    } finally {
       setDepsLoading(false);
     }
   };
 
   const updateDeps = async () => {
     setDepsLoading(true);
+    setDependencyJobProgress({
+      id: null,
+      jobType: "dependencies_update",
+      status: "queued",
+      message: "Waiting for updater job to start...",
+      progress: 0,
+    });
     try {
       const message = await updateDependencies();
       setStatusText(message);
@@ -156,7 +261,6 @@ export function YoutubePage() {
           ? reason.message
           : "Failed to queue dependency update",
       );
-    } finally {
       setDepsLoading(false);
     }
   };
@@ -193,6 +297,13 @@ export function YoutubePage() {
     }
 
     setDownloadLoading(true);
+    setDownloadJobProgress({
+      id: null,
+      jobType: "youtube_download",
+      status: "queued",
+      message: "Waiting for download job to start...",
+      progress: 0,
+    });
     try {
       const message = await queueYoutubeDownload({
         url: url.trim(),
@@ -215,10 +326,15 @@ export function YoutubePage() {
       setError(
         reason instanceof Error ? reason.message : "Failed to queue download",
       );
-    } finally {
       setDownloadLoading(false);
     }
   };
+
+  const showFallbackProgressPane =
+    runtimeEnabled &&
+    (probeLoading ||
+      (depsLoading && dependencyJobProgress === null) ||
+      (downloadLoading && downloadJobProgress === null));
 
   return (
     <section className="page-shell">
@@ -515,7 +631,41 @@ export function YoutubePage() {
         </section>
       ) : null}
 
-      {(depsLoading || probeLoading || downloadLoading) && runtimeEnabled ? (
+      {dependencyJobProgress ? (
+        <section className="pane">
+          <header className="pane-head">
+            <h2>Dependency Job Progress</h2>
+          </header>
+          <StatusText
+            text={`${dependencyJobProgress.jobType}${dependencyJobProgress.id ? ` #${dependencyJobProgress.id}` : ""} · ${dependencyJobProgress.status}${typeof dependencyJobProgress.progress === "number" ? ` · ${dependencyJobProgress.progress}%` : ""}`}
+            isError={dependencyJobProgress.status === "failed"}
+          />
+          <Progress
+            indeterminate={typeof dependencyJobProgress.progress !== "number"}
+            value={dependencyJobProgress.progress ?? undefined}
+          />
+          <p className="status">{dependencyJobProgress.message}</p>
+        </section>
+      ) : null}
+
+      {downloadJobProgress ? (
+        <section className="pane">
+          <header className="pane-head">
+            <h2>Download Job Progress</h2>
+          </header>
+          <StatusText
+            text={`${downloadJobProgress.jobType}${downloadJobProgress.id ? ` #${downloadJobProgress.id}` : ""} · ${downloadJobProgress.status}${typeof downloadJobProgress.progress === "number" ? ` · ${downloadJobProgress.progress}%` : ""}`}
+            isError={downloadJobProgress.status === "failed"}
+          />
+          <Progress
+            indeterminate={typeof downloadJobProgress.progress !== "number"}
+            value={downloadJobProgress.progress ?? undefined}
+          />
+          <p className="status">{downloadJobProgress.message}</p>
+        </section>
+      ) : null}
+
+      {showFallbackProgressPane ? (
         <section className="pane">
           <Progress indeterminate />
         </section>
