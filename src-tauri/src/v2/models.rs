@@ -135,12 +135,23 @@ pub struct YtdlpFormatOption {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct YtdlpThumbnailOption {
+    pub id: Option<String>,
+    pub url: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub preference: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct YtdlpProbeResult {
     pub id: Option<String>,
     pub title: Option<String>,
     pub uploader: Option<String>,
     pub duration: Option<f64>,
     pub thumbnail: Option<String>,
+    pub thumbnails: Vec<YtdlpThumbnailOption>,
     pub webpage_url: Option<String>,
     pub formats: Vec<YtdlpFormatOption>,
 }
@@ -161,4 +172,7 @@ pub struct YtdlpDownloadInput {
     pub embed_metadata: Option<bool>,
     pub write_subtitles: Option<bool>,
     pub write_thumbnail: Option<bool>,
+    pub write_all_thumbnails: Option<bool>,
+    pub list_thumbnails: Option<bool>,
+    pub no_simulate: Option<bool>,
 }

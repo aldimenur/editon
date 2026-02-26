@@ -9,7 +9,7 @@ use crate::v2::jobs::{cancel_job, enqueue_job, list_jobs, start_worker};
 use crate::v2::models::{
     AssetDto, AssetsQueryInput, AssetsQueryResult, DependencyStatus, MutationInput,
     RootCleanupResult, ScanProgress, ScanRootDto, TrimInput, YtdlpDownloadInput,
-    YtdlpFormatOption, YtdlpProbeResult,
+    YtdlpProbeResult, YtdlpThumbnailOption,
 };
 use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
@@ -873,106 +873,92 @@ pub async fn v2_media_trim(state: State<'_, AppState>, input: TrimInput) -> Resu
 }
 
 #[tauri::command]
-pub fn v2_ytdlp_probe(app: AppHandle, url: String) -> Result<YtdlpProbeResult, String> {
-    let trimmed = url.trim();
+pub async fn v2_ytdlp_probe(app: AppHandle, url: String) -> Result<YtdlpProbeResult, String> {
+    let trimmed = url.trim().to_string();
     if trimmed.is_empty() {
         return Err("URL is required".to_string());
     }
 
-    let yt_dlp_bin = resolve_yt_dlp_bin(&app)?;
-    let output = Command::new(&yt_dlp_bin)
-        .args([
-            "--dump-single-json",
-            "--no-playlist",
-            "--no-warnings",
-            trimmed,
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let yt_dlp_bin = resolve_yt_dlp_bin(&app)?;
+        let output = Command::new(&yt_dlp_bin)
+            .args([
+                "--skip-download",
+                "--no-playlist",
+                "--no-warnings",
+                "--print",
+                "%(id)s",
+                "--print",
+                "%(title)s",
+                "--print",
+                "%(uploader)s",
+                "--print",
+                "%(duration)s",
+                "--print",
+                "%(thumbnail)s",
+                "--print",
+                "%(webpage_url)s",
+                trimmed.as_str(),
+            ])
+            .output()
+            .map_err(|e| format!("Failed to execute yt-dlp: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            "yt-dlp probe failed".to_string()
-        } else {
-            format!("yt-dlp probe failed: {}", stderr)
-        });
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if stderr.is_empty() {
+                "yt-dlp probe failed".to_string()
+            } else {
+                format!("yt-dlp probe failed: {}", stderr)
+            });
+        }
 
-    let parsed: serde_json::Value =
-        serde_json::from_slice(&output.stdout).map_err(|e| format!("Invalid yt-dlp JSON: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let mut lines = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned);
 
-    let formats = parsed
-        .get("formats")
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| {
-                    let format_id = item.get("format_id")?.as_str()?.trim().to_string();
-                    if format_id.is_empty() {
-                        return None;
-                    }
+        let id = lines.next().filter(|value| !value.eq_ignore_ascii_case("NA"));
+        let title = lines.next().filter(|value| !value.eq_ignore_ascii_case("NA"));
+        let uploader = lines.next().filter(|value| !value.eq_ignore_ascii_case("NA"));
+        let duration = lines
+            .next()
+            .filter(|value| !value.eq_ignore_ascii_case("NA"))
+            .and_then(|value| value.parse::<f64>().ok());
+        let thumbnail = lines
+            .next()
+            .filter(|value| !value.eq_ignore_ascii_case("NA") && !value.trim().is_empty());
+        let webpage_url = lines
+            .next()
+            .filter(|value| !value.eq_ignore_ascii_case("NA") && !value.trim().is_empty());
 
-                    let ext = item
-                        .get("ext")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+        let thumbnails = thumbnail
+            .as_ref()
+            .map(|value| {
+                vec![YtdlpThumbnailOption {
+                    id: None,
+                    url: value.clone(),
+                    width: None,
+                    height: None,
+                    preference: None,
+                }]
+            })
+            .unwrap_or_default();
 
-                    Some(YtdlpFormatOption {
-                        format_id,
-                        ext,
-                        resolution: item
-                            .get("resolution")
-                            .and_then(|v| v.as_str())
-                            .map(ToOwned::to_owned),
-                        vcodec: item
-                            .get("vcodec")
-                            .and_then(|v| v.as_str())
-                            .map(ToOwned::to_owned),
-                        acodec: item
-                            .get("acodec")
-                            .and_then(|v| v.as_str())
-                            .map(ToOwned::to_owned),
-                        filesize: item
-                            .get("filesize")
-                            .or_else(|| item.get("filesize_approx"))
-                            .and_then(|v| v.as_i64()),
-                        format_note: item
-                            .get("format_note")
-                            .and_then(|v| v.as_str())
-                            .map(ToOwned::to_owned),
-                    })
-                })
-                .collect::<Vec<_>>()
+        Ok(YtdlpProbeResult {
+            id,
+            title,
+            uploader,
+            duration,
+            thumbnail,
+            thumbnails,
+            webpage_url,
+            formats: Vec::new(),
         })
-        .unwrap_or_default();
-
-    Ok(YtdlpProbeResult {
-        id: parsed
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        title: parsed
-            .get("title")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        uploader: parsed
-            .get("uploader")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        duration: parsed.get("duration").and_then(|v| v.as_f64()),
-        thumbnail: parsed
-            .get("thumbnail")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        webpage_url: parsed
-            .get("webpage_url")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        formats,
     })
+    .await
+    .map_err(|e| format!("Probe worker join failed: {}", e))?
 }
 
 #[tauri::command]
@@ -1116,6 +1102,18 @@ where
 
     if parsed.write_thumbnail.unwrap_or(false) {
         args.push("--write-thumbnail".to_string());
+    }
+
+    if parsed.write_all_thumbnails.unwrap_or(false) {
+        args.push("--write-all-thumbnails".to_string());
+    }
+
+    if parsed.list_thumbnails.unwrap_or(false) {
+        args.push("--list-thumbnails".to_string());
+
+        if parsed.no_simulate.unwrap_or(false) {
+            args.push("--no-simulate".to_string());
+        }
     }
 
     if parsed.write_subtitles.unwrap_or(false) {

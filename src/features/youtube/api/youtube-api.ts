@@ -10,12 +10,21 @@ export type YtdlpFormatOption = {
   formatNote: string | null;
 };
 
+export type YtdlpThumbnailOption = {
+  id: string | null;
+  url: string;
+  width: number | null;
+  height: number | null;
+  preference: number | null;
+};
+
 export type YtdlpProbeResult = {
   id: string | null;
   title: string | null;
   uploader: string | null;
   duration: number | null;
   thumbnail: string | null;
+  thumbnails: YtdlpThumbnailOption[];
   webpageUrl: string | null;
   formats: YtdlpFormatOption[];
 };
@@ -34,6 +43,9 @@ export type YtdlpDownloadInput = {
   embedMetadata?: boolean;
   writeSubtitles?: boolean;
   writeThumbnail?: boolean;
+  writeAllThumbnails?: boolean;
+  listThumbnails?: boolean;
+  noSimulate?: boolean;
 };
 
 export async function probeYoutube(url: string) {
