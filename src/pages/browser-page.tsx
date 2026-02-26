@@ -34,6 +34,7 @@ import type {
   QueryAssetsInput,
   ScanRoot,
 } from "@/features/assets/api/assets-api";
+import { onTrimReady, trimMedia } from "@/features/assets/api/assets-api";
 import type { AssetItem } from "@/entities/asset/model/asset.types";
 import { tauriInvoke } from "@/shared/api/tauri-client";
 import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
@@ -53,6 +54,8 @@ type TrimDraft = {
   duration: number;
   start: number;
   end: number;
+  savedStart: number;
+  savedEnd: number;
 };
 
 type AssetMutationInput = {
@@ -314,6 +317,11 @@ export function BrowserPage() {
   >({});
   const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [trimPendingAssetIds, setTrimPendingAssetIds] = useState<number[]>([]);
+  const [trimJobEvent, setTrimJobEvent] = useState<JobEvent | null>(null);
+  const [trimmedHighlightAssetIds, setTrimmedHighlightAssetIds] = useState<
+    number[]
+  >([]);
   const [renameDialogAsset, setRenameDialogAsset] = useState<AssetItem | null>(
     null,
   );
@@ -338,6 +346,13 @@ export function BrowserPage() {
   const previewJobClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const trimJobByAssetIdRef = useRef<Record<number, number>>({});
+  const trimJobClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const trimHighlightTimersRef = useRef<
+    Record<number, ReturnType<typeof setTimeout>>
+  >({});
   const suppressCardToggleRef = useRef(false);
   const suppressCardToggleTimerRef = useRef<ReturnType<
     typeof setTimeout
@@ -470,7 +485,7 @@ export function BrowserPage() {
       return;
     }
 
-    const queuePreviewRefresh = () => {
+    const queueRefresh = () => {
       if (liveRefreshTimerRef.current) {
         return;
       }
@@ -481,34 +496,70 @@ export function BrowserPage() {
       }, 220);
     };
 
+    const terminalStatuses = new Set(["done", "failed", "cancelled"]);
+
     let unlisten: (() => void) | null = null;
     let disposed = false;
     onJobUpdated((payload) => {
-      const previewJobs = ["generate_waveform", "generate_video_thumbnail"];
-      if (!previewJobs.includes(payload.jobType)) {
+      const isPreviewJob =
+        payload.jobType === "generate_waveform" ||
+        payload.jobType === "generate_video_thumbnail";
+      const isTrimJob = payload.jobType === "trim_media";
+
+      if (!isPreviewJob && !isTrimJob) {
         return;
       }
 
-      if (previewJobClearTimerRef.current) {
-        clearTimeout(previewJobClearTimerRef.current);
-        previewJobClearTimerRef.current = null;
-      }
-
-      setPreviewJobEvent(payload);
-
-      if (payload.status === "done") {
-        queuePreviewRefresh();
-      }
-
-      if (
-        payload.status === "done" ||
-        payload.status === "failed" ||
-        payload.status === "cancelled"
-      ) {
-        previewJobClearTimerRef.current = setTimeout(() => {
+      if (isPreviewJob) {
+        if (previewJobClearTimerRef.current) {
+          clearTimeout(previewJobClearTimerRef.current);
           previewJobClearTimerRef.current = null;
-          setPreviewJobEvent(null);
-        }, 1800);
+        }
+
+        setPreviewJobEvent(payload);
+
+        if (payload.status === "done") {
+          queueRefresh();
+        }
+
+        if (terminalStatuses.has(payload.status)) {
+          previewJobClearTimerRef.current = setTimeout(() => {
+            previewJobClearTimerRef.current = null;
+            setPreviewJobEvent(null);
+          }, 1800);
+        }
+      }
+
+      if (isTrimJob) {
+        if (trimJobClearTimerRef.current) {
+          clearTimeout(trimJobClearTimerRef.current);
+          trimJobClearTimerRef.current = null;
+        }
+
+        setTrimJobEvent(payload);
+
+        const sourceAssetId = Object.entries(trimJobByAssetIdRef.current).find(
+          ([, jobId]) => jobId === payload.id,
+        )?.[0];
+
+        if (sourceAssetId && terminalStatuses.has(payload.status)) {
+          const sourceId = Number(sourceAssetId);
+          delete trimJobByAssetIdRef.current[sourceId];
+          setTrimPendingAssetIds((current) =>
+            current.filter((assetId) => assetId !== sourceId),
+          );
+        }
+
+        if (payload.status === "done") {
+          queueRefresh();
+        }
+
+        if (terminalStatuses.has(payload.status)) {
+          trimJobClearTimerRef.current = setTimeout(() => {
+            trimJobClearTimerRef.current = null;
+            setTrimJobEvent(null);
+          }, 2200);
+        }
       }
     })
       .then((stop) => {
@@ -538,6 +589,64 @@ export function BrowserPage() {
       if (previewJobClearTimerRef.current) {
         clearTimeout(previewJobClearTimerRef.current);
         previewJobClearTimerRef.current = null;
+      }
+      if (trimJobClearTimerRef.current) {
+        clearTimeout(trimJobClearTimerRef.current);
+        trimJobClearTimerRef.current = null;
+      }
+    };
+  }, [queryFilters, refresh, setError]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    onTrimReady((payload) => {
+      setTrimmedHighlightAssetIds((current) => {
+        if (current.includes(payload.trimmedAssetId)) {
+          return current;
+        }
+        return [...current, payload.trimmedAssetId];
+      });
+
+      const existingTimer =
+        trimHighlightTimersRef.current[payload.trimmedAssetId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      trimHighlightTimersRef.current[payload.trimmedAssetId] = setTimeout(
+        () => {
+          delete trimHighlightTimersRef.current[payload.trimmedAssetId];
+          setTrimmedHighlightAssetIds((current) =>
+            current.filter((id) => id !== payload.trimmedAssetId),
+          );
+        },
+        12_000,
+      );
+
+      void refresh(1, queryFilters);
+    })
+      .then((stop) => {
+        if (disposed) {
+          stop();
+          return;
+        }
+        unlisten = stop;
+      })
+      .catch(() => {
+        if (disposed) {
+          return;
+        }
+        setError("Failed to subscribe trim updates.");
+      });
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
       }
     };
   }, [queryFilters, refresh, setError]);
@@ -714,10 +823,14 @@ export function BrowserPage() {
             duration: nextDuration,
             start: 0,
             end: nextDuration,
+            savedStart: 0,
+            savedEnd: nextDuration,
           },
         };
       }
 
+      const currentSavedStart = existing.savedStart;
+      const currentSavedEnd = existing.savedEnd;
       const nextStart = Math.max(
         0,
         Math.min(existing.start, nextDuration - 0.1),
@@ -726,10 +839,20 @@ export function BrowserPage() {
         nextStart + 0.1,
         Math.min(existing.end, nextDuration),
       );
+      const nextSavedStart = Math.max(
+        0,
+        Math.min(currentSavedStart, nextDuration - 0.1),
+      );
+      const nextSavedEnd = Math.max(
+        nextSavedStart + 0.1,
+        Math.min(currentSavedEnd, nextDuration),
+      );
       if (
         existing.duration === nextDuration &&
         existing.start === nextStart &&
-        existing.end === nextEnd
+        existing.end === nextEnd &&
+        existing.savedStart === nextSavedStart &&
+        existing.savedEnd === nextSavedEnd
       ) {
         return current;
       }
@@ -740,6 +863,8 @@ export function BrowserPage() {
           duration: nextDuration,
           start: nextStart,
           end: nextEnd,
+          savedStart: nextSavedStart,
+          savedEnd: nextSavedEnd,
         },
       };
     });
@@ -792,6 +917,94 @@ export function BrowserPage() {
 
       return { ...current, [assetId]: clamped };
     });
+  };
+
+  const hasPendingTrimChange = (trim: TrimDraft) =>
+    Math.abs(trim.start - trim.savedStart) > 0.01 ||
+    Math.abs(trim.end - trim.savedEnd) > 0.01;
+
+  const cancelTrimChanges = (assetId: number) => {
+    setTrimByAssetId((current) => {
+      const existing = current[assetId];
+      if (!existing) {
+        return current;
+      }
+
+      if (
+        existing.start === existing.savedStart &&
+        existing.end === existing.savedEnd
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [assetId]: {
+          ...existing,
+          start: existing.savedStart,
+          end: existing.savedEnd,
+        },
+      };
+    });
+  };
+
+  const applyTrimChanges = async (asset: AssetItem) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    const trim = trimByAssetId[asset.id];
+    if (!trim || !hasPendingTrimChange(trim)) {
+      return;
+    }
+
+    const pendingSet = new Set(trimPendingAssetIds);
+    if (pendingSet.has(asset.id)) {
+      return;
+    }
+
+    pendingSet.add(asset.id);
+    setTrimPendingAssetIds(Array.from(pendingSet));
+
+    try {
+      const result = await trimMedia({
+        assetId: asset.id,
+        startSec: trim.start,
+        endSec: trim.end,
+      });
+      const parsedJobId = Number(result.match(/(\d+)/)?.[1] ?? "0");
+      if (Number.isFinite(parsedJobId) && parsedJobId > 0) {
+        trimJobByAssetIdRef.current[asset.id] = parsedJobId;
+      } else {
+        setTrimPendingAssetIds((current) =>
+          current.filter((id) => id !== asset.id),
+        );
+        setError("Trim was queued but job id was not returned.");
+        return;
+      }
+
+      setTrimByAssetId((current) => {
+        const existing = current[asset.id];
+        if (!existing) {
+          return current;
+        }
+        return {
+          ...current,
+          [asset.id]: {
+            ...existing,
+            savedStart: existing.start,
+            savedEnd: existing.end,
+          },
+        };
+      });
+    } catch (reason) {
+      setTrimPendingAssetIds((current) =>
+        current.filter((id) => id !== asset.id),
+      );
+      setError(
+        reason instanceof Error ? reason.message : "Failed to queue trim job",
+      );
+    }
   };
 
   const playTrimSegment = (assetId: number, startAt?: number) => {
@@ -986,6 +1199,11 @@ export function BrowserPage() {
         window.clearTimeout(suppressCardToggleTimerRef.current);
         suppressCardToggleTimerRef.current = null;
       }
+
+      for (const timer of Object.values(trimHighlightTimersRef.current)) {
+        window.clearTimeout(timer);
+      }
+      trimHighlightTimersRef.current = {};
     };
   }, []);
 
@@ -1457,6 +1675,17 @@ export function BrowserPage() {
               />
             </div>
           ) : null}
+          {trimJobEvent ? (
+            <div className="scan-status-row">
+              <StatusText
+                text={`trim:${trimJobEvent.id} · ${trimJobEvent.status}${typeof trimJobEvent.progress === "number" ? ` · ${trimJobEvent.progress}%` : ""}${trimJobEvent.message ? ` · ${trimJobEvent.message}` : ""}`}
+              />
+              <Progress
+                indeterminate={typeof trimJobEvent.progress !== "number"}
+                value={trimJobEvent.progress ?? undefined}
+              />
+            </div>
+          ) : null}
           {error ? <StatusText text={error} isError /> : null}
 
           <section className="gallery-scroll" ref={galleryScrollRef}>
@@ -1478,8 +1707,15 @@ export function BrowserPage() {
                 const sourceSrc = toFileSrc(asset.originalPath);
                 const isPreviewOpen = previewAssetId === asset.id;
                 const isSelected = selectedAssetIds.includes(asset.id);
+                const isTrimmedHighlight = trimmedHighlightAssetIds.includes(
+                  asset.id,
+                );
                 const trimDraft = trimByAssetId[asset.id] ?? null;
                 const canTrimInline = kind === "audio" || kind === "video";
+                const hasTrimChanges = trimDraft
+                  ? hasPendingTrimChange(trimDraft)
+                  : false;
+                const isTrimPending = trimPendingAssetIds.includes(asset.id);
                 const isMediaPlaying = playingAssetId === asset.id;
                 const mediaTime =
                   mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
@@ -1507,7 +1743,7 @@ export function BrowserPage() {
                     }}
                   >
                     <article
-                      className={`gallery-card ${isPreviewOpen ? "is-active" : ""} ${isSelected ? "is-selected" : ""}`}
+                      className={`gallery-card ${isPreviewOpen ? "is-active" : ""} ${isSelected ? "is-selected" : ""} ${isTrimmedHighlight ? "is-trimmed" : ""}`}
                       tabIndex={0}
                       role="button"
                       draggable={isTauriRuntime()}
@@ -1794,6 +2030,31 @@ export function BrowserPage() {
                                 />
                               </div>
                             </div>
+                            {hasTrimChanges ? (
+                              <div
+                                className="gallery-inline-trim-actions"
+                                data-inline-control="true"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isTrimPending}
+                                  onClick={() => cancelTrimChanges(asset.id)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={isTrimPending}
+                                  onClick={() => void applyTrimChanges(asset)}
+                                >
+                                  {isTrimPending ? "Applying..." : "Apply"}
+                                </Button>
+                              </div>
+                            ) : null}
                           </>
                         ) : null}
                       </div>

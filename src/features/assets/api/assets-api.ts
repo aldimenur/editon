@@ -84,6 +84,27 @@ export type AssetMutationInput = {
   tags?: string[];
 };
 
+export type TrimMediaInput = {
+  assetId: number;
+  startSec: number;
+  endSec: number;
+};
+
+export type TrimReadyEvent = {
+  sourceAssetId: number;
+  trimmedAssetId: number;
+  outputPath: string;
+};
+
+type TrimReadyEventPayload = {
+  sourceAssetId?: number | string;
+  source_asset_id?: number | string;
+  trimmedAssetId?: number | string;
+  trimmed_asset_id?: number | string;
+  outputPath?: string;
+  output_path?: string;
+};
+
 export async function queryAssets(input?: QueryAssetsInput) {
   const rootPath = input?.rootPath?.trim();
   return tauriInvoke<AssetsResult>("v2_assets_query", {
@@ -103,6 +124,36 @@ export async function queryAssets(input?: QueryAssetsInput) {
 
 export async function mutateAsset(input: AssetMutationInput) {
   return tauriInvoke<string>("v2_asset_mutation", { input });
+}
+
+function normalizeTrimReadyEvent(
+  payload: TrimReadyEventPayload,
+): TrimReadyEvent | null {
+  const sourceAssetId = normalizeCount(
+    payload.sourceAssetId ?? payload.source_asset_id,
+  );
+  const trimmedAssetId = normalizeCount(
+    payload.trimmedAssetId ?? payload.trimmed_asset_id,
+  );
+  const outputPath = payload.outputPath ?? payload.output_path ?? "";
+
+  if (
+    sourceAssetId <= 0 ||
+    trimmedAssetId <= 0 ||
+    outputPath.trim().length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    sourceAssetId,
+    trimmedAssetId,
+    outputPath,
+  };
+}
+
+export async function trimMedia(input: TrimMediaInput) {
+  return tauriInvoke<string>("v2_media_trim", { input });
 }
 
 export async function startScan(rootPath: string) {
@@ -134,5 +185,18 @@ export async function onScanProgress(
 ): Promise<() => void> {
   return listen<ScanProgressEventPayload>("v2-scan-progress", (event) => {
     handler(normalizeScanProgress(event.payload));
+  });
+}
+
+export async function onTrimReady(
+  handler: (payload: TrimReadyEvent) => void,
+): Promise<() => void> {
+  return listen<TrimReadyEventPayload>("v2-trimmed-ready", (event) => {
+    const payload = normalizeTrimReadyEvent(event.payload);
+    if (!payload) {
+      return;
+    }
+
+    handler(payload);
   });
 }

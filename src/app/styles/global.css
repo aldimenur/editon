@@ -1339,6 +1339,13 @@ table {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent) inset;
 }
 
+.gallery-card.is-trimmed {
+  border-color: color-mix(in srgb, #20c997 72%, var(--line));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #20c997 42%, transparent) inset,
+    0 0 0 2px color-mix(in srgb, #20c997 18%, transparent);
+}
+
 .gallery-card-media {
   min-height: 48px;
   background: color-mix(in srgb, var(--panel-muted) 78%, var(--panel));
@@ -1547,6 +1554,19 @@ table {
   height: 9px;
   display: grid;
   overflow: visible;
+}
+
+.gallery-inline-trim-actions {
+  position: absolute;
+  right: 6px;
+  bottom: 14px;
+  z-index: 6;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 .gallery-inline-trim-bar .slider-root.gallery-inline-trim-slider {
