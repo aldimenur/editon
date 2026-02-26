@@ -1382,6 +1382,233 @@ where
     Ok(())
 }
 
+pub(crate) fn process_trim_media_job<F>(
+    app: &AppHandle,
+    state: &AppState,
+    payload: &str,
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(u8, &str),
+{
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TrimPayload {
+        asset_id: i64,
+        start_sec: f64,
+        end_sec: f64,
+    }
+
+    let parsed: TrimPayload = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+    if parsed.asset_id <= 0 {
+        return Err("assetId must be > 0".to_string());
+    }
+    if parsed.start_sec < 0.0 || parsed.end_sec <= parsed.start_sec {
+        return Err("Invalid trim range".to_string());
+    }
+
+    on_progress(8, "Preparing trim source");
+    let (source_path, source_type, source_root_path): (String, String, Option<String>) = {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT original_path, type, root_path FROM assets WHERE id = ?1",
+            params![parsed.asset_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    if source_type != "audio" && source_type != "video" {
+        return Err("Trim is currently supported for audio and video assets only".to_string());
+    }
+
+    let source_file = Path::new(&source_path);
+    let source_parent = source_file
+        .parent()
+        .ok_or("Cannot resolve source parent folder")?;
+    let source_stem = source_file
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("Cannot resolve source filename")?
+        .to_string();
+    let source_ext = source_file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+
+    let start_ms = (parsed.start_sec * 1000.0).round().max(0.0) as i64;
+    let end_ms = (parsed.end_sec * 1000.0).round().max(0.0) as i64;
+    let base_trim_name = format!("{}_trim_{}_{}", source_stem, start_ms, end_ms);
+    let trim_output = {
+        let mut candidate_index = 0usize;
+        loop {
+            let suffix = if candidate_index == 0 {
+                String::new()
+            } else {
+                format!("_{}", candidate_index)
+            };
+            let filename = if source_ext.is_empty() {
+                format!("{}{}", base_trim_name, suffix)
+            } else {
+                format!("{}{}.{}", base_trim_name, suffix, source_ext)
+            };
+            let candidate = source_parent.join(filename);
+            if !candidate.exists() {
+                break candidate;
+            }
+            candidate_index += 1;
+        }
+    };
+    let trim_output_path = trim_output.to_string_lossy().to_string();
+
+    let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
+    let start_token = format!("{:.3}", parsed.start_sec.max(0.0));
+    let end_token = format!("{:.3}", parsed.end_sec);
+
+    on_progress(26, "Trimming media");
+    let copy_output = Command::new(&ffmpeg_bin)
+        .args([
+            "-y",
+            "-ss",
+            start_token.as_str(),
+            "-to",
+            end_token.as_str(),
+            "-i",
+            source_path.as_str(),
+            "-map",
+            "0",
+            "-c",
+            "copy",
+            trim_output_path.as_str(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run ffmpeg trim: {}", e))?;
+
+    if !copy_output.status.success() {
+        on_progress(52, "Retrying trim with re-encode");
+        let mut fallback_args = vec![
+            "-y".to_string(),
+            "-ss".to_string(),
+            start_token.clone(),
+            "-to".to_string(),
+            end_token.clone(),
+            "-i".to_string(),
+            source_path.clone(),
+        ];
+
+        if source_type == "audio" {
+            fallback_args.extend([
+                "-vn".to_string(),
+                "-c:a".to_string(),
+                "aac".to_string(),
+                "-b:a".to_string(),
+                "192k".to_string(),
+            ]);
+        } else {
+            fallback_args.extend([
+                "-c:v".to_string(),
+                "libx264".to_string(),
+                "-preset".to_string(),
+                "veryfast".to_string(),
+                "-crf".to_string(),
+                "18".to_string(),
+                "-c:a".to_string(),
+                "aac".to_string(),
+                "-b:a".to_string(),
+                "192k".to_string(),
+            ]);
+        }
+
+        fallback_args.push(trim_output_path.clone());
+
+        let fallback_output = Command::new(&ffmpeg_bin)
+            .args(fallback_args.iter().map(String::as_str))
+            .output()
+            .map_err(|e| format!("Failed to run ffmpeg fallback trim: {}", e))?;
+
+        if !fallback_output.status.success() {
+            let stderr = String::from_utf8_lossy(&fallback_output.stderr).trim().to_string();
+            return Err(if stderr.is_empty() {
+                "Trim failed".to_string()
+            } else {
+                format!("Trim failed: {}", stderr)
+            });
+        }
+    }
+
+    on_progress(72, "Saving trimmed asset");
+    let trim_metadata =
+        std::fs::metadata(&trim_output).map_err(|e| format!("Trim output missing: {}", e))?;
+    let trim_file_size = trim_metadata.len() as i64;
+    let trim_mtime_ms = trim_metadata
+        .modified()
+        .ok()
+        .and_then(|ts| ts.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0);
+    let trim_filename = trim_output
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let trim_extension = trim_output
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    let trim_root_path = source_root_path.unwrap_or_else(|| source_parent.to_string_lossy().to_string());
+
+    let trimmed_asset_id: i64 = {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(original_path) DO UPDATE SET
+               filename = excluded.filename,
+               extension = excluded.extension,
+               root_path = excluded.root_path,
+               type = excluded.type,
+               file_size = excluded.file_size,
+               mtime_ms = excluded.mtime_ms,
+               date_modified = CURRENT_TIMESTAMP",
+            params![
+                trim_filename,
+                trim_extension,
+                trim_output_path,
+                trim_root_path,
+                source_type,
+                trim_file_size,
+                trim_mtime_ms
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.query_row(
+            "SELECT id FROM assets WHERE original_path = ?1",
+            params![trim_output_path],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?
+    };
+
+    let _ = enqueue_waveform_job_if_needed(state, trimmed_asset_id, 1);
+    let _ = enqueue_video_thumbnail_job_if_needed(state, trimmed_asset_id, 1);
+
+    let _ = app.emit(
+        "v2-trimmed-ready",
+        serde_json::json!({
+            "sourceAssetId": parsed.asset_id,
+            "trimmedAssetId": trimmed_asset_id,
+            "outputPath": trim_output_path,
+        }),
+    );
+
+    on_progress(96, "Trim complete");
+    Ok(())
+}
+
 pub(crate) fn process_dependencies_install_job<F>(
     app: &AppHandle,
     mut on_progress: F,

@@ -4,7 +4,7 @@ use crate::v2::models::JobEvent;
 use crate::v2::state::AppState;
 use crate::v2::{
     process_dependencies_install_job, process_generate_video_thumbnail_job,
-    process_generate_waveform_job, process_ytdlp_download_job,
+    process_generate_waveform_job, process_trim_media_job, process_ytdlp_download_job,
 };
 use sqlx::Row;
 use std::thread;
@@ -141,7 +141,20 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
                 },
             )
         }
-        "trim_media" => Ok(()),
+        "trim_media" => {
+            let progress_app = app_for_task.clone();
+            let progress_job_type = job_type.clone();
+            process_trim_media_job(&app_for_task, &state_for_task, &payload, move |progress, phase| {
+                emit_job_event(
+                    &progress_app,
+                    job_id,
+                    progress_job_type.clone(),
+                    "running".to_string(),
+                    phase.to_string(),
+                    Some(progress),
+                );
+            })
+        }
         "dependencies_install" => {
             let progress_app = app_for_task.clone();
             let progress_job_type = job_type.clone();
