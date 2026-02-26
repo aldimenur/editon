@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -70,6 +71,9 @@ function toFileSrc(path: string | null): string | null {
   }
   return isTauriRuntime() ? convertFileSrc(path) : path;
 }
+
+const DRAG_ICON_FALLBACK =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO3Z2xYAAAAASUVORK5CYII=";
 
 function formatRootLabel(rootPath: string): string {
   const normalized = rootPath.replace(/\\/g, "/");
@@ -236,6 +240,7 @@ export function BrowserPage() {
     Record<number, number>
   >({});
   const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [previewJobEvent, setPreviewJobEvent] = useState<JobEvent | null>(null);
   const [assetAspectById, setAssetAspectById] = useState<
     Record<number, number>
@@ -1007,6 +1012,18 @@ export function BrowserPage() {
   }, [items, virtualizerLayoutKey]);
 
   useEffect(() => {
+    setSelectedAssetIds((current) => {
+      if (current.length === 0) {
+        return current;
+      }
+
+      const visibleIds = new Set(visibleAssets.map((asset) => asset.id));
+      const filtered = current.filter((id) => visibleIds.has(id));
+      return filtered.length === current.length ? current : filtered;
+    });
+  }, [visibleAssets]);
+
+  useEffect(() => {
     if (
       !isTauriRuntime() ||
       loading ||
@@ -1030,6 +1047,41 @@ export function BrowserPage() {
     totalPages,
     visibleAssets.length,
   ]);
+
+  const startExternalAssetDrag = async (anchorAssetId: number) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedAssetIds);
+    const dragAssets =
+      selectedSet.size > 0 && selectedSet.has(anchorAssetId)
+        ? visibleAssets.filter((asset) => selectedSet.has(asset.id))
+        : visibleAssets.filter((asset) => asset.id === anchorAssetId);
+
+    const dragPaths = Array.from(
+      new Set(
+        dragAssets
+          .map((asset) => asset.originalPath.trim())
+          .filter((path) => path.length > 0),
+      ),
+    );
+
+    if (dragPaths.length === 0) {
+      return;
+    }
+
+    const dragIcon =
+      dragAssets
+        .find((asset) => asset.thumbnailPath?.trim())
+        ?.thumbnailPath?.trim() ?? DRAG_ICON_FALLBACK;
+
+    await startDrag({
+      item: dragPaths,
+      icon: dragIcon,
+      mode: "copy",
+    });
+  };
 
   return (
     <section className="explorer-shell">
@@ -1177,6 +1229,11 @@ export function BrowserPage() {
             </div>
           ) : null}
           {error ? <StatusText text={error} isError /> : null}
+          {selectedAssetIds.length > 0 ? (
+            <StatusText
+              text={`${selectedAssetIds.length} selected · drag selected card(s) to other app`}
+            />
+          ) : null}
 
           <section className="gallery-scroll" ref={galleryScrollRef}>
             <div
@@ -1196,6 +1253,7 @@ export function BrowserPage() {
                 const thumbSrc = toFileSrc(asset.thumbnailPath);
                 const sourceSrc = toFileSrc(asset.originalPath);
                 const isPreviewOpen = previewAssetId === asset.id;
+                const isSelected = selectedAssetIds.includes(asset.id);
                 const trimDraft = trimByAssetId[asset.id] ?? null;
                 const canTrimInline = kind === "audio" || kind === "video";
                 const isMediaPlaying = playingAssetId === asset.id;
@@ -1225,9 +1283,42 @@ export function BrowserPage() {
                     }}
                   >
                     <article
-                      className={`gallery-card ${isPreviewOpen ? "is-active" : ""}`}
+                      className={`gallery-card ${isPreviewOpen ? "is-active" : ""} ${isSelected ? "is-selected" : ""}`}
                       tabIndex={0}
                       role="button"
+                      draggable={isTauriRuntime()}
+                      onDragStart={(event) => {
+                        if (!isTauriRuntime()) {
+                          return;
+                        }
+
+                        const selectedSet = new Set(selectedAssetIds);
+                        const dragAssets =
+                          selectedSet.size > 0 && selectedSet.has(asset.id)
+                            ? visibleAssets.filter((candidate) =>
+                                selectedSet.has(candidate.id),
+                              )
+                            : [asset];
+
+                        const dragPaths = dragAssets
+                          .map((candidate) => candidate.originalPath.trim())
+                          .filter((path) => path.length > 0);
+
+                        if (dragPaths.length > 0) {
+                          const uriList = dragPaths
+                            .map((path) => `file://${path.replace(/\\/g, "/")}`)
+                            .join("\r\n");
+                          event.dataTransfer.setData(
+                            "text/plain",
+                            dragPaths.join("\n"),
+                          );
+                          event.dataTransfer.setData("text/uri-list", uriList);
+                          event.dataTransfer.effectAllowed = "copy";
+                        }
+
+                        event.preventDefault();
+                        void startExternalAssetDrag(asset.id);
+                      }}
                       onClick={(event) => {
                         if (suppressCardToggleRef.current) {
                           event.preventDefault();
@@ -1240,6 +1331,18 @@ export function BrowserPage() {
                           return;
                         }
 
+                        const isToggleSelect = event.metaKey || event.ctrlKey;
+                        if (isToggleSelect) {
+                          setSelectedAssetIds((current) =>
+                            current.includes(asset.id)
+                              ? current.filter((id) => id !== asset.id)
+                              : [...current, asset.id],
+                          );
+                          return;
+                        }
+
+                        setSelectedAssetIds([asset.id]);
+
                         setPreviewAssetId((current) =>
                           current === asset.id ? null : asset.id,
                         );
@@ -1247,6 +1350,7 @@ export function BrowserPage() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
+                          setSelectedAssetIds([asset.id]);
                           setPreviewAssetId((current) =>
                             current === asset.id ? null : asset.id,
                           );

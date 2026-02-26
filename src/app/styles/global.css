@@ -1334,6 +1334,11 @@ table {
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.gallery-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 75%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent) inset;
+}
+
 .gallery-card-media {
   min-height: 48px;
   background: color-mix(in srgb, var(--panel-muted) 78%, var(--panel));
