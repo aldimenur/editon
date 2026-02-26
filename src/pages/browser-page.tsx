@@ -1689,380 +1689,396 @@ export function BrowserPage() {
           {error ? <StatusText text={error} isError /> : null}
 
           <section className="gallery-scroll" ref={galleryScrollRef}>
-            <div
-              key={virtualizerLayoutKey}
-              className="gallery-virtualizer"
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: `${galleryColumnCount * galleryCardWidth + (galleryColumnCount - 1) * galleryGap}px`,
-              }}
-            >
-              {virtualItems.map((virtualItem) => {
-                const asset = visibleAssets[virtualItem.index];
-                if (!asset) {
-                  return null;
-                }
-                const kind = classifyAsset(asset.typeName);
-                const thumbSrc = toFileSrc(asset.thumbnailPath);
-                const sourceSrc = toFileSrc(asset.originalPath);
-                const isPreviewOpen = previewAssetId === asset.id;
-                const isSelected = selectedAssetIds.includes(asset.id);
-                const isTrimmedHighlight = trimmedHighlightAssetIds.includes(
-                  asset.id,
-                );
-                const trimDraft = trimByAssetId[asset.id] ?? null;
-                const canTrimInline = kind === "audio" || kind === "video";
-                const hasTrimChanges = trimDraft
-                  ? hasPendingTrimChange(trimDraft)
-                  : false;
-                const isTrimPending = trimPendingAssetIds.includes(asset.id);
-                const isMediaPlaying = playingAssetId === asset.id;
-                const mediaTime =
-                  mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
-                const playheadPercent = trimDraft
-                  ? (Math.max(0, Math.min(mediaTime, trimDraft.duration)) /
-                      Math.max(0.001, trimDraft.duration)) *
-                    100
-                  : 0;
-                const lane =
-                  typeof virtualItem.lane === "number"
-                    ? virtualItem.lane
-                    : virtualItem.index % galleryColumnCount;
-                const left = lane * (galleryCardWidth + galleryGap);
+            {scanRoots.length === 0 ? (
+              <div className="gallery-empty-tip" role="note">
+                <strong>No folder imported yet</strong>
+                <p>
+                  Click the <FolderPlus size={12} aria-hidden="true" /> button
+                  in the Folders panel to import your first media path.
+                </p>
+              </div>
+            ) : (
+              <div
+                key={virtualizerLayoutKey}
+                className="gallery-virtualizer"
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: `${galleryColumnCount * galleryCardWidth + (galleryColumnCount - 1) * galleryGap}px`,
+                }}
+              >
+                {virtualItems.map((virtualItem) => {
+                  const asset = visibleAssets[virtualItem.index];
+                  if (!asset) {
+                    return null;
+                  }
+                  const kind = classifyAsset(asset.typeName);
+                  const thumbSrc = toFileSrc(asset.thumbnailPath);
+                  const sourceSrc = toFileSrc(asset.originalPath);
+                  const isPreviewOpen = previewAssetId === asset.id;
+                  const isSelected = selectedAssetIds.includes(asset.id);
+                  const isTrimmedHighlight = trimmedHighlightAssetIds.includes(
+                    asset.id,
+                  );
+                  const trimDraft = trimByAssetId[asset.id] ?? null;
+                  const canTrimInline = kind === "audio" || kind === "video";
+                  const hasTrimChanges = trimDraft
+                    ? hasPendingTrimChange(trimDraft)
+                    : false;
+                  const isTrimPending = trimPendingAssetIds.includes(asset.id);
+                  const isMediaPlaying = playingAssetId === asset.id;
+                  const mediaTime =
+                    mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
+                  const playheadPercent = trimDraft
+                    ? (Math.max(0, Math.min(mediaTime, trimDraft.duration)) /
+                        Math.max(0.001, trimDraft.duration)) *
+                      100
+                    : 0;
+                  const lane =
+                    typeof virtualItem.lane === "number"
+                      ? virtualItem.lane
+                      : virtualItem.index % galleryColumnCount;
+                  const left = lane * (galleryCardWidth + galleryGap);
 
-                return (
-                  <div
-                    key={`${virtualizerLayoutKey}:${asset.id}`}
-                    data-index={virtualItem.index}
-                    ref={virtualizer.measureElement}
-                    className="gallery-virtual-item"
-                    style={{
-                      width: `${galleryCardWidth}px`,
-                      transform: `translateY(${virtualItem.start}px)`,
-                      left: `${left}px`,
-                    }}
-                  >
-                    <article
-                      className={`gallery-card ${isPreviewOpen ? "is-active" : ""} ${isSelected ? "is-selected" : ""} ${isTrimmedHighlight ? "is-trimmed" : ""}`}
-                      tabIndex={0}
-                      role="button"
-                      draggable={isTauriRuntime()}
-                      onDragStart={(event) => {
-                        if (!isTauriRuntime()) {
-                          return;
-                        }
+                  return (
+                    <div
+                      key={`${virtualizerLayoutKey}:${asset.id}`}
+                      data-index={virtualItem.index}
+                      ref={virtualizer.measureElement}
+                      className="gallery-virtual-item"
+                      style={{
+                        width: `${galleryCardWidth}px`,
+                        transform: `translateY(${virtualItem.start}px)`,
+                        left: `${left}px`,
+                      }}
+                    >
+                      <article
+                        className={`gallery-card ${isPreviewOpen ? "is-active" : ""} ${isSelected ? "is-selected" : ""} ${isTrimmedHighlight ? "is-trimmed" : ""}`}
+                        tabIndex={0}
+                        role="button"
+                        draggable={isTauriRuntime()}
+                        onDragStart={(event) => {
+                          if (!isTauriRuntime()) {
+                            return;
+                          }
 
-                        const selectedSet = new Set(selectedAssetIds);
-                        const dragAssets =
-                          selectedSet.size > 0 && selectedSet.has(asset.id)
-                            ? visibleAssets.filter((candidate) =>
-                                selectedSet.has(candidate.id),
+                          const selectedSet = new Set(selectedAssetIds);
+                          const dragAssets =
+                            selectedSet.size > 0 && selectedSet.has(asset.id)
+                              ? visibleAssets.filter((candidate) =>
+                                  selectedSet.has(candidate.id),
+                                )
+                              : [asset];
+
+                          const dragPaths = dragAssets
+                            .map((candidate) => candidate.originalPath.trim())
+                            .filter((path) => path.length > 0);
+                          const dragNames = dragAssets
+                            .map((candidate) => candidate.filename.trim())
+                            .filter((name) => name.length > 0);
+
+                          if (dragPaths.length > 0) {
+                            const uriList = dragPaths
+                              .map(
+                                (path) => `file://${path.replace(/\\/g, "/")}`,
                               )
-                            : [asset];
+                              .join("\r\n");
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              (dragNames.length > 0
+                                ? dragNames
+                                : dragPaths
+                              ).join("\n"),
+                            );
+                            event.dataTransfer.setData(
+                              "text/x-editon-file-paths",
+                              dragPaths.join("\n"),
+                            );
+                            event.dataTransfer.setData(
+                              "text/uri-list",
+                              uriList,
+                            );
+                            event.dataTransfer.effectAllowed = "copy";
+                          }
 
-                        const dragPaths = dragAssets
-                          .map((candidate) => candidate.originalPath.trim())
-                          .filter((path) => path.length > 0);
-                        const dragNames = dragAssets
-                          .map((candidate) => candidate.filename.trim())
-                          .filter((name) => name.length > 0);
-
-                        if (dragPaths.length > 0) {
-                          const uriList = dragPaths
-                            .map((path) => `file://${path.replace(/\\/g, "/")}`)
-                            .join("\r\n");
-                          event.dataTransfer.setData(
-                            "text/plain",
-                            (dragNames.length > 0 ? dragNames : dragPaths).join(
-                              "\n",
-                            ),
-                          );
-                          event.dataTransfer.setData(
-                            "text/x-editon-file-paths",
-                            dragPaths.join("\n"),
-                          );
-                          event.dataTransfer.setData("text/uri-list", uriList);
-                          event.dataTransfer.effectAllowed = "copy";
-                        }
-
-                        event.preventDefault();
-                        void startExternalAssetDrag(asset.id);
-                      }}
-                      onContextMenu={(event) => {
-                        void openAssetContextMenu(event, asset);
-                      }}
-                      onClick={(event) => {
-                        if (suppressCardToggleRef.current) {
                           event.preventDefault();
-                          event.stopPropagation();
-                          return;
-                        }
+                          void startExternalAssetDrag(asset.id);
+                        }}
+                        onContextMenu={(event) => {
+                          void openAssetContextMenu(event, asset);
+                        }}
+                        onClick={(event) => {
+                          if (suppressCardToggleRef.current) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                          }
 
-                        const target = event.target as HTMLElement;
-                        if (target.closest("[data-inline-control='true']")) {
-                          return;
-                        }
+                          const target = event.target as HTMLElement;
+                          if (target.closest("[data-inline-control='true']")) {
+                            return;
+                          }
 
-                        const isToggleSelect = event.metaKey || event.ctrlKey;
-                        if (isToggleSelect) {
-                          setSelectedAssetIds((current) =>
-                            current.includes(asset.id)
-                              ? current.filter((id) => id !== asset.id)
-                              : [...current, asset.id],
-                          );
-                          return;
-                        }
+                          const isToggleSelect = event.metaKey || event.ctrlKey;
+                          if (isToggleSelect) {
+                            setSelectedAssetIds((current) =>
+                              current.includes(asset.id)
+                                ? current.filter((id) => id !== asset.id)
+                                : [...current, asset.id],
+                            );
+                            return;
+                          }
 
-                        setSelectedAssetIds([asset.id]);
-
-                        setPreviewAssetId((current) =>
-                          current === asset.id ? null : asset.id,
-                        );
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
                           setSelectedAssetIds([asset.id]);
+
                           setPreviewAssetId((current) =>
                             current === asset.id ? null : asset.id,
                           );
-                        }
-                      }}
-                    >
-                      <div
-                        className="gallery-card-media"
-                        style={{
-                          aspectRatio: String(
-                            assetAspectById[asset.id] ??
-                              (kind === "audio"
-                                ? 2.8
-                                : kind === "video"
-                                  ? 16 / 9
-                                  : 4 / 3),
-                          ),
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedAssetIds([asset.id]);
+                            setPreviewAssetId((current) =>
+                              current === asset.id ? null : asset.id,
+                            );
+                          }
                         }}
                       >
-                        {isPreviewOpen && kind === "video" && sourceSrc ? (
-                          <video
-                            className="gallery-inline-media"
-                            preload="metadata"
-                            src={sourceSrc}
-                            poster={thumbSrc ?? undefined}
-                            ref={(element) => {
-                              mediaElementByAssetIdRef.current[asset.id] =
-                                element;
-                            }}
-                            onLoadedMetadata={(event) => {
-                              ensureTrimDraft(
-                                asset.id,
-                                event.currentTarget.duration,
-                              );
-                            }}
-                            onTimeUpdate={(event) => {
-                              onInlineTimeUpdate(
-                                asset.id,
-                                event.currentTarget.currentTime,
-                              );
-                            }}
-                            onPlay={() => {
-                              setPlayingAssetId(asset.id);
-                            }}
-                            onPause={() => {
-                              if (playingAssetId === asset.id) {
-                                setPlayingAssetId(null);
-                              }
-                              if (playingTrimAssetId === asset.id) {
-                                setPlayingTrimAssetId(null);
-                              }
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                          />
-                        ) : kind === "audio" ? (
-                          <Waveform data={asset.waveformData} />
-                        ) : thumbSrc ? (
-                          <img
-                            src={thumbSrc}
-                            alt={asset.filename}
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="explore-wave-empty">
-                            {kind === "video" ? (
-                              <Video size={20} aria-hidden="true" />
-                            ) : (
-                              <ImageIcon size={20} aria-hidden="true" />
-                            )}
-                            <span>Thumbnail pending</span>
-                          </div>
-                        )}
-
-                        {isPreviewOpen && kind === "audio" && sourceSrc ? (
-                          <audio
-                            preload="metadata"
-                            src={sourceSrc}
-                            className="gallery-inline-audio"
-                            ref={(element) => {
-                              mediaElementByAssetIdRef.current[asset.id] =
-                                element;
-                            }}
-                            onLoadedMetadata={(event) => {
-                              ensureTrimDraft(
-                                asset.id,
-                                event.currentTarget.duration,
-                              );
-                            }}
-                            onTimeUpdate={(event) => {
-                              onInlineTimeUpdate(
-                                asset.id,
-                                event.currentTarget.currentTime,
-                              );
-                            }}
-                            onPlay={() => {
-                              setPlayingAssetId(asset.id);
-                            }}
-                            onPause={() => {
-                              if (playingAssetId === asset.id) {
-                                setPlayingAssetId(null);
-                              }
-                              if (playingTrimAssetId === asset.id) {
-                                setPlayingTrimAssetId(null);
-                              }
-                            }}
-                          />
-                        ) : null}
-
-                        <div className="gallery-card-overlay">
-                          <h3
-                            className="gallery-overlay-title"
-                            title={asset.filename}
-                          >
-                            {asset.filename}
-                          </h3>
-                        </div>
-                        {isPreviewOpen &&
-                        canTrimInline &&
-                        sourceSrc &&
-                        trimDraft ? (
-                          <>
-                            <button
-                              type="button"
-                              className={`gallery-inline-playfab ${isMediaPlaying ? "is-active" : ""}`}
-                              data-inline-control="true"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleTrimPreview(asset.id);
+                        <div
+                          className="gallery-card-media"
+                          style={{
+                            aspectRatio: String(
+                              assetAspectById[asset.id] ??
+                                (kind === "audio"
+                                  ? 2.8
+                                  : kind === "video"
+                                    ? 16 / 9
+                                    : 4 / 3),
+                            ),
+                          }}
+                        >
+                          {isPreviewOpen && kind === "video" && sourceSrc ? (
+                            <video
+                              className="gallery-inline-media"
+                              preload="metadata"
+                              src={sourceSrc}
+                              poster={thumbSrc ?? undefined}
+                              ref={(element) => {
+                                mediaElementByAssetIdRef.current[asset.id] =
+                                  element;
                               }}
-                              title={
-                                playingTrimAssetId === asset.id
-                                  ? "Stop trim preview"
-                                  : "Play trim preview"
-                              }
-                              aria-label={
-                                playingTrimAssetId === asset.id
-                                  ? "Stop trim preview"
-                                  : "Play trim preview"
-                              }
-                            >
-                              {playingTrimAssetId === asset.id ? (
-                                <Pause size={16} aria-hidden="true" />
-                              ) : (
-                                <Play size={16} aria-hidden="true" />
-                              )}
-                            </button>
-                            <div
-                              className="gallery-inline-trim-bar"
-                              data-inline-control="true"
+                              onLoadedMetadata={(event) => {
+                                ensureTrimDraft(
+                                  asset.id,
+                                  event.currentTarget.duration,
+                                );
+                              }}
+                              onTimeUpdate={(event) => {
+                                onInlineTimeUpdate(
+                                  asset.id,
+                                  event.currentTarget.currentTime,
+                                );
+                              }}
+                              onPlay={() => {
+                                setPlayingAssetId(asset.id);
+                              }}
+                              onPause={() => {
+                                if (playingAssetId === asset.id) {
+                                  setPlayingAssetId(null);
+                                }
+                                if (playingTrimAssetId === asset.id) {
+                                  setPlayingTrimAssetId(null);
+                                }
+                              }}
                               onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => event.stopPropagation()}
-                            >
-                              <Slider
-                                value={[trimDraft.start, trimDraft.end]}
-                                min={0}
-                                max={trimDraft.duration}
-                                step={0.1}
-                                onValueChange={(value) => {
-                                  const start = value[0] ?? trimDraft.start;
-                                  const end = value[1] ?? trimDraft.end;
-                                  updateTrimRange(asset.id, [start, end]);
-                                }}
-                                className="gallery-inline-trim-slider"
-                              />
-                              <div className="gallery-inline-playhead-track">
-                                <div
-                                  className="gallery-inline-playhead-hitbox"
-                                  onPointerDown={(event) => {
-                                    if (event.button !== 0) {
-                                      return;
-                                    }
-
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    seekAndPlayFromClientX(
-                                      asset.id,
-                                      event.currentTarget,
-                                      event.clientX,
-                                    );
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  className={`gallery-inline-playhead ${isMediaPlaying ? "is-active" : ""}`}
-                                  style={{ left: `${playheadPercent}%` }}
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                  }}
-                                  onPointerDown={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    const track =
-                                      event.currentTarget.parentElement;
-                                    if (!track) {
-                                      return;
-                                    }
-                                    startPlayheadDrag(
-                                      asset.id,
-                                      track,
-                                      event.clientX,
-                                    );
-                                  }}
-                                  aria-label="Playhead"
-                                />
-                              </div>
+                            />
+                          ) : kind === "audio" ? (
+                            <Waveform data={asset.waveformData} />
+                          ) : thumbSrc ? (
+                            <img
+                              src={thumbSrc}
+                              alt={asset.filename}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="explore-wave-empty">
+                              {kind === "video" ? (
+                                <Video size={20} aria-hidden="true" />
+                              ) : (
+                                <ImageIcon size={20} aria-hidden="true" />
+                              )}
+                              <span>Thumbnail pending</span>
                             </div>
-                            {hasTrimChanges ? (
+                          )}
+
+                          {isPreviewOpen && kind === "audio" && sourceSrc ? (
+                            <audio
+                              preload="metadata"
+                              src={sourceSrc}
+                              className="gallery-inline-audio"
+                              ref={(element) => {
+                                mediaElementByAssetIdRef.current[asset.id] =
+                                  element;
+                              }}
+                              onLoadedMetadata={(event) => {
+                                ensureTrimDraft(
+                                  asset.id,
+                                  event.currentTarget.duration,
+                                );
+                              }}
+                              onTimeUpdate={(event) => {
+                                onInlineTimeUpdate(
+                                  asset.id,
+                                  event.currentTarget.currentTime,
+                                );
+                              }}
+                              onPlay={() => {
+                                setPlayingAssetId(asset.id);
+                              }}
+                              onPause={() => {
+                                if (playingAssetId === asset.id) {
+                                  setPlayingAssetId(null);
+                                }
+                                if (playingTrimAssetId === asset.id) {
+                                  setPlayingTrimAssetId(null);
+                                }
+                              }}
+                            />
+                          ) : null}
+
+                          <div className="gallery-card-overlay">
+                            <h3
+                              className="gallery-overlay-title"
+                              title={asset.filename}
+                            >
+                              {asset.filename}
+                            </h3>
+                          </div>
+                          {isPreviewOpen &&
+                          canTrimInline &&
+                          sourceSrc &&
+                          trimDraft ? (
+                            <>
+                              <button
+                                type="button"
+                                className={`gallery-inline-playfab ${isMediaPlaying ? "is-active" : ""}`}
+                                data-inline-control="true"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleTrimPreview(asset.id);
+                                }}
+                                title={
+                                  playingTrimAssetId === asset.id
+                                    ? "Stop trim preview"
+                                    : "Play trim preview"
+                                }
+                                aria-label={
+                                  playingTrimAssetId === asset.id
+                                    ? "Stop trim preview"
+                                    : "Play trim preview"
+                                }
+                              >
+                                {playingTrimAssetId === asset.id ? (
+                                  <Pause size={16} aria-hidden="true" />
+                                ) : (
+                                  <Play size={16} aria-hidden="true" />
+                                )}
+                              </button>
                               <div
-                                className="gallery-inline-trim-actions"
+                                className="gallery-inline-trim-bar"
                                 data-inline-control="true"
                                 onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
                               >
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={isTrimPending}
-                                  onClick={() => cancelTrimChanges(asset.id)}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  disabled={isTrimPending}
-                                  onClick={() => void applyTrimChanges(asset)}
-                                >
-                                  {isTrimPending ? "Applying..." : "Apply"}
-                                </Button>
+                                <Slider
+                                  value={[trimDraft.start, trimDraft.end]}
+                                  min={0}
+                                  max={trimDraft.duration}
+                                  step={0.1}
+                                  onValueChange={(value) => {
+                                    const start = value[0] ?? trimDraft.start;
+                                    const end = value[1] ?? trimDraft.end;
+                                    updateTrimRange(asset.id, [start, end]);
+                                  }}
+                                  className="gallery-inline-trim-slider"
+                                />
+                                <div className="gallery-inline-playhead-track">
+                                  <div
+                                    className="gallery-inline-playhead-hitbox"
+                                    onPointerDown={(event) => {
+                                      if (event.button !== 0) {
+                                        return;
+                                      }
+
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      seekAndPlayFromClientX(
+                                        asset.id,
+                                        event.currentTarget,
+                                        event.clientX,
+                                      );
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={`gallery-inline-playhead ${isMediaPlaying ? "is-active" : ""}`}
+                                    style={{ left: `${playheadPercent}%` }}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                    }}
+                                    onPointerDown={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      const track =
+                                        event.currentTarget.parentElement;
+                                      if (!track) {
+                                        return;
+                                      }
+                                      startPlayheadDrag(
+                                        asset.id,
+                                        track,
+                                        event.clientX,
+                                      );
+                                    }}
+                                    aria-label="Playhead"
+                                  />
+                                </div>
                               </div>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </div>
-                    </article>
-                  </div>
-                );
-              })}
-            </div>
+                              {hasTrimChanges ? (
+                                <div
+                                  className="gallery-inline-trim-actions"
+                                  data-inline-control="true"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isTrimPending}
+                                    onClick={() => cancelTrimChanges(asset.id)}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isTrimPending}
+                                    onClick={() => void applyTrimChanges(asset)}
+                                  >
+                                    {isTrimPending ? "Applying..." : "Apply"}
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </article>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </section>
       </div>
