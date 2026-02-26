@@ -73,7 +73,62 @@ function toFileSrc(path: string | null): string | null {
 }
 
 const DRAG_ICON_FALLBACK =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO3Z2xYAAAAASUVORK5CYII=";
+  "../public/convertico-icon (1).ico";
+
+let dragFallbackImagePromise: Promise<HTMLImageElement | null> | null = null;
+
+function loadDragFallbackImage(): Promise<HTMLImageElement | null> {
+  if (dragFallbackImagePromise) {
+    return dragFallbackImagePromise;
+  }
+
+  dragFallbackImagePromise = new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = DRAG_ICON_FALLBACK;
+  });
+
+  return dragFallbackImagePromise;
+}
+
+function trimDragLabel(label: string, max = 36): string {
+  const normalized = label.trim();
+  if (normalized.length <= max) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, max - 1)}...`;
+}
+
+async function buildDragIconWithFilename(filename: string): Promise<string> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 360;
+  canvas.height = 72;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return DRAG_ICON_FALLBACK;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "rgba(10, 14, 20, 0.5)";
+  context.beginPath();
+  context.roundRect(0, 0, canvas.width, canvas.height, 12);
+  context.fill();
+
+  const fallbackImage = await loadDragFallbackImage();
+  if (fallbackImage) {
+    context.drawImage(fallbackImage, 12, 12, 48, 48);
+  }
+
+  context.fillStyle = "rgba(255, 255, 255, 0.96)";
+  context.font = "600 15px 'Segoe UI', 'Inter', sans-serif";
+  context.textBaseline = "middle";
+  context.fillText(trimDragLabel(filename || "Untitled"), 72, 36);
+
+  return canvas.toDataURL("image/png");
+}
 
 function formatRootLabel(rootPath: string): string {
   const normalized = rootPath.replace(/\\/g, "/");
@@ -1071,10 +1126,12 @@ export function BrowserPage() {
       return;
     }
 
-    const dragIcon =
-      dragAssets
-        .find((asset) => asset.thumbnailPath?.trim())
-        ?.thumbnailPath?.trim() ?? DRAG_ICON_FALLBACK;
+    const leadAssetName = dragAssets[0]?.filename ?? "Untitled";
+    const dragLabel =
+      dragAssets.length > 1
+        ? `${leadAssetName} +${dragAssets.length - 1}`
+        : leadAssetName;
+    const dragIcon = await buildDragIconWithFilename(dragLabel);
 
     await startDrag({
       item: dragPaths,
@@ -1261,8 +1318,8 @@ export function BrowserPage() {
                   mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
                 const playheadPercent = trimDraft
                   ? (Math.max(0, Math.min(mediaTime, trimDraft.duration)) /
-                      Math.max(0.001, trimDraft.duration)) *
-                    100
+                    Math.max(0.001, trimDraft.duration)) *
+                  100
                   : 0;
                 const lane =
                   typeof virtualItem.lane === "number"
@@ -1296,13 +1353,16 @@ export function BrowserPage() {
                         const dragAssets =
                           selectedSet.size > 0 && selectedSet.has(asset.id)
                             ? visibleAssets.filter((candidate) =>
-                                selectedSet.has(candidate.id),
-                              )
+                              selectedSet.has(candidate.id),
+                            )
                             : [asset];
 
                         const dragPaths = dragAssets
                           .map((candidate) => candidate.originalPath.trim())
                           .filter((path) => path.length > 0);
+                        const dragNames = dragAssets
+                          .map((candidate) => candidate.filename.trim())
+                          .filter((name) => name.length > 0);
 
                         if (dragPaths.length > 0) {
                           const uriList = dragPaths
@@ -1310,6 +1370,12 @@ export function BrowserPage() {
                             .join("\r\n");
                           event.dataTransfer.setData(
                             "text/plain",
+                            (dragNames.length > 0 ? dragNames : dragPaths).join(
+                              "\n",
+                            ),
+                          );
+                          event.dataTransfer.setData(
+                            "text/x-editon-file-paths",
                             dragPaths.join("\n"),
                           );
                           event.dataTransfer.setData("text/uri-list", uriList);
@@ -1362,11 +1428,11 @@ export function BrowserPage() {
                         style={{
                           aspectRatio: String(
                             assetAspectById[asset.id] ??
-                              (kind === "audio"
-                                ? 2.8
-                                : kind === "video"
-                                  ? 16 / 9
-                                  : 4 / 3),
+                            (kind === "audio"
+                              ? 2.8
+                              : kind === "video"
+                                ? 16 / 9
+                                : 4 / 3),
                           ),
                         }}
                       >
@@ -1468,9 +1534,9 @@ export function BrowserPage() {
                           </h3>
                         </div>
                         {isPreviewOpen &&
-                        canTrimInline &&
-                        sourceSrc &&
-                        trimDraft ? (
+                          canTrimInline &&
+                          sourceSrc &&
+                          trimDraft ? (
                           <>
                             <button
                               type="button"
