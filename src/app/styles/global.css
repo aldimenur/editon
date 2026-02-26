@@ -220,6 +220,19 @@ table {
   gap: 4px;
 }
 
+.settings-update-pane {
+  align-content: start;
+}
+
+.settings-update-actions {
+  justify-content: flex-end;
+}
+
+.settings-update-progress {
+  display: grid;
+  gap: 6px;
+}
+
 .window-btn.is-active {
   border-color: var(--accent);
   color: var(--accent);

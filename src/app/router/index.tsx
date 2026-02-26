@@ -13,12 +13,13 @@ import {
 import { onScanProgress } from "@/features/assets";
 import { onJobUpdated } from "@/features/jobs/api/jobs-api";
 import { BrowserPage } from "@/pages/browser-page";
+import { SystemPage } from "@/pages/system-page";
 import { YoutubePage } from "@/pages/youtube-page";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { useTheme } from "@/shared/hooks/use-theme";
 import { Button } from "@/shared/ui/button";
 
-type AppView = "browser" | "youtube";
+type AppView = "browser" | "youtube" | "settings";
 
 type ConsoleEntry = {
   id: number;
@@ -296,6 +297,13 @@ export function AppRouter() {
               >
                 YouTube
               </button>
+              <button
+                type="button"
+                className={`view-tab ${activeView === "settings" ? "is-active" : ""}`}
+                onClick={() => setActiveView("settings")}
+              >
+                Settings
+              </button>
             </div>
           </div>
           <div className="window-drag-area" data-tauri-drag-region />
@@ -373,6 +381,7 @@ export function AppRouter() {
       <main className="app-shell">
         {activeView === "browser" ? <BrowserPage /> : null}
         {activeView === "youtube" ? <YoutubePage /> : null}
+        {activeView === "settings" ? <SystemPage /> : null}
       </main>
       {isConsoleOpen ? (
         <section
