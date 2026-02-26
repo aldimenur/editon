@@ -3,9 +3,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
-  CircleDashed,
-  Download,
   FolderOpen,
   Link2,
   RefreshCw,
@@ -94,18 +91,11 @@ type LiveJobProgress = {
   progress: number | null;
 };
 
+const VIDEO_FORMAT_EXTENSIONS = ["mp4", "webm", "3gp", "flv"] as const;
+const AUDIO_FORMAT_EXTENSIONS = ["mp3", "m4a", "aac", "ogg", "wav"] as const;
+
 function isTerminalJobStatus(status: string): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
-}
-
-function jobTone(status: string): "success" | "error" | "active" {
-  if (status === "done") {
-    return "success";
-  }
-  if (status === "failed" || status === "cancelled") {
-    return "error";
-  }
-  return "active";
 }
 
 export function YoutubePage() {
@@ -116,7 +106,7 @@ export function YoutubePage() {
   const [selectedRootPath, setSelectedRootPath] = useState("");
   const [mode, setMode] = useState<"video" | "audio">("video");
   const [setupLevel, setSetupLevel] = useState<"basic" | "advanced">("basic");
-  const [format, setFormat] = useState("");
+  const [format, setFormat] = useState<string>(VIDEO_FORMAT_EXTENSIONS[0]);
   const [filenameTemplate, setFilenameTemplate] = useState(
     "%(title).200B [%(id)s].%(ext)s",
   );
@@ -142,7 +132,7 @@ export function YoutubePage() {
     useState<LiveJobProgress | null>(null);
   const [downloadJobProgress, setDownloadJobProgress] =
     useState<LiveJobProgress | null>(null);
-  const [jobsPanelOpen, setJobsPanelOpen] = useState(true);
+  const [outputPickerOpen, setOutputPickerOpen] = useState(false);
   const [statusText, setStatusText] = useState("Ready.");
   const [error, setError] = useState<string | null>(null);
 
@@ -150,6 +140,7 @@ export function YoutubePage() {
   const inspectRequestIdRef = useRef(0);
   const lastInspectedUrlRef = useRef("");
   const inFlightInspectUrlRef = useRef("");
+  const outputPickerRef = useRef<HTMLDivElement | null>(null);
 
   const runtimeEnabled = isTauriRuntime();
 
@@ -184,16 +175,6 @@ export function YoutubePage() {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (window.innerWidth <= 820) {
-      setJobsPanelOpen(false);
-    }
-  }, []);
-
-  useEffect(() => {
     if (!runtimeEnabled) {
       return;
     }
@@ -201,6 +182,36 @@ export function YoutubePage() {
     void refreshScanRoots();
     void checkDependencies();
   }, [refreshScanRoots, runtimeEnabled]);
+
+  useEffect(() => {
+    if (!outputPickerOpen) {
+      return;
+    }
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const node = outputPickerRef.current;
+      if (!node) {
+        return;
+      }
+      if (event.target instanceof Node && !node.contains(event.target)) {
+        setOutputPickerOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOutputPickerOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [outputPickerOpen]);
 
   useEffect(() => {
     if (!runtimeEnabled) {
@@ -404,10 +415,20 @@ export function YoutubePage() {
     };
   }, [probeLoading, runtimeEnabled, url]);
 
+  useEffect(() => {
+    const modeExtensions =
+      mode === "audio" ? AUDIO_FORMAT_EXTENSIONS : VIDEO_FORMAT_EXTENSIONS;
+    const allowedExtensions = modeExtensions as readonly string[];
+
+    if (!allowedExtensions.includes(format)) {
+      setFormat(modeExtensions[0]);
+    }
+  }, [format, mode]);
+
   const applyPreset = (preset: "balanced" | "max" | "audio") => {
     if (preset === "audio") {
       setMode("audio");
-      setFormat("bestaudio/best");
+      setFormat("mp3");
       setAudioFormat("mp3");
       setAudioQuality("0");
       setNoPlaylist(true);
@@ -423,7 +444,7 @@ export function YoutubePage() {
 
     if (preset === "max") {
       setMode("video");
-      setFormat("bestvideo*+bestaudio/best");
+      setFormat("mp4");
       setNoPlaylist(true);
       setEmbedMetadata(true);
       setEmbedThumbnail(false);
@@ -436,7 +457,7 @@ export function YoutubePage() {
     }
 
     setMode("video");
-    setFormat("");
+    setFormat("mp4");
     setNoPlaylist(true);
     setEmbedMetadata(false);
     setEmbedThumbnail(false);
@@ -488,7 +509,7 @@ export function YoutubePage() {
       setError(null);
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : "Failed to queue download",
+        reason instanceof Error ? reason.message : "Failed to start download",
       );
       setDownloadLoading(false);
     }
@@ -521,10 +542,6 @@ export function YoutubePage() {
     },
   ];
 
-  const activeJobs = [dependencyJobProgress, downloadJobProgress].filter(
-    (job): job is LiveJobProgress => job !== null,
-  );
-
   const canQueueDownload =
     runtimeEnabled &&
     allDependenciesReady &&
@@ -533,54 +550,32 @@ export function YoutubePage() {
     !downloadLoading;
 
   const showAdvanced = setupLevel === "advanced";
+  const modeExtensions =
+    mode === "audio" ? AUDIO_FORMAT_EXTENSIONS : VIDEO_FORMAT_EXTENSIONS;
+  const formatChoices = modeExtensions.map((value) => ({
+    value,
+    label: value.toUpperCase(),
+  }));
   const hasValidYoutubeUrl = isValidYouTubeUrl(url);
   const previewThumbnailUrl =
     probeResult?.thumbnail ?? probeResult?.thumbnails[0]?.url ?? null;
   const inlineStatus =
     statusText !== "Ready." && !error && runtimeEnabled ? statusText : null;
+  const downloadProgressLabel = downloadJobProgress
+    ? `Download · ${downloadJobProgress.status}${typeof downloadJobProgress.progress === "number" ? ` · ${downloadJobProgress.progress}%` : ""}`
+    : "Download · queued";
+  const downloadProgressMessage =
+    downloadJobProgress &&
+    downloadJobProgress.status !== "queued" &&
+    downloadJobProgress.message.trim().length > 0
+      ? downloadJobProgress.message
+      : null;
 
   const showFallbackProgressPane =
-    runtimeEnabled &&
-    activeJobs.length === 0 &&
-    ((depsLoading && dependencyJobProgress === null) ||
-      (downloadLoading && downloadJobProgress === null));
+    runtimeEnabled && depsLoading && dependencyJobProgress === null;
 
   return (
     <section className="page-shell youtube-page-shell">
-      <section className="pane youtube-hero-pane">
-        <div className="youtube-hero-head">
-          <div className="youtube-hero-copy">
-            <p className="explore-kicker">Production Ready</p>
-            <h2>YouTube Downloader</h2>
-            <p className="meta">
-              Paste URL, choose type and output path, then download.
-            </p>
-          </div>
-          <div className="youtube-hero-actions">
-            <span
-              className={`youtube-health-chip ${allDependenciesReady ? "is-ready" : "is-warning"}`}
-            >
-              {allDependenciesReady ? (
-                <CheckCircle2 size={14} aria-hidden="true" />
-              ) : (
-                <AlertTriangle size={14} aria-hidden="true" />
-              )}
-              {allDependenciesReady
-                ? "Dependencies ready"
-                : "Dependencies required"}
-            </span>
-            <Button
-              type="button"
-              onClick={() => void queueDownload()}
-              disabled={!canQueueDownload}
-            >
-              <Rocket size={13} aria-hidden="true" />
-              Queue Download
-            </Button>
-          </div>
-        </div>
-      </section>
-
       <div className="youtube-layout">
         <section className="pane youtube-main-pane">
           <header className="pane-head">
@@ -661,57 +656,137 @@ export function YoutubePage() {
             </label>
 
             <p className="youtube-section-title">2. Destination</p>
-            {showAdvanced ? (
-              <label className="youtube-field">
-                <span>Imported root path</span>
-                <select
-                  className="youtube-select"
-                  value={selectedRootPath}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setSelectedRootPath(value);
-                    setDestinationPath(value);
-                  }}
-                >
-                  <option value="">Select imported root path</option>
-                  {scanRoots.map((root) => (
-                    <option key={root.rootPath} value={root.rootPath}>
-                      {root.rootPath}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
 
-            <label className="youtube-field">
+            <div className="youtube-field">
               <span>Type</span>
-              <select
-                className="youtube-select"
-                value={mode}
-                onChange={(event) =>
-                  setMode(event.currentTarget.value as "video" | "audio")
-                }
+              <div
+                className="row-actions"
+                role="radiogroup"
+                aria-label="Download type"
               >
-                <option value="video">Video</option>
-                <option value="audio">Audio</option>
-              </select>
-            </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "video" ? "solid" : "ghost"}
+                  role="radio"
+                  aria-checked={mode === "video"}
+                  onClick={() => setMode("video")}
+                >
+                  Video
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "audio" ? "solid" : "ghost"}
+                  role="radio"
+                  aria-checked={mode === "audio"}
+                  onClick={() => setMode("audio")}
+                >
+                  Audio
+                </Button>
+              </div>
+            </div>
+
+            <div className="youtube-field">
+              <span>Format selection (-f)</span>
+              <div
+                className="row-actions"
+                role="radiogroup"
+                aria-label="Format selection"
+              >
+                {formatChoices.map((choice) => (
+                  <Button
+                    key={choice.value || "auto"}
+                    type="button"
+                    size="sm"
+                    variant={format === choice.value ? "solid" : "ghost"}
+                    role="radio"
+                    aria-checked={format === choice.value}
+                    onClick={() => setFormat(choice.value)}
+                  >
+                    {choice.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
             <label className="youtube-field">
               <span>Output directory (manual path)</span>
               <div className="youtube-output-row">
-                <Input
-                  value={destinationPath}
-                  onChange={(event) => {
-                    setDestinationPath(event.currentTarget.value);
-                    setSelectedRootPath("");
-                  }}
-                  placeholder="Select folder or type manually"
-                />
+                <div
+                  className="youtube-output-input"
+                  ref={outputPickerRef}
+                  data-open={outputPickerOpen ? "true" : "false"}
+                >
+                  <Input
+                    value={destinationPath}
+                    onFocus={() => {
+                      if (scanRoots.length > 0) {
+                        setOutputPickerOpen(true);
+                      }
+                    }}
+                    onChange={(event) => {
+                      const nextPath = event.currentTarget.value;
+                      setDestinationPath(nextPath);
+                      const matchedRoot = scanRoots.find(
+                        (root) => root.rootPath === nextPath,
+                      );
+                      setSelectedRootPath(
+                        matchedRoot ? matchedRoot.rootPath : "",
+                      );
+                    }}
+                    placeholder="Select root from dropdown or type manually"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="youtube-output-dropdown-toggle"
+                    onClick={() => {
+                      if (scanRoots.length === 0) {
+                        return;
+                      }
+                      setOutputPickerOpen((current) => !current);
+                    }}
+                    disabled={scanRoots.length === 0}
+                    title={
+                      scanRoots.length > 0
+                        ? "Select imported path"
+                        : "No imported path available"
+                    }
+                  >
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </Button>
+                  {outputPickerOpen && scanRoots.length > 0 ? (
+                    <div className="youtube-output-dropdown" role="listbox">
+                      {scanRoots.map((root) => (
+                        <button
+                          key={root.rootPath}
+                          type="button"
+                          className={`youtube-output-option ${
+                            root.rootPath === selectedRootPath
+                              ? "is-active"
+                              : ""
+                          }`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setSelectedRootPath(root.rootPath);
+                            setDestinationPath(root.rootPath);
+                            setOutputPickerOpen(false);
+                          }}
+                        >
+                          {root.rootPath}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => void pickFolder()}
+                  onClick={() => {
+                    setOutputPickerOpen(false);
+                    void pickFolder();
+                  }}
                   disabled={!runtimeEnabled}
                 >
                   <FolderOpen size={13} aria-hidden="true" />
@@ -841,31 +916,16 @@ export function YoutubePage() {
 
             {showAdvanced ? (
               <>
-                <div className="youtube-two-cols">
-                  <label className="youtube-field">
-                    <span>Format selector (-f)</span>
-                    <Input
-                      value={format}
-                      onChange={(event) => setFormat(event.currentTarget.value)}
-                      placeholder={
-                        mode === "audio"
-                          ? "bestaudio/best"
-                          : "bestvideo*+bestaudio/best"
-                      }
-                    />
-                  </label>
-
-                  <label className="youtube-field">
-                    <span>Filename template</span>
-                    <Input
-                      value={filenameTemplate}
-                      onChange={(event) =>
-                        setFilenameTemplate(event.currentTarget.value)
-                      }
-                      placeholder="%(title).200B [%(id)s].%(ext)s"
-                    />
-                  </label>
-                </div>
+                <label className="youtube-field">
+                  <span>Filename template</span>
+                  <Input
+                    value={filenameTemplate}
+                    onChange={(event) =>
+                      setFilenameTemplate(event.currentTarget.value)
+                    }
+                    placeholder="%(title).200B [%(id)s].%(ext)s"
+                  />
+                </label>
 
                 {mode === "audio" ? (
                   <div className="youtube-two-cols">
@@ -901,9 +961,26 @@ export function YoutubePage() {
                 disabled={!canQueueDownload}
               >
                 <Rocket size={13} aria-hidden="true" />
-                Queue Download
+                Download
               </Button>
             </div>
+            {downloadLoading || downloadJobProgress ? (
+              <div className="youtube-download-progress">
+                <Progress
+                  indeterminate={
+                    typeof downloadJobProgress?.progress !== "number"
+                  }
+                  value={downloadJobProgress?.progress ?? undefined}
+                />
+                <StatusText
+                  text={downloadProgressLabel}
+                  isError={downloadJobProgress?.status === "failed"}
+                />
+                {downloadProgressMessage ? (
+                  <p className="status">{downloadProgressMessage}</p>
+                ) : null}
+              </div>
+            ) : null}
             {inlineStatus ? (
               <p className="status youtube-inline-status">{inlineStatus}</p>
             ) : null}
@@ -961,68 +1038,10 @@ export function YoutubePage() {
 
             {!allDependenciesReady ? (
               <StatusText
-                text="Some dependencies are missing. Use Check and Install before queueing downloads."
+                text="Some dependencies are missing. Use Check and Install before downloading."
                 isError
               />
             ) : null}
-          </section>
-
-          <section className="pane youtube-side-pane">
-            <header className="pane-head">
-              <h2>
-                <Download size={14} aria-hidden="true" />
-                Live Activity
-              </h2>
-              <div className="row-actions">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setJobsPanelOpen((current) => !current)}
-                >
-                  {jobsPanelOpen ? (
-                    <ChevronUp size={13} aria-hidden="true" />
-                  ) : (
-                    <ChevronDown size={13} aria-hidden="true" />
-                  )}
-                  {jobsPanelOpen ? "Collapse" : "Expand"}
-                </Button>
-              </div>
-            </header>
-
-            {!jobsPanelOpen ? (
-              <p className="status">Live activity panel collapsed.</p>
-            ) : activeJobs.length === 0 ? (
-              <p className="status youtube-empty-state">
-                <CircleDashed size={13} aria-hidden="true" />
-                No active jobs yet. Queue install/update/download to see live
-                progress.
-              </p>
-            ) : (
-              <div className="youtube-job-list">
-                {activeJobs.map((job) => {
-                  const tone = jobTone(job.status);
-                  const key = `${job.jobType}:${job.id ?? "pending"}`;
-                  const heading = `${job.jobType}${job.id ? ` #${job.id}` : ""}`;
-
-                  return (
-                    <article
-                      key={key}
-                      className={`youtube-job-item is-${tone}`}
-                    >
-                      <StatusText
-                        text={`${heading} · ${job.status}${typeof job.progress === "number" ? ` · ${job.progress}%` : ""}`}
-                        isError={tone === "error"}
-                      />
-                      <Progress
-                        indeterminate={typeof job.progress !== "number"}
-                        value={job.progress ?? undefined}
-                      />
-                      <p className="status">{job.message}</p>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
           </section>
         </aside>
       </div>
