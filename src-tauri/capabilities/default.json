@@ -8,6 +8,7 @@
     "dialog:default",
     "dialog:allow-open",
     "drag:default",
+    "opener:default",
     "core:window:default",
     "core:window:allow-minimize",
     "core:window:allow-maximize",

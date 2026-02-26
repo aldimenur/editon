@@ -7,6 +7,7 @@ pub fn run() {
     let run_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let state = v2::setup(app.handle().clone())?;
             app.manage(state);

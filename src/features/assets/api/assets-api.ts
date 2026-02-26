@@ -76,6 +76,14 @@ export type QueryAssetsInput = {
   tags?: string[];
 };
 
+export type AssetMutationInput = {
+  action: "rename" | "delete" | "set_tags";
+  assetId?: number;
+  path?: string;
+  newName?: string;
+  tags?: string[];
+};
+
 export async function queryAssets(input?: QueryAssetsInput) {
   const rootPath = input?.rootPath?.trim();
   return tauriInvoke<AssetsResult>("v2_assets_query", {
@@ -91,6 +99,10 @@ export async function queryAssets(input?: QueryAssetsInput) {
       sortOrder: "desc",
     },
   });
+}
+
+export async function mutateAsset(input: AssetMutationInput) {
+  return tauriInvoke<string>("v2_asset_mutation", { input });
 }
 
 export async function startScan(rootPath: string) {
