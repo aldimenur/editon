@@ -1846,10 +1846,12 @@ table {
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(420px, calc(100vw - 14px));
+  max-height: min(78vh, 560px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   padding: 8px;
+  overflow: auto;
   z-index: 61;
 }
 
@@ -1861,6 +1863,72 @@ table {
 .quicklook-panel {
   display: grid;
   gap: 8px;
+}
+
+.asset-dialog-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.asset-dialog-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.asset-dialog-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.asset-dialog-value {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.asset-dialog-path {
+  max-height: 84px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.asset-dialog-input {
+  min-width: 0;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.asset-dialog-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  line-height: 1.4;
+}
+
+.asset-dialog-note.is-danger {
+  color: color-mix(in srgb, var(--danger) 84%, var(--text));
+}
+
+.asset-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+}
+
+.asset-dialog-danger {
+  background: color-mix(in srgb, #d62828 78%, var(--panel));
+  border-color: color-mix(in srgb, #d62828 66%, var(--line));
+  color: #fff;
 }
 
 .pager {

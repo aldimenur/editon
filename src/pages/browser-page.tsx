@@ -1,5 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Menu } from "@tauri-apps/api/menu";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -18,13 +20,22 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { onScanProgress, useAssetsStore } from "@/features/assets";
 import type {
   QueryAssetsInput,
   ScanRoot,
 } from "@/features/assets/api/assets-api";
+import type { AssetItem } from "@/entities/asset/model/asset.types";
+import { tauriInvoke } from "@/shared/api/tauri-client";
 import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
 import { formatDate } from "@/shared/lib/format/date";
 import { formatFileSize } from "@/shared/lib/format/file-size";
@@ -42,6 +53,14 @@ type TrimDraft = {
   duration: number;
   start: number;
   end: number;
+};
+
+type AssetMutationInput = {
+  action: "rename" | "delete" | "set_tags";
+  assetId?: number;
+  path?: string;
+  newName?: string;
+  tags?: string[];
 };
 
 const ASSET_KIND_META: Record<
@@ -72,8 +91,7 @@ function toFileSrc(path: string | null): string | null {
   return isTauriRuntime() ? convertFileSrc(path) : path;
 }
 
-const DRAG_ICON_FALLBACK =
-  "../public/convertico-icon (1).ico";
+const DRAG_ICON_FALLBACK = "../public/convertico-icon (1).ico";
 
 let dragFallbackImagePromise: Promise<HTMLImageElement | null> | null = null;
 
@@ -296,6 +314,14 @@ export function BrowserPage() {
   >({});
   const [quicklookAssetId, setQuicklookAssetId] = useState<number | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [renameDialogAsset, setRenameDialogAsset] = useState<AssetItem | null>(
+    null,
+  );
+  const [renameDraft, setRenameDraft] = useState("");
+  const [deleteDialogAsset, setDeleteDialogAsset] = useState<AssetItem | null>(
+    null,
+  );
+  const [isMutatingAsset, setIsMutatingAsset] = useState(false);
   const [previewJobEvent, setPreviewJobEvent] = useState<JobEvent | null>(null);
   const [assetAspectById, setAssetAspectById] = useState<
     Record<number, number>
@@ -1140,6 +1166,152 @@ export function BrowserPage() {
     });
   };
 
+  const runAssetMutation = async (
+    input: AssetMutationInput,
+    onDone: () => void,
+  ) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    setIsMutatingAsset(true);
+    try {
+      await tauriInvoke<string>("v2_asset_mutation", { input });
+      await refresh(page, queryFilters);
+      onDone();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Asset mutation failed",
+      );
+    } finally {
+      setIsMutatingAsset(false);
+    }
+  };
+
+  const openAssetInFolder = async (asset: AssetItem) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    try {
+      await revealItemInDir(asset.originalPath);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Failed to reveal file in folder",
+      );
+    }
+  };
+
+  const confirmRenameAsset = async () => {
+    if (!renameDialogAsset) {
+      return;
+    }
+
+    const nextName = renameDraft.trim();
+    if (!nextName) {
+      setError("Filename is required.");
+      return;
+    }
+
+    if (nextName === renameDialogAsset.filename) {
+      setRenameDialogAsset(null);
+      return;
+    }
+
+    await runAssetMutation(
+      {
+        action: "rename",
+        assetId: renameDialogAsset.id,
+        newName: nextName,
+      },
+      () => {
+        setRenameDialogAsset(null);
+      },
+    );
+  };
+
+  const confirmDeleteAsset = async () => {
+    if (!deleteDialogAsset) {
+      return;
+    }
+
+    await runAssetMutation(
+      {
+        action: "delete",
+        assetId: deleteDialogAsset.id,
+      },
+      () => {
+        setDeleteDialogAsset(null);
+        setSelectedAssetIds((current) =>
+          current.filter((id) => id !== deleteDialogAsset.id),
+        );
+        setPreviewAssetId((current) =>
+          current === deleteDialogAsset.id ? null : current,
+        );
+      },
+    );
+  };
+
+  const openAssetContextMenu = async (
+    event: MouseEvent<HTMLElement>,
+    asset: AssetItem,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    setSelectedAssetIds([asset.id]);
+
+    const menu = await Menu.new({
+      items: [
+        {
+          id: `asset-caption-${asset.id}`,
+          text: trimDragLabel(asset.filename, 56),
+          enabled: false,
+        },
+        {
+          id: `asset-open-folder-${asset.id}`,
+          text: "Open file in folder",
+          action: () => {
+            void openAssetInFolder(asset);
+          },
+        },
+        {
+          id: `asset-rename-${asset.id}`,
+          text: "Rename",
+          action: () => {
+            setRenameDraft(asset.filename);
+            setRenameDialogAsset(asset);
+          },
+        },
+        {
+          id: `asset-delete-${asset.id}`,
+          text: "Delete",
+          action: () => {
+            setDeleteDialogAsset(asset);
+          },
+        },
+      ],
+    });
+
+    try {
+      await menu.popup();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Failed to open context menu",
+      );
+    } finally {
+      await menu.close().catch(() => undefined);
+    }
+  };
+
   return (
     <section className="explorer-shell">
       <div
@@ -1286,11 +1458,6 @@ export function BrowserPage() {
             </div>
           ) : null}
           {error ? <StatusText text={error} isError /> : null}
-          {selectedAssetIds.length > 0 ? (
-            <StatusText
-              text={`${selectedAssetIds.length} selected · drag selected card(s) to other app`}
-            />
-          ) : null}
 
           <section className="gallery-scroll" ref={galleryScrollRef}>
             <div
@@ -1318,8 +1485,8 @@ export function BrowserPage() {
                   mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
                 const playheadPercent = trimDraft
                   ? (Math.max(0, Math.min(mediaTime, trimDraft.duration)) /
-                    Math.max(0.001, trimDraft.duration)) *
-                  100
+                      Math.max(0.001, trimDraft.duration)) *
+                    100
                   : 0;
                 const lane =
                   typeof virtualItem.lane === "number"
@@ -1353,8 +1520,8 @@ export function BrowserPage() {
                         const dragAssets =
                           selectedSet.size > 0 && selectedSet.has(asset.id)
                             ? visibleAssets.filter((candidate) =>
-                              selectedSet.has(candidate.id),
-                            )
+                                selectedSet.has(candidate.id),
+                              )
                             : [asset];
 
                         const dragPaths = dragAssets
@@ -1384,6 +1551,9 @@ export function BrowserPage() {
 
                         event.preventDefault();
                         void startExternalAssetDrag(asset.id);
+                      }}
+                      onContextMenu={(event) => {
+                        void openAssetContextMenu(event, asset);
                       }}
                       onClick={(event) => {
                         if (suppressCardToggleRef.current) {
@@ -1428,11 +1598,11 @@ export function BrowserPage() {
                         style={{
                           aspectRatio: String(
                             assetAspectById[asset.id] ??
-                            (kind === "audio"
-                              ? 2.8
-                              : kind === "video"
-                                ? 16 / 9
-                                : 4 / 3),
+                              (kind === "audio"
+                                ? 2.8
+                                : kind === "video"
+                                  ? 16 / 9
+                                  : 4 / 3),
                           ),
                         }}
                       >
@@ -1534,9 +1704,9 @@ export function BrowserPage() {
                           </h3>
                         </div>
                         {isPreviewOpen &&
-                          canTrimInline &&
-                          sourceSrc &&
-                          trimDraft ? (
+                        canTrimInline &&
+                        sourceSrc &&
+                        trimDraft ? (
                           <>
                             <button
                               type="button"
@@ -1654,6 +1824,131 @@ export function BrowserPage() {
               {formatFileSize(quicklookAsset.fileSize)} ·{" "}
               {formatDate(quicklookAsset.dateModified)}
             </p>
+          </div>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={renameDialogAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRenameDialogAsset(null);
+          }
+        }}
+        title="Rename Asset"
+      >
+        {renameDialogAsset ? (
+          <form
+            className="asset-dialog-body"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void confirmRenameAsset();
+            }}
+          >
+            <div className="asset-dialog-field">
+              <p className="asset-dialog-label">Current Filename</p>
+              <p
+                className="asset-dialog-value"
+                title={renameDialogAsset.filename}
+              >
+                {renameDialogAsset.filename}
+              </p>
+            </div>
+            <div className="asset-dialog-field">
+              <p className="asset-dialog-label">Location</p>
+              <p
+                className="asset-dialog-value asset-dialog-path"
+                title={renameDialogAsset.originalPath}
+              >
+                {renameDialogAsset.originalPath}
+              </p>
+            </div>
+            <label className="asset-dialog-field" htmlFor="asset-rename-input">
+              <span className="asset-dialog-label">New Filename</span>
+              <Input
+                id="asset-rename-input"
+                className="asset-dialog-input"
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                placeholder="New filename"
+                autoFocus
+              />
+            </label>
+            <div className="asset-dialog-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setRenameDialogAsset(null)}
+                disabled={isMutatingAsset}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  isMutatingAsset ||
+                  renameDraft.trim().length === 0 ||
+                  renameDraft.trim() === renameDialogAsset.filename
+                }
+              >
+                Rename
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteDialogAsset(null);
+          }
+        }}
+        title="Delete Asset"
+      >
+        {deleteDialogAsset ? (
+          <div className="asset-dialog-body">
+            <div className="asset-dialog-field">
+              <p className="asset-dialog-label">Filename</p>
+              <p
+                className="asset-dialog-value"
+                title={deleteDialogAsset.filename}
+              >
+                {deleteDialogAsset.filename}
+              </p>
+            </div>
+            <div className="asset-dialog-field">
+              <p className="asset-dialog-label">Location</p>
+              <p
+                className="asset-dialog-value asset-dialog-path"
+                title={deleteDialogAsset.originalPath}
+              >
+                {deleteDialogAsset.originalPath}
+              </p>
+            </div>
+            <p className="asset-dialog-note is-danger">
+              This permanently removes the file from disk and deletes its
+              database record.
+            </p>
+            <div className="asset-dialog-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setDeleteDialogAsset(null)}
+                disabled={isMutatingAsset}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="asset-dialog-danger"
+                onClick={() => void confirmDeleteAsset()}
+                disabled={isMutatingAsset}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         ) : null}
       </Dialog>
