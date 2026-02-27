@@ -1165,9 +1165,14 @@ table {
     width: 100%;
   }
 
-  .youtube-output-row .button {
+  .youtube-output-row > .button {
     width: 100%;
     justify-content: center;
+  }
+
+  .youtube-output-dropdown-toggle {
+    width: auto;
+    min-width: 28px;
   }
 
   .youtube-preview-content {
@@ -1967,6 +1972,169 @@ table {
   text-overflow: ellipsis;
 }
 
+.settings-deps-progress-shell {
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, var(--accent));
+  border-radius: 8px;
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--panel) 86%, transparent) 0%,
+    color-mix(in srgb, var(--panel-muted) 72%, var(--accent)) 100%
+  );
+  padding: 9px;
+  display: grid;
+  gap: 6px;
+}
+
+.settings-deps-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-deps-progress-title {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: color-mix(in srgb, var(--text) 86%, white);
+}
+
+.settings-deps-progress-track-wrap {
+  display: grid;
+  gap: 5px;
+}
+
+.settings-deps-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 55%, black);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--line) 82%, transparent) inset,
+    0 4px 14px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.settings-deps-progress-track .progress-indicator {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 82%, white) 0%,
+    color-mix(in srgb, var(--accent) 64%, #9de0ff) 45%,
+    color-mix(in srgb, #8be9fd 76%, var(--accent)) 100%
+  );
+}
+
+.settings-deps-progress-meta {
+  margin: 0;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-deps-progress-message {
+  margin: 0;
+  font-size: 0.64rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text) 90%, white);
+}
+
+.settings-deps-progress-shell.is-success,
+.youtube-deps-progress-shell.is-success {
+  animation: progress-success-pulse 740ms var(--motion-ease);
+}
+
+.youtube-deps-progress-shell {
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, var(--accent));
+  border-radius: 8px;
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--panel) 86%, transparent) 0%,
+    color-mix(in srgb, var(--panel-muted) 72%, var(--accent)) 100%
+  );
+  padding: 9px;
+  display: grid;
+  gap: 6px;
+}
+
+.youtube-deps-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.youtube-deps-progress-title {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: color-mix(in srgb, var(--text) 86%, white);
+}
+
+.youtube-deps-progress-track-wrap {
+  display: grid;
+  gap: 5px;
+}
+
+.youtube-deps-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 55%, black);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--line) 82%, transparent) inset,
+    0 4px 14px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.youtube-deps-progress-track .progress-indicator {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 82%, white) 0%,
+    color-mix(in srgb, var(--accent) 64%, #9de0ff) 45%,
+    color-mix(in srgb, #8be9fd 76%, var(--accent)) 100%
+  );
+}
+
+.youtube-deps-progress-meta {
+  margin: 0;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.youtube-deps-progress-message {
+  margin: 0;
+  font-size: 0.64rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text) 90%, white);
+}
+
+.youtube-progress-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 20px));
+  z-index: 55;
+  pointer-events: none;
+}
+
+.youtube-progress-float-inner {
+  display: grid;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.youtube-status-banner {
+  margin: 0;
+}
+
 .debug-console {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2070,6 +2238,21 @@ table {
   }
   to {
     transform: translateX(300%);
+  }
+}
+
+@keyframes progress-success-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 34%, transparent);
+    transform: translateY(0);
+  }
+  35% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 18%, transparent);
+    transform: translateY(-1px);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 0%, transparent);
+    transform: translateY(0);
   }
 }
 
@@ -2516,5 +2699,10 @@ table {
 
   .youtube-dependency-path {
     display: none;
+  }
+
+  .youtube-progress-float {
+    width: calc(100vw - 12px);
+    bottom: max(6px, env(safe-area-inset-bottom));
   }
 }

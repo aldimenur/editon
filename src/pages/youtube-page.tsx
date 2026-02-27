@@ -559,8 +559,6 @@ export function YoutubePage() {
   const hasValidYoutubeUrl = isValidYouTubeUrl(url);
   const previewThumbnailUrl =
     probeResult?.thumbnail ?? probeResult?.thumbnails[0]?.url ?? null;
-  const inlineStatus =
-    statusText !== "Ready." && !error && runtimeEnabled ? statusText : null;
   const downloadProgressLabel = downloadJobProgress
     ? `Download · ${downloadJobProgress.status}${typeof downloadJobProgress.progress === "number" ? ` · ${downloadJobProgress.progress}%` : ""}`
     : "Download · queued";
@@ -573,6 +571,35 @@ export function YoutubePage() {
 
   const showFallbackProgressPane =
     runtimeEnabled && depsLoading && dependencyJobProgress === null;
+  const dependencyProgressValue =
+    typeof dependencyJobProgress?.progress === "number"
+      ? Math.max(0, Math.min(100, dependencyJobProgress.progress))
+      : undefined;
+  const dependencyProgressActive =
+    !!dependencyJobProgress &&
+    !isTerminalJobStatus(dependencyJobProgress.status);
+  const dependencyProgressStatus =
+    dependencyJobProgress?.status.toLowerCase() ?? "idle";
+  const dependencyProgressPillClass =
+    dependencyProgressStatus === "running"
+      ? "downloading"
+      : dependencyProgressStatus === "queued"
+        ? "checking"
+        : dependencyProgressStatus === "done"
+          ? "ready"
+          : dependencyProgressStatus === "failed" ||
+              dependencyProgressStatus === "cancelled"
+            ? "error"
+            : "idle";
+  const dependencyProgressShellClass =
+    dependencyProgressStatus === "done"
+      ? "youtube-deps-progress-shell is-success"
+      : "youtube-deps-progress-shell";
+  const dependencyProgressStatusLabel = dependencyJobProgress
+    ? `${dependencyJobProgress.status.charAt(0).toUpperCase()}${dependencyJobProgress.status.slice(1)}`
+    : "Idle";
+  const showDependencyProgressFloat =
+    !!dependencyJobProgress && dependencyProgressStatus !== "done";
 
   return (
     <section className="page-shell youtube-page-shell">
@@ -981,9 +1008,6 @@ export function YoutubePage() {
                 ) : null}
               </div>
             ) : null}
-            {inlineStatus ? (
-              <p className="status youtube-inline-status">{inlineStatus}</p>
-            ) : null}
           </div>
         </section>
 
@@ -1057,6 +1081,50 @@ export function YoutubePage() {
           text="Tauri runtime is unavailable. Downloader actions are disabled."
           isError
         />
+      ) : null}
+      {showDependencyProgressFloat ? (
+        <section className="youtube-progress-float" aria-live="polite">
+          <div className="youtube-progress-float-inner">
+            <section className={dependencyProgressShellClass}>
+              <div className="youtube-deps-progress-head">
+                <p className="youtube-deps-progress-title">
+                  {dependencyJobProgress.jobType}
+                </p>
+                <span
+                  className={`settings-pill settings-pill-${dependencyProgressPillClass}`}
+                >
+                  {dependencyProgressStatusLabel}
+                </span>
+              </div>
+              <div className="youtube-deps-progress-track-wrap">
+                <Progress
+                  className="youtube-deps-progress-track"
+                  indeterminate={
+                    dependencyProgressActive &&
+                    typeof dependencyProgressValue !== "number"
+                  }
+                  value={dependencyProgressValue}
+                />
+                <p className="youtube-deps-progress-meta">
+                  {typeof dependencyProgressValue === "number"
+                    ? `${dependencyProgressValue}%`
+                    : dependencyProgressActive
+                      ? "Running"
+                      : dependencyProgressStatus === "done"
+                        ? "Complete"
+                        : "Stopped"}
+                </p>
+              </div>
+              <p className="youtube-deps-progress-message">
+                {dependencyJobProgress.message ||
+                  "Preparing dependency installation..."}
+              </p>
+            </section>
+          </div>
+        </section>
+      ) : null}
+      {runtimeEnabled && statusText !== "Ready." && !error ? (
+        <p className="status youtube-status-banner">{statusText}</p>
       ) : null}
       {error ? <StatusText text={error} isError /> : null}
     </section>
