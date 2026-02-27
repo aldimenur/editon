@@ -242,14 +242,6 @@ export function SystemPage() {
           <StatusText text={updateStatusText} isError={updatePhase === "error"} />
         </div>
       </section>
-      <SystemPanel
-        dependencies={dependencies}
-        loading={loading || !isTauriRuntime()}
-        statusMessage={statusMessage}
-        onCheck={() => void checkDependencies()}
-        onInstall={() => void queueInstall()}
-        onUpdate={() => void queueUpdate()}
-      />
     </section>
   );
 }
