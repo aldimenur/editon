@@ -18,11 +18,24 @@ export function SystemPanel({
   onInstall,
   onUpdate,
 }: SystemPanelProps) {
+  const dependencyRows = [
+    { label: "yt-dlp", installed: Boolean(dependencies?.ytDlpInstalled) },
+    { label: "ffmpeg", installed: Boolean(dependencies?.ffmpegInstalled) },
+    { label: "ffprobe", installed: Boolean(dependencies?.ffprobeInstalled) },
+    { label: "deno", installed: Boolean(dependencies?.denoInstalled) },
+  ];
+
   return (
-    <section className="pane">
-      <header className="pane-head">
-        <h2>System</h2>
-        <div className="row-actions">
+    <section className="pane settings-card settings-maintenance-card">
+      <header className="settings-card-head">
+        <div className="settings-card-heading">
+          <p className="settings-card-kicker">Maintenance</p>
+          <h2>Dependencies</h2>
+          <p className="settings-card-note">
+            Verify and install tooling used for media analysis and downloads.
+          </p>
+        </div>
+        <div className="row-actions settings-card-actions">
           <Button type="button" onClick={onCheck} disabled={loading}>
             Check
           </Button>
@@ -44,23 +57,21 @@ export function SystemPanel({
           </Button>
         </div>
       </header>
-      <div className="kv-grid">
-        <p>yt-dlp</p>
-        <strong>
-          {dependencies?.ytDlpInstalled ? "Installed" : "Missing"}
-        </strong>
-        <p>ffmpeg</p>
-        <strong>
-          {dependencies?.ffmpegInstalled ? "Installed" : "Missing"}
-        </strong>
-        <p>ffprobe</p>
-        <strong>
-          {dependencies?.ffprobeInstalled ? "Installed" : "Missing"}
-        </strong>
-        <p>deno</p>
-        <strong>{dependencies?.denoInstalled ? "Installed" : "Missing"}</strong>
+      <div className="settings-dependency-grid">
+        {dependencyRows.map((row) => (
+          <div className="settings-dependency-row" key={row.label}>
+            <p>{row.label}</p>
+            <span
+              className={`settings-pill ${
+                row.installed ? "settings-pill-ready" : "settings-pill-error"
+              }`}
+            >
+              {row.installed ? "Installed" : "Missing"}
+            </span>
+          </div>
+        ))}
       </div>
-      <p className="status">{statusMessage}</p>
+      <p className="status settings-inline-status">{statusMessage}</p>
     </section>
   );
 }
