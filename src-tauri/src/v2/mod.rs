@@ -13,12 +13,16 @@ use crate::v2::models::{
 };
 use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 struct ActiveScanGuard {
     active_scan_id: Arc<Mutex<Option<String>>>,
@@ -52,6 +56,18 @@ const YT_DLP_WINDOWS_URL: &str =
 const FFMPEG_WINDOWS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip";
 const DENO_WINDOWS_URL: &str =
     "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn hidden_command(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
 
 fn parse_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetDto> {
     let thumbnail_path: Option<String> = row.get(5)?;
@@ -881,7 +897,7 @@ pub async fn v2_ytdlp_probe(app: AppHandle, url: String) -> Result<YtdlpProbeRes
 
     tauri::async_runtime::spawn_blocking(move || {
         let yt_dlp_bin = resolve_yt_dlp_bin(&app)?;
-        let output = Command::new(&yt_dlp_bin)
+        let output = hidden_command(&yt_dlp_bin)
             .args([
                 "--skip-download",
                 "--no-playlist",
@@ -1181,7 +1197,7 @@ where
     args.push(url.to_string());
 
     on_progress(4, "Preparing yt-dlp download");
-    let mut child = Command::new(&yt_dlp_bin)
+    let mut child = hidden_command(&yt_dlp_bin)
         .args(&args)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -1335,7 +1351,7 @@ where
 
     let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
     on_progress(58, "Rendering video thumbnail");
-    let ffmpeg_output = Command::new(&ffmpeg_bin)
+    let ffmpeg_output = hidden_command(&ffmpeg_bin)
         .args([
             "-y",
             "-ss",
@@ -1468,7 +1484,7 @@ where
     let end_token = format!("{:.3}", parsed.end_sec);
 
     on_progress(26, "Trimming media");
-    let copy_output = Command::new(&ffmpeg_bin)
+    let copy_output = hidden_command(&ffmpeg_bin)
         .args([
             "-y",
             "-ss",
@@ -1523,7 +1539,7 @@ where
 
         fallback_args.push(trim_output_path.clone());
 
-        let fallback_output = Command::new(&ffmpeg_bin)
+        let fallback_output = hidden_command(&ffmpeg_bin)
             .args(fallback_args.iter().map(String::as_str))
             .output()
             .map_err(|e| format!("Failed to run ffmpeg fallback trim: {}", e))?;
@@ -1705,7 +1721,7 @@ fn copy_binary(source: &Path, destination: &Path) -> Result<(), String> {
 }
 
 fn verify_binary(path: &Path, version_arg: &str) -> Result<(), String> {
-    let output = Command::new(path)
+    let output = hidden_command(path)
         .arg(version_arg)
         .output()
         .map_err(|e| format!("Failed to run {}: {}", path.display(), e))?;
@@ -1741,7 +1757,7 @@ fn expand_archive_with_powershell(zip_path: &Path, destination_dir: &Path) -> Re
 fn run_powershell_script(script: &str) -> Result<(), String> {
     let mut last_error = String::new();
     for shell in ["powershell", "pwsh"] {
-        let output = Command::new(shell)
+        let output = hidden_command(shell)
             .args([
                 "-NoProfile",
                 "-NonInteractive",
