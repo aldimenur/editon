@@ -25,6 +25,7 @@ export function SystemPage() {
     queueUpdate,
   } = useSystemStore();
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
+  const [appVersion, setAppVersion] = useState<string>("Desktop");
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateStatusText, setUpdateStatusText] = useState<string>("Ready.");
@@ -138,17 +139,67 @@ export function SystemPage() {
       return;
     }
 
+    let disposed = false;
+    void (async () => {
+      try {
+        const { getVersion } = await import("@tauri-apps/plugin-app");
+        const version = await getVersion();
+        if (!disposed) {
+          setAppVersion(version);
+        }
+      } catch {
+        if (!disposed) {
+          setAppVersion("Desktop");
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
     void checkDependencies();
     void checkForAppUpdate(false);
   }, [checkDependencies, checkForAppUpdate]);
 
+  const updatePhaseLabel: Record<UpdatePhase, string> = {
+    idle: "Ready",
+    checking: "Checking",
+    available: "Available",
+    downloading: "Downloading",
+    ready: "Installed",
+    error: "Error",
+  };
+
   return (
-    <section className="page-shell">
+    <section className="page-shell settings-page">
       {error ? <StatusText text={error} isError /> : null}
-      <section className="pane settings-update-pane">
-        <header className="pane-head">
-          <h2>App Updates</h2>
-          <div className="row-actions settings-update-actions">
+      <header className="settings-page-header">
+        <div>
+          <p className="settings-kicker">System Preferences</p>
+          <h1>Settings</h1>
+          <p className="settings-subtitle">
+            Manage app updates and runtime dependencies.
+          </p>
+        </div>
+        <span className="settings-version-badge">v{appVersion}</span>
+      </header>
+      <section className="pane settings-card settings-updates-card">
+        <header className="settings-card-head">
+          <div className="settings-card-heading">
+            <p className="settings-card-kicker">Application</p>
+            <h2>Updates</h2>
+            <p className="settings-card-note">
+              Keep Editon secure and up to date with the latest release.
+            </p>
+          </div>
+          <div className="row-actions settings-card-actions">
             <Button
               type="button"
               onClick={() => void checkForAppUpdate(true)}
@@ -168,11 +219,18 @@ export function SystemPage() {
             </Button>
           </div>
         </header>
-        {updateVersion ? (
-          <p className="meta">Latest found: v{updateVersion}</p>
-        ) : null}
+        <div className="settings-update-meta">
+          <span className={`settings-pill settings-pill-${updatePhase}`}>
+            {updatePhaseLabel[updatePhase]}
+          </span>
+          <p className="meta settings-meta">
+            {updateVersion
+              ? `Latest found: v${updateVersion}`
+              : "No pending version detected."}
+          </p>
+        </div>
         {updatePhase === "downloading" ? (
-          <div className="settings-update-progress">
+          <div className="settings-update-progress-card">
             <Progress
               indeterminate={typeof updateProgress !== "number"}
               value={updateProgress ?? undefined}
@@ -180,7 +238,9 @@ export function SystemPage() {
             <p className="status">Downloading {updateProgress ?? 0}%</p>
           </div>
         ) : null}
-        <StatusText text={updateStatusText} isError={updatePhase === "error"} />
+        <div className="settings-status-wrap">
+          <StatusText text={updateStatusText} isError={updatePhase === "error"} />
+        </div>
       </section>
       <SystemPanel
         dependencies={dependencies}
