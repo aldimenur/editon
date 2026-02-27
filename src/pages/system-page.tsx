@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSystemStore } from "@/features/system";
+import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { Button } from "@/shared/ui/button";
 import { Progress } from "@/shared/ui/progress";
@@ -21,10 +22,23 @@ export function SystemPage() {
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateStatusText, setUpdateStatusText] = useState<string>("Ready.");
+  const [installJobEvent, setInstallJobEvent] = useState<JobEvent | null>(null);
   const updateRef = useRef<{
     version: string;
     downloadAndInstall: (onEvent?: (event: unknown) => void) => Promise<void>;
   } | null>(null);
+  const installClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const isTerminalJobStatus = useCallback((status: string) => {
+    const normalized = status.toLowerCase();
+    return (
+      normalized === "done" ||
+      normalized === "failed" ||
+      normalized === "cancelled"
+    );
+  }, []);
 
   const checkForAppUpdate = useCallback(async (manual: boolean) => {
     if (!isTauriRuntime()) {
@@ -160,6 +174,97 @@ export function SystemPage() {
     void checkForAppUpdate(false);
   }, [checkDependencies, checkForAppUpdate]);
 
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+
+    onJobUpdated((payload) => {
+      if (payload.jobType !== "dependencies_install") {
+        return;
+      }
+
+      if (installClearTimerRef.current) {
+        clearTimeout(installClearTimerRef.current);
+        installClearTimerRef.current = null;
+      }
+
+      setInstallJobEvent(payload);
+
+      if (isTerminalJobStatus(payload.status)) {
+        if (payload.status === "done") {
+          void checkDependencies();
+        }
+
+        installClearTimerRef.current = setTimeout(() => {
+          installClearTimerRef.current = null;
+          setInstallJobEvent(null);
+        }, 2600);
+      }
+    })
+      .then((stop) => {
+        if (disposed) {
+          stop();
+          return;
+        }
+        unlisten = stop;
+      })
+      .catch(() => {
+        if (disposed) {
+          return;
+        }
+        setInstallJobEvent({
+          id: 0,
+          jobType: "dependencies_install",
+          status: "failed",
+          message: "Failed to subscribe dependency install progress.",
+          progress: null,
+        });
+      });
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+      if (installClearTimerRef.current) {
+        clearTimeout(installClearTimerRef.current);
+        installClearTimerRef.current = null;
+      }
+    };
+  }, [checkDependencies, isTerminalJobStatus]);
+
+  const installStatusLabel = installJobEvent
+    ? `${installJobEvent.status.charAt(0).toUpperCase()}${installJobEvent.status.slice(1)}`
+    : "Idle";
+  const installStatusPillClass = installJobEvent
+    ? installJobEvent.status.toLowerCase() === "running"
+      ? "downloading"
+      : installJobEvent.status.toLowerCase() === "queued"
+        ? "checking"
+        : installJobEvent.status.toLowerCase() === "done"
+          ? "ready"
+          : installJobEvent.status.toLowerCase() === "failed" ||
+              installJobEvent.status.toLowerCase() === "cancelled"
+            ? "error"
+            : "idle"
+    : "idle";
+  const installProgressValue =
+    typeof installJobEvent?.progress === "number"
+      ? Math.max(0, Math.min(100, installJobEvent.progress))
+      : undefined;
+  const installProgressActive =
+    !!installJobEvent && !isTerminalJobStatus(installJobEvent.status);
+  const installProgressShellClass =
+    installJobEvent?.status.toLowerCase() === "done"
+      ? "settings-deps-progress-shell is-success"
+      : "settings-deps-progress-shell";
+  const installMessage =
+    installJobEvent?.message?.trim() || "Preparing dependency installation...";
+
   const updatePhaseLabel: Record<UpdatePhase, string> = {
     idle: "Ready",
     checking: "Checking",
@@ -236,6 +341,40 @@ export function SystemPage() {
             isError={updatePhase === "error"}
           />
         </div>
+        {installJobEvent ? (
+          <section className={installProgressShellClass} aria-live="polite">
+            <div className="settings-deps-progress-head">
+              <p className="settings-deps-progress-title">
+                Dependencies Install
+              </p>
+              <span
+                className={`settings-pill settings-pill-${installStatusPillClass}`}
+              >
+                {installStatusLabel}
+              </span>
+            </div>
+            <div className="settings-deps-progress-track-wrap">
+              <Progress
+                className="settings-deps-progress-track"
+                indeterminate={
+                  installProgressActive &&
+                  typeof installProgressValue !== "number"
+                }
+                value={installProgressValue}
+              />
+              <p className="settings-deps-progress-meta">
+                {typeof installProgressValue === "number"
+                  ? `${installProgressValue}%`
+                  : installProgressActive
+                    ? "Running"
+                    : installJobEvent.status.toLowerCase() === "done"
+                      ? "Complete"
+                      : "Stopped"}
+              </p>
+            </div>
+            <p className="settings-deps-progress-message">{installMessage}</p>
+          </section>
+        ) : null}
       </section>
     </section>
   );
