@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { SystemPanel, useSystemStore } from "@/features/system";
+import { useSystemStore } from "@/features/system";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { Button } from "@/shared/ui/button";
 import { Progress } from "@/shared/ui/progress";
@@ -15,15 +15,7 @@ type UpdatePhase =
   | "error";
 
 export function SystemPage() {
-  const {
-    dependencies,
-    loading,
-    statusMessage,
-    error,
-    checkDependencies,
-    queueInstall,
-    queueUpdate,
-  } = useSystemStore();
+  const { error, checkDependencies } = useSystemStore();
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
   const [appVersion, setAppVersion] = useState<string>("Desktop");
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -239,7 +231,10 @@ export function SystemPage() {
           </div>
         ) : null}
         <div className="settings-status-wrap">
-          <StatusText text={updateStatusText} isError={updatePhase === "error"} />
+          <StatusText
+            text={updateStatusText}
+            isError={updatePhase === "error"}
+          />
         </div>
       </section>
     </section>

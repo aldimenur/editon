@@ -97,7 +97,9 @@ function toFileSrc(path: string | null): string | null {
   return isTauriRuntime() ? convertFileSrc(path) : path;
 }
 
-function normalizeProgress(value: number | null | undefined): number | undefined {
+function normalizeProgress(
+  value: number | null | undefined,
+): number | undefined {
   if (typeof value !== "number") {
     return undefined;
   }
@@ -120,6 +122,10 @@ function formatTrimJobText(jobEvent: JobEvent): string {
 function isTerminalStatus(status: string): boolean {
   const lowered = status.toLowerCase();
   return lowered === "done" || lowered === "failed" || lowered === "cancelled";
+}
+
+function isActiveProgressStatus(status: string): boolean {
+  return status.toLowerCase() === "running";
 }
 
 const DRAG_ICON_FALLBACK = "../public/convertico-icon (1).ico";
@@ -507,6 +513,40 @@ export function BrowserPage() {
     setError,
     setScanProgress,
   ]);
+
+  useEffect(() => {
+    if (!previewJobEvent || !isActiveProgressStatus(previewJobEvent.status)) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPreviewJobEvent(null);
+      setError(
+        `job:${previewJobEvent.id} · ${previewJobEvent.jobType} appears stuck. Progress was hidden.`,
+      );
+      void refresh(1, queryFilters);
+    }, 20_000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [previewJobEvent, queryFilters, refresh, setError]);
+
+  useEffect(() => {
+    if (!trimJobEvent || !isActiveProgressStatus(trimJobEvent.status)) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setTrimJobEvent(null);
+      setError(`trim:${trimJobEvent.id} appears stuck. Progress was hidden.`);
+      void refresh(1, queryFilters);
+    }, 20_000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [queryFilters, refresh, setError, trimJobEvent]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -1571,7 +1611,7 @@ export function BrowserPage() {
       });
     }
 
-    if (previewJobEvent) {
+    if (previewJobEvent && isActiveProgressStatus(previewJobEvent.status)) {
       items.push({
         key: "preview",
         text: formatPreviewJobText(previewJobEvent),
@@ -1579,7 +1619,7 @@ export function BrowserPage() {
       });
     }
 
-    if (trimJobEvent) {
+    if (trimJobEvent && isActiveProgressStatus(trimJobEvent.status)) {
       items.push({
         key: "trim",
         text: formatTrimJobText(trimJobEvent),
