@@ -8,13 +8,38 @@ use crate::v2::{
 };
 use sqlx::Row;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
+const STALE_RUNNING_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+
 pub async fn run_worker(app: AppHandle, state: AppState) {
+    let app_started_at = sqlx::query_scalar::<_, String>("SELECT CURRENT_TIMESTAMP")
+        .fetch_optional(&state.db_pool)
+        .await
+        .ok()
+        .flatten();
+    let mut last_stale_sweep = Instant::now() - STALE_RUNNING_SWEEP_INTERVAL;
+
     loop {
         if state.worker_shutdown.load(std::sync::atomic::Ordering::SeqCst) {
             break;
+        }
+
+        if let Some(started_at) = app_started_at.as_deref() {
+            if last_stale_sweep.elapsed() >= STALE_RUNNING_SWEEP_INTERVAL {
+                if let Err(error) = recover_stale_running_jobs(&app, &state, started_at).await {
+                    emit_job_event(
+                        &app,
+                        0,
+                        "worker".to_string(),
+                        "error".to_string(),
+                        error,
+                        None,
+                    );
+                }
+                last_stale_sweep = Instant::now();
+            }
         }
 
         match claim_next_job(&state).await {
@@ -37,6 +62,61 @@ pub async fn run_worker(app: AppHandle, state: AppState) {
             }
         }
     }
+}
+
+async fn recover_stale_running_jobs(
+    app: &AppHandle,
+    state: &AppState,
+    app_started_at: &str,
+) -> Result<(), String> {
+    let rows = sqlx::query(
+        "SELECT id, job_type
+         FROM jobs
+         WHERE status = 'running'
+           AND COALESCE(started_at, created_at, updated_at) < ?1
+         ORDER BY id ASC",
+    )
+    .bind(app_started_at)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let job_id: i64 = row.try_get("id").map_err(|e| e.to_string())?;
+        let job_type: String = row.try_get("job_type").map_err(|e| e.to_string())?;
+
+        let affected = sqlx::query(
+            "UPDATE jobs
+             SET status = 'done',
+                 finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP),
+                 updated_at = CURRENT_TIMESTAMP,
+                 last_error = CASE
+                     WHEN last_error IS NULL OR TRIM(last_error) = ''
+                         THEN 'Recovered stale running job after app restart'
+                     ELSE last_error
+                 END
+             WHERE id = ?1
+               AND status = 'running'",
+        )
+        .bind(job_id)
+        .execute(&state.db_pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected();
+
+        if affected > 0 {
+            emit_job_event(
+                app,
+                job_id,
+                job_type,
+                "done".to_string(),
+                "Recovered stale running job after app restart".to_string(),
+                Some(100),
+            );
+        }
+    }
+
+    Ok(())
 }
 
 async fn claim_next_job(state: &AppState) -> Result<Option<JobRow>, String> {
@@ -258,7 +338,7 @@ async fn process_job(app: &AppHandle, state: &AppState, job: JobRow) {
         }
         (Err(error), false) => {
             let next_attempt = job.attempts + 1;
-            if next_attempt >= job.max_attempts {
+            if is_non_retryable_job_error(&job.job_type, &error) || next_attempt >= job.max_attempts {
                 let _ = sqlx::query(
                     "UPDATE jobs
                      SET status = 'failed',
@@ -334,4 +414,46 @@ fn emit_job_event(
             progress,
         },
     );
+}
+
+fn is_non_retryable_job_error(job_type: &str, error: &str) -> bool {
+    let normalized_job = job_type.to_lowercase();
+    let normalized_error = error.to_lowercase();
+
+    let is_preview_job =
+        normalized_job == "generate_video_thumbnail" || normalized_job == "generate_waveform";
+    if !is_preview_job {
+        return false;
+    }
+
+    normalized_error.contains("foreign key constraint failed")
+        || normalized_error.contains("query returned no rows")
+        || normalized_error.contains("no rows returned")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn marks_foreign_key_thumbnail_error_as_non_retryable() {
+        assert!(super::is_non_retryable_job_error(
+            "generate_video_thumbnail",
+            "FOREIGN KEY constraint failed",
+        ));
+    }
+
+    #[test]
+    fn marks_missing_asset_query_error_as_non_retryable() {
+        assert!(super::is_non_retryable_job_error(
+            "generate_video_thumbnail",
+            "Query returned no rows",
+        ));
+    }
+
+    #[test]
+    fn keeps_retry_for_transient_thumbnail_errors() {
+        assert!(!super::is_non_retryable_job_error(
+            "generate_video_thumbnail",
+            "ffmpeg exited with code 1",
+        ));
+    }
 }

@@ -9,4 +9,5 @@ pub struct AppState {
     pub cancel_scan: Arc<AtomicBool>,
     pub worker_shutdown: Arc<AtomicBool>,
     pub active_scan_id: Arc<Mutex<Option<String>>>,
+    pub active_scan_root_path: Arc<Mutex<Option<String>>>,
 }

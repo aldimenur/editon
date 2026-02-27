@@ -26,13 +26,19 @@ use std::os::windows::process::CommandExt;
 
 struct ActiveScanGuard {
     active_scan_id: Arc<Mutex<Option<String>>>,
+    active_scan_root_path: Arc<Mutex<Option<String>>>,
     scan_id: String,
 }
 
 impl ActiveScanGuard {
-    fn new(active_scan_id: Arc<Mutex<Option<String>>>, scan_id: String) -> Self {
+    fn new(
+        active_scan_id: Arc<Mutex<Option<String>>>,
+        active_scan_root_path: Arc<Mutex<Option<String>>>,
+        scan_id: String,
+    ) -> Self {
         Self {
             active_scan_id,
+            active_scan_root_path,
             scan_id,
         }
     }
@@ -44,6 +50,9 @@ impl Drop for ActiveScanGuard {
             if active.as_deref() == Some(self.scan_id.as_str()) {
                 *active = None;
             }
+        }
+        if let Ok(mut active_root_path) = self.active_scan_root_path.lock() {
+            *active_root_path = None;
         }
     }
 }
@@ -240,6 +249,7 @@ pub fn setup(app: AppHandle) -> Result<AppState, String> {
         cancel_scan: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         worker_shutdown: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         active_scan_id: Arc::new(Mutex::new(None)),
+        active_scan_root_path: Arc::new(Mutex::new(None)),
     };
 
     start_worker(app, state.clone());
@@ -274,6 +284,13 @@ pub fn v2_scan_start(
         }
         *active = Some(scan_id.clone());
     }
+    {
+        let mut active_root_path = state
+            .active_scan_root_path
+            .lock()
+            .map_err(|e| e.to_string())?;
+        *active_root_path = Some(normalized_root_path.clone());
+    }
 
     let db = state.conn.clone();
     let cancel = state.cancel_scan.clone();
@@ -292,8 +309,11 @@ pub fn v2_scan_start(
     }
 
     std::thread::spawn(move || {
-        let _active_scan_guard =
-            ActiveScanGuard::new(state_for_jobs.active_scan_id.clone(), emit_scan_id.clone());
+        let _active_scan_guard = ActiveScanGuard::new(
+            state_for_jobs.active_scan_id.clone(),
+            state_for_jobs.active_scan_root_path.clone(),
+            emit_scan_id.clone(),
+        );
         let mut count = 0usize;
         let mut cancelled = false;
 
@@ -512,6 +532,26 @@ pub fn v2_scan_root_remove(
     }
 
     let normalized_like = format!("{}/%", normalized);
+
+    let active_root_path = state
+        .active_scan_root_path
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    if should_cancel_scan_for_removed_root(active_root_path.as_deref(), &normalized) {
+        state.cancel_scan.store(true, Ordering::SeqCst);
+        for _ in 0..50 {
+            let active_scan_running = state
+                .active_scan_id
+                .lock()
+                .map(|scan| scan.is_some())
+                .unwrap_or(false);
+            if !active_scan_running {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
 
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -1937,6 +1977,14 @@ fn normalize_root_path(value: &str) -> String {
     }
 }
 
+fn should_cancel_scan_for_removed_root(active_root_path: Option<&str>, removed_root_path: &str) -> bool {
+    let Some(active_root) = active_root_path else {
+        return false;
+    };
+
+    normalize_root_path(active_root) == normalize_root_path(removed_root_path)
+}
+
 fn enqueue_waveform_job_if_needed(
     state: &AppState,
     asset_id: i64,
@@ -2139,5 +2187,21 @@ mod tests {
             None
         );
         assert_eq!(super::previous_thumbnail_to_remove(None, "new.jpg"), None);
+    }
+
+    #[test]
+    fn should_cancel_scan_when_removed_root_matches_active_root() {
+        assert!(super::should_cancel_scan_for_removed_root(
+            Some("C:/Media"),
+            "C:/Media"
+        ));
+    }
+
+    #[test]
+    fn should_not_cancel_scan_when_removed_root_is_different() {
+        assert!(!super::should_cancel_scan_for_removed_root(
+            Some("C:/Media"),
+            "C:/Other"
+        ));
     }
 }
