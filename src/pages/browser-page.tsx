@@ -1730,8 +1730,8 @@ export function BrowserPage() {
                     mediaTimeByAssetId[asset.id] ?? trimDraft?.start ?? 0;
                   const playheadPercent = trimDraft
                     ? (Math.max(0, Math.min(mediaTime, trimDraft.duration)) /
-                        Math.max(0.001, trimDraft.duration)) *
-                      100
+                      Math.max(0.001, trimDraft.duration)) *
+                    100
                     : 0;
                   const lane =
                     typeof virtualItem.lane === "number"
@@ -1765,8 +1765,8 @@ export function BrowserPage() {
                           const dragAssets =
                             selectedSet.size > 0 && selectedSet.has(asset.id)
                               ? visibleAssets.filter((candidate) =>
-                                  selectedSet.has(candidate.id),
-                                )
+                                selectedSet.has(candidate.id),
+                              )
                               : [asset];
 
                           const dragPaths = dragAssets
@@ -1849,11 +1849,11 @@ export function BrowserPage() {
                           style={{
                             aspectRatio: String(
                               assetAspectById[asset.id] ??
-                                (kind === "audio"
-                                  ? 2.8
-                                  : kind === "video"
-                                    ? 16 / 9
-                                    : 4 / 3),
+                              (kind === "audio"
+                                ? 2.8
+                                : kind === "video"
+                                  ? 16 / 9
+                                  : 4 / 3),
                             ),
                           }}
                         >
@@ -1955,9 +1955,9 @@ export function BrowserPage() {
                             </h3>
                           </div>
                           {isPreviewOpen &&
-                          canTrimInline &&
-                          sourceSrc &&
-                          trimDraft ? (
+                            canTrimInline &&
+                            sourceSrc &&
+                            trimDraft ? (
                             <>
                               <button
                                 type="button"
