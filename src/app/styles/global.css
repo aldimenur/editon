@@ -1931,6 +1931,42 @@ table {
   text-overflow: ellipsis;
 }
 
+.explorer-progress-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 20px));
+  z-index: 50;
+  pointer-events: none;
+}
+
+.explorer-progress-float-inner {
+  display: grid;
+  gap: 6px;
+  max-height: min(42vh, 280px);
+  overflow: auto;
+  pointer-events: auto;
+}
+
+.explorer-progress-item {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, var(--accent));
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  border-radius: 8px;
+  padding: 7px 8px;
+  display: grid;
+  gap: 5px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.explorer-progress-item .status {
+  font-size: 0.62rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .debug-console {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2229,8 +2265,18 @@ table {
     display: none;
   }
 
-  .scan-status-row {
-    display: none;
+  .explorer-progress-float {
+    width: calc(100vw - 12px);
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .explorer-progress-item {
+    padding: 6px 7px;
+    gap: 4px;
+  }
+
+  .explorer-progress-item .status {
+    font-size: 0.58rem;
   }
 
   .debug-console-viewport {

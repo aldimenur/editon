@@ -32,6 +32,7 @@ import {
 import { onScanProgress, useAssetsStore } from "@/features/assets";
 import type {
   QueryAssetsInput,
+  ScanProgress,
   ScanRoot,
 } from "@/features/assets/api/assets-api";
 import { onTrimReady, trimMedia } from "@/features/assets/api/assets-api";
@@ -66,6 +67,8 @@ type AssetMutationInput = {
   tags?: string[];
 };
 
+type FloatingProgressItem = { key: string; text: string; progress?: number };
+
 const ASSET_KIND_META: Record<
   AssetKind,
   { label: string; icon: typeof Compass }
@@ -92,6 +95,31 @@ function toFileSrc(path: string | null): string | null {
     return null;
   }
   return isTauriRuntime() ? convertFileSrc(path) : path;
+}
+
+function normalizeProgress(value: number | null | undefined): number | undefined {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+
+  return value;
+}
+
+function formatScanProgressText(scanProgress: ScanProgress): string {
+  return `${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files${scanProgress.lastFile ? ` · ${scanProgress.lastFile}` : ""}`;
+}
+
+function formatPreviewJobText(jobEvent: JobEvent): string {
+  return `job:${jobEvent.id} · ${jobEvent.jobType} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
+}
+
+function formatTrimJobText(jobEvent: JobEvent): string {
+  return `trim:${jobEvent.id} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
+}
+
+function isTerminalStatus(status: string): boolean {
+  const lowered = status.toLowerCase();
+  return lowered === "done" || lowered === "failed" || lowered === "cancelled";
 }
 
 const DRAG_ICON_FALLBACK = "../public/convertico-icon (1).ico";
@@ -1533,6 +1561,35 @@ export function BrowserPage() {
     }
   };
 
+  const activeProgressItems = useMemo<FloatingProgressItem[]>(() => {
+    const items: FloatingProgressItem[] = [];
+
+    if (scanProgress && !isTerminalStatus(scanProgress.status)) {
+      items.push({
+        key: "scan",
+        text: formatScanProgressText(scanProgress),
+      });
+    }
+
+    if (previewJobEvent) {
+      items.push({
+        key: "preview",
+        text: formatPreviewJobText(previewJobEvent),
+        progress: normalizeProgress(previewJobEvent.progress),
+      });
+    }
+
+    if (trimJobEvent) {
+      items.push({
+        key: "trim",
+        text: formatTrimJobText(trimJobEvent),
+        progress: normalizeProgress(trimJobEvent.progress),
+      });
+    }
+
+    return items;
+  }, [previewJobEvent, scanProgress, trimJobEvent]);
+
   return (
     <section className="explorer-shell">
       <div
@@ -1659,36 +1716,6 @@ export function BrowserPage() {
             </div>
           </section>
 
-          {scanProgress ? (
-            <div className="scan-status-row">
-              <StatusText
-                text={`${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files${scanProgress.lastFile ? ` · ${scanProgress.lastFile}` : ""}`}
-              />
-              <Progress indeterminate />
-            </div>
-          ) : null}
-          {previewJobEvent ? (
-            <div className="scan-status-row">
-              <StatusText
-                text={`job:${previewJobEvent.id} · ${previewJobEvent.jobType} · ${previewJobEvent.status}${typeof previewJobEvent.progress === "number" ? ` · ${previewJobEvent.progress}%` : ""}${previewJobEvent.message ? ` · ${previewJobEvent.message}` : ""}`}
-              />
-              <Progress
-                indeterminate={typeof previewJobEvent.progress !== "number"}
-                value={previewJobEvent.progress ?? undefined}
-              />
-            </div>
-          ) : null}
-          {trimJobEvent ? (
-            <div className="scan-status-row">
-              <StatusText
-                text={`trim:${trimJobEvent.id} · ${trimJobEvent.status}${typeof trimJobEvent.progress === "number" ? ` · ${trimJobEvent.progress}%` : ""}${trimJobEvent.message ? ` · ${trimJobEvent.message}` : ""}`}
-              />
-              <Progress
-                indeterminate={typeof trimJobEvent.progress !== "number"}
-                value={trimJobEvent.progress ?? undefined}
-              />
-            </div>
-          ) : null}
           {error ? <StatusText text={error} isError /> : null}
 
           <section className="gallery-scroll" ref={galleryScrollRef}>
@@ -2236,6 +2263,22 @@ export function BrowserPage() {
           </div>
         ) : null}
       </Dialog>
+
+      {activeProgressItems.length > 0 ? (
+        <div className="explorer-progress-float" aria-live="polite">
+          <div className="explorer-progress-float-inner">
+            {activeProgressItems.map((item) => (
+              <div key={item.key} className="explorer-progress-item">
+                <StatusText text={item.text} />
+                <Progress
+                  indeterminate={typeof item.progress !== "number"}
+                  value={item.progress}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
