@@ -1,6 +1,6 @@
 [package]
 name = "Editon"
-version = "1.0.1"
+version = "1.0.2"
 description = "Editor Asset Management App"
 authors = ["aldimenur"]
 edition = "2021"
