@@ -69,6 +69,61 @@ fn hidden_command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+fn is_thumbnail_asset_type(asset_type: &str) -> bool {
+    asset_type == "video" || asset_type == "image"
+}
+
+fn should_enqueue_thumbnail(asset_type: &str, is_missing: bool, is_fresh: bool) -> bool {
+    is_thumbnail_asset_type(asset_type) && (is_missing || !is_fresh)
+}
+
+fn should_enqueue_thumbnail_for_asset(
+    asset_type: &str,
+    extension: &str,
+    is_missing: bool,
+    is_fresh: bool,
+) -> bool {
+    if asset_type == "image" && should_skip_image_thumbnail(extension) {
+        return false;
+    }
+    should_enqueue_thumbnail(asset_type, is_missing, is_fresh)
+}
+
+fn should_capture_scanned_asset_for_job_enqueue(asset_type: &str) -> bool {
+    asset_type == "audio" || is_thumbnail_asset_type(asset_type)
+}
+
+fn should_skip_image_thumbnail(extension: &str) -> bool {
+    extension.eq_ignore_ascii_case("svg")
+}
+
+fn previous_thumbnail_to_remove(
+    previous_thumbnail_path: Option<String>,
+    next_thumbnail_path: &str,
+) -> Option<String> {
+    let previous_path = previous_thumbnail_path?.trim().to_string();
+    if previous_path.is_empty() || previous_path == next_thumbnail_path {
+        return None;
+    }
+    Some(previous_path)
+}
+
+fn thumbnail_dimensions(width: u32, height: u32, max_edge: u32) -> (u32, u32) {
+    if width == 0 || height == 0 || max_edge == 0 {
+        return (0, 0);
+    }
+
+    let current_max = width.max(height);
+    if current_max <= max_edge {
+        return (width, height);
+    }
+
+    let scale = max_edge as f64 / current_max as f64;
+    let target_width = (width as f64 * scale).round().max(1.0) as u32;
+    let target_height = (height as f64 * scale).round().max(1.0) as u32;
+    (target_width, target_height)
+}
+
 fn parse_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetDto> {
     let thumbnail_path: Option<String> = row.get(5)?;
     let tags_csv: Option<String> = row.get(8)?;
@@ -340,7 +395,7 @@ pub fn v2_scan_start(
                         ],
                     );
 
-                    if media_type == "audio" || media_type == "video" {
+                    if should_capture_scanned_asset_for_job_enqueue(&media_type) {
                         let asset_id: Result<i64, _> = conn.query_row(
                             "SELECT id FROM assets WHERE original_path = ?1",
                             params![original_path],
@@ -1324,52 +1379,80 @@ where
 
     on_progress(10, "Preparing thumbnail source");
 
-    let (original_path, asset_type, mtime_ms) = {
+    let (original_path, asset_type, extension, mtime_ms, previous_thumbnail_path) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         conn.query_row(
-            "SELECT original_path, type, mtime_ms FROM assets WHERE id = ?1",
+            "SELECT original_path, type, extension, mtime_ms,
+                    (SELECT thumbnail_path FROM asset_previews WHERE asset_id = assets.id)
+             FROM assets
+             WHERE id = ?1",
             params![parsed.asset_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             },
         )
         .map_err(|e| e.to_string())?
     };
 
-    if asset_type != "video" {
+    if !is_thumbnail_asset_type(&asset_type) {
         return Ok(());
     }
 
-    on_progress(32, "Resolving ffmpeg");
     let thumb_dir = get_thumbnail_dir(app)?;
-    let thumb_path = thumb_dir.join(format!("{}_thumb.jpg", parsed.asset_id));
+    let thumb_path = thumb_dir.join(format!("{}_{}_thumb.jpg", parsed.asset_id, mtime_ms));
     let thumb_path_str = thumb_path.to_string_lossy().to_string();
 
-    let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
-    on_progress(58, "Rendering video thumbnail");
-    let ffmpeg_output = hidden_command(&ffmpeg_bin)
-        .args([
-            "-y",
-            "-ss",
-            "00:00:01",
-            "-i",
-            &original_path,
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale=480:-1",
-            &thumb_path_str,
-        ])
-        .output()
-        .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+    if asset_type == "video" {
+        on_progress(32, "Resolving ffmpeg");
 
-    if !ffmpeg_output.status.success() {
-        let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr).to_string();
-        return Err(format!("ffmpeg thumbnail failed: {}", stderr));
+        let ffmpeg_bin = resolve_ffmpeg_bin(app)?;
+        on_progress(58, "Rendering video thumbnail");
+        let ffmpeg_output = hidden_command(&ffmpeg_bin)
+            .args([
+                "-y",
+                "-ss",
+                "00:00:01",
+                "-i",
+                &original_path,
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:-1",
+                &thumb_path_str,
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+
+        if !ffmpeg_output.status.success() {
+            let stderr = String::from_utf8_lossy(&ffmpeg_output.stderr).to_string();
+            return Err(format!("ffmpeg thumbnail failed: {}", stderr));
+        }
+    } else if asset_type == "image" {
+        if should_skip_image_thumbnail(&extension) {
+            return Ok(());
+        }
+        on_progress(32, "Decoding image");
+        let source = image::open(&original_path)
+            .map_err(|e| format!("Failed to decode image thumbnail source: {}", e))?;
+        let (target_width, target_height) =
+            thumbnail_dimensions(source.width(), source.height(), 160);
+        on_progress(58, "Rendering image thumbnail");
+        let resized = source.resize_exact(
+            target_width,
+            target_height,
+            image::imageops::FilterType::Lanczos3,
+        );
+        resized
+            .save_with_format(&thumb_path, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save image thumbnail: {}", e))?;
+    } else {
+        return Ok(());
     }
 
     on_progress(88, "Saving thumbnail preview");
@@ -1386,6 +1469,12 @@ where
             params![parsed.asset_id, thumb_path_str, mtime_ms, THUMBNAIL_VERSION],
         )
         .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(stale_thumbnail_path) =
+        previous_thumbnail_to_remove(previous_thumbnail_path, &thumb_path_str)
+    {
+        let _ = std::fs::remove_file(stale_thumbnail_path);
     }
 
     let _ = app.emit(
@@ -1907,18 +1996,21 @@ fn enqueue_video_thumbnail_job_if_needed(
 ) -> Result<bool, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
-    let (asset_type, mtime_ms): (String, i64) = conn
+    let (asset_type, extension, mtime_ms): (String, String, i64) = conn
         .query_row(
-            "SELECT type, mtime_ms FROM assets WHERE id = ?1",
+            "SELECT type, extension, mtime_ms FROM assets WHERE id = ?1",
             params![asset_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .map_err(|e| e.to_string())?;
 
-    if asset_type != "video" {
-        return Ok(false);
-    }
-
+    let preview_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM asset_previews WHERE asset_id = ?1 AND thumbnail_path IS NOT NULL AND thumbnail_path != ''",
+            params![asset_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     let preview_fresh: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM asset_previews WHERE asset_id = ?1 AND thumbnail_mtime_ms = ?2 AND thumbnail_path IS NOT NULL AND thumbnail_path != ''",
@@ -1926,7 +2018,12 @@ fn enqueue_video_thumbnail_job_if_needed(
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if preview_fresh > 0 {
+    if !should_enqueue_thumbnail_for_asset(
+        &asset_type,
+        &extension,
+        preview_exists == 0,
+        preview_fresh > 0,
+    ) {
         return Ok(false);
     }
 
@@ -1950,4 +2047,97 @@ fn enqueue_video_thumbnail_job_if_needed(
     .map_err(|e| e.to_string())?;
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn scan_enqueue_capture_includes_image_audio_and_video() {
+        assert!(super::should_capture_scanned_asset_for_job_enqueue("image"));
+        assert!(super::should_capture_scanned_asset_for_job_enqueue("audio"));
+        assert!(super::should_capture_scanned_asset_for_job_enqueue("video"));
+    }
+
+    #[test]
+    fn scan_enqueue_capture_excludes_unknown_asset_types() {
+        assert!(!super::should_capture_scanned_asset_for_job_enqueue("unknown"));
+    }
+
+    #[test]
+    fn thumbnail_policy_allows_image_and_video_only() {
+        assert!(super::is_thumbnail_asset_type("image"));
+        assert!(super::is_thumbnail_asset_type("video"));
+        assert!(!super::is_thumbnail_asset_type("audio"));
+        assert!(!super::is_thumbnail_asset_type("unknown"));
+    }
+
+    #[test]
+    fn should_enqueue_thumbnail_returns_false_for_audio() {
+        assert!(!super::should_enqueue_thumbnail("audio", true, false));
+    }
+
+    #[test]
+    fn should_enqueue_thumbnail_returns_true_for_missing_image_thumbnail() {
+        assert!(super::should_enqueue_thumbnail("image", true, false));
+    }
+
+    #[test]
+    fn should_enqueue_thumbnail_returns_true_for_stale_image_thumbnail() {
+        assert!(super::should_enqueue_thumbnail("image", false, false));
+    }
+
+    #[test]
+    fn should_enqueue_thumbnail_returns_false_for_fresh_present_image_thumbnail() {
+        assert!(!super::should_enqueue_thumbnail("image", false, true));
+    }
+
+    #[test]
+    fn thumbnail_enqueue_policy_skips_svg_images() {
+        assert!(!super::should_enqueue_thumbnail_for_asset(
+            "image", "svg", true, false
+        ));
+        assert!(super::should_enqueue_thumbnail_for_asset(
+            "image", "png", true, false
+        ));
+    }
+
+    #[test]
+    fn thumbnail_dimensions_scales_down_landscape() {
+        assert_eq!(super::thumbnail_dimensions(4000, 2000, 160), (160, 80));
+    }
+
+    #[test]
+    fn thumbnail_dimensions_scales_down_portrait() {
+        assert_eq!(super::thumbnail_dimensions(800, 1600, 160), (80, 160));
+    }
+
+    #[test]
+    fn thumbnail_dimensions_keeps_smaller_images_size() {
+        assert_eq!(super::thumbnail_dimensions(120, 100, 160), (120, 100));
+    }
+
+    #[test]
+    fn should_skip_image_thumbnail_for_svg_only() {
+        assert!(super::should_skip_image_thumbnail("svg"));
+        assert!(super::should_skip_image_thumbnail("SVG"));
+        assert!(!super::should_skip_image_thumbnail("gif"));
+        assert!(!super::should_skip_image_thumbnail("png"));
+    }
+
+    #[test]
+    fn previous_thumbnail_to_remove_only_returns_different_non_empty_path() {
+        assert_eq!(
+            super::previous_thumbnail_to_remove(Some("old.jpg".to_string()), "new.jpg"),
+            Some("old.jpg".to_string())
+        );
+        assert_eq!(
+            super::previous_thumbnail_to_remove(Some("same.jpg".to_string()), "same.jpg"),
+            None
+        );
+        assert_eq!(
+            super::previous_thumbnail_to_remove(Some("   ".to_string()), "new.jpg"),
+            None
+        );
+        assert_eq!(super::previous_thumbnail_to_remove(None, "new.jpg"), None);
+    }
 }
