@@ -21,7 +21,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -129,6 +131,18 @@ function isActiveProgressStatus(status: string): boolean {
 }
 
 const DRAG_ICON_FALLBACK = "../public/convertico-icon (1).ico";
+const MIN_SIDEBAR_WIDTH = 50;
+const DEFAULT_SIDEBAR_WIDTH = 220;
+const AUTO_COLLAPSE_SIDEBAR_WIDTH = 72;
+const COMPACT_TOOLBAR_MAX_WIDTH = 720;
+
+function getSidebarMaxWidth(): number {
+  return Math.max(MIN_SIDEBAR_WIDTH, Math.floor(window.innerWidth * 0.72));
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(getSidebarMaxWidth(), Math.max(MIN_SIDEBAR_WIDTH, width));
+}
 
 let dragFallbackImagePromise: Promise<HTMLImageElement | null> | null = null;
 
@@ -336,7 +350,9 @@ export function BrowserPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<AssetKind>("all");
   const [galleryZoom, setGalleryZoom] = useState(100);
+  const [isCompactToolbar, setIsCompactToolbar] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [selectedRootPath, setSelectedRootPath] = useState<string | null>(null);
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
   const [trimByAssetId, setTrimByAssetId] = useState<Record<number, TrimDraft>>(
@@ -368,6 +384,7 @@ export function BrowserPage() {
   const [assetAspectById, setAssetAspectById] = useState<
     Record<number, number>
   >({});
+  const lastExpandedSidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
   const assetAspectByIdRef = useRef<Record<number, number>>({});
   const probingAssetIdsRef = useRef<Set<number>>(new Set());
   const aspectFlushFrameRef = useRef<number | null>(null);
@@ -408,6 +425,13 @@ export function BrowserPage() {
     if (stored === "1") {
       setIsSidebarCollapsed(true);
     }
+
+    const storedWidth = Number(
+      window.localStorage.getItem("editon-sidebar-width"),
+    );
+    if (Number.isFinite(storedWidth)) {
+      setSidebarWidth(clampSidebarWidth(storedWidth));
+    }
   }, []);
 
   useEffect(() => {
@@ -416,6 +440,33 @@ export function BrowserPage() {
       isSidebarCollapsed ? "1" : "0",
     );
   }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "editon-sidebar-width",
+      String(Math.round(sidebarWidth)),
+    );
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setSidebarWidth((current) => clampSidebarWidth(current));
+      setIsCompactToolbar(window.innerWidth <= COMPACT_TOOLBAR_MAX_WIDTH);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarCollapsed && sidebarWidth > AUTO_COLLAPSE_SIDEBAR_WIDTH) {
+      lastExpandedSidebarWidthRef.current = sidebarWidth;
+    }
+  }, [isSidebarCollapsed, sidebarWidth]);
 
   useLayoutEffect(() => {
     if (previewAssetId === null) {
@@ -1630,10 +1681,76 @@ export function BrowserPage() {
     return items;
   }, [previewJobEvent, scanProgress, trimJobEvent]);
 
+  const compactFilterMeta = ASSET_KIND_META[typeFilter];
+  const CompactFilterIcon = compactFilterMeta.icon;
+
+  const cycleTypeFilter = () => {
+    const kinds: AssetKind[] = ["all", "audio", "video", "image"];
+    const currentIndex = kinds.indexOf(typeFilter);
+    const nextKind = kinds[(currentIndex + 1) % kinds.length] ?? "all";
+    setTypeFilter(nextKind);
+  };
+
+  const workspaceStyle = useMemo(
+    () =>
+      ({
+        "--explorer-sidebar-width": `${Math.round(sidebarWidth)}px`,
+      }) as CSSProperties,
+    [sidebarWidth],
+  );
+
+  const startSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = isSidebarCollapsed ? MIN_SIDEBAR_WIDTH : sidebarWidth;
+
+    if (isSidebarCollapsed) {
+      setIsSidebarCollapsed(false);
+    }
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = clampSidebarWidth(startWidth + delta);
+      if (nextWidth <= AUTO_COLLAPSE_SIDEBAR_WIDTH) {
+        setIsSidebarCollapsed(true);
+        return;
+      }
+
+      setSidebarWidth(nextWidth);
+      setIsSidebarCollapsed(false);
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const toggleSidebarCollapsed = () => {
+    if (isSidebarCollapsed) {
+      const restoredWidth = clampSidebarWidth(
+        Math.max(DEFAULT_SIDEBAR_WIDTH, lastExpandedSidebarWidthRef.current),
+      );
+      setSidebarWidth(restoredWidth);
+      setIsSidebarCollapsed(false);
+      return;
+    }
+
+    setIsSidebarCollapsed(true);
+  };
+
   return (
     <section className="explorer-shell">
       <div
         className={`explorer-workspace ${isSidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
+        style={workspaceStyle}
       >
         <aside className="explorer-sidebar">
           <div className="sidebar-head">
@@ -1683,12 +1800,20 @@ export function BrowserPage() {
           </div>
         </aside>
 
+        <div
+          className="explorer-sidebar-resizer"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          onPointerDown={startSidebarResize}
+        />
+
         <section className="explorer-content">
           <section className="search-shell">
             <button
               type="button"
               className={`sidebar-toggle ${isSidebarCollapsed ? "is-active" : ""}`}
-              onClick={() => setIsSidebarCollapsed((current) => !current)}
+              onClick={toggleSidebarCollapsed}
               title={isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
               aria-label={
                 isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"
@@ -1711,33 +1836,49 @@ export function BrowserPage() {
                 className="search-input-control"
               />
             </label>
+            {isCompactToolbar ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="filter-compact-button"
+                onClick={cycleTypeFilter}
+                title={`Current: ${compactFilterMeta.label}. Click to change filter.`}
+                aria-label={`Current filter ${compactFilterMeta.label}. Click to cycle filter.`}
+              >
+                <CompactFilterIcon size={13} aria-hidden="true" />
+              </Button>
+            ) : (
+              <div
+                className="filter-row"
+                role="tablist"
+                aria-label="Asset type filter"
+              >
+                {(["all", "audio", "video", "image"] as AssetKind[]).map(
+                  (kind) => {
+                    const kindMeta = ASSET_KIND_META[kind];
+                    const KindIcon = kindMeta.icon;
+                    return (
+                      <Button
+                        key={kind}
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className={`chip chip-icon ${typeFilter === kind ? "is-active" : ""}`}
+                        onClick={() => setTypeFilter(kind)}
+                        title={kindMeta.label}
+                        aria-label={kindMeta.label}
+                      >
+                        <KindIcon size={13} aria-hidden="true" />
+                      </Button>
+                    );
+                  },
+                )}
+              </div>
+            )}
             <div
-              className="filter-row"
-              role="tablist"
-              aria-label="Asset type filter"
+              className={`gallery-zoom-control ${isCompactToolbar ? "is-compact" : ""}`}
             >
-              {(["all", "audio", "video", "image"] as AssetKind[]).map(
-                (kind) => {
-                  const kindMeta = ASSET_KIND_META[kind];
-                  const KindIcon = kindMeta.icon;
-                  return (
-                    <Button
-                      key={kind}
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className={`chip chip-icon ${typeFilter === kind ? "is-active" : ""}`}
-                      onClick={() => setTypeFilter(kind)}
-                      title={kindMeta.label}
-                      aria-label={kindMeta.label}
-                    >
-                      <KindIcon size={13} aria-hidden="true" />
-                    </Button>
-                  );
-                },
-              )}
-            </div>
-            <div className="gallery-zoom-control">
               <Search
                 size={12}
                 aria-hidden="true"
