@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Focus,
   Maximize2,
@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 
 import { onScanProgress } from "@/features/assets";
-import { onJobUpdated } from "@/features/jobs/api/jobs-api";
+import type { ScanProgress } from "@/features/assets/api/assets-api";
+import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
 import { BrowserPage } from "@/pages/browser-page";
 import { SystemPage } from "@/pages/system-page";
 import { YoutubePage } from "@/pages/youtube-page";
@@ -27,6 +28,39 @@ type ConsoleEntry = {
   message: string;
 };
 
+type FloatingProgressItem = { key: string; text: string; progress?: number };
+
+function isTerminalStatus(status: string): boolean {
+  const lowered = status.toLowerCase();
+  return lowered === "done" || lowered === "failed" || lowered === "cancelled";
+}
+
+function isActiveProgressStatus(status: string): boolean {
+  return status.toLowerCase() === "running";
+}
+
+function normalizeProgress(
+  value: number | null | undefined,
+): number | undefined {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+
+  return value;
+}
+
+function formatScanProgressText(scanProgress: ScanProgress): string {
+  return `${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files${scanProgress.lastFile ? ` · ${scanProgress.lastFile}` : ""}`;
+}
+
+function formatPreviewJobText(jobEvent: JobEvent): string {
+  return `job:${jobEvent.id} · ${jobEvent.jobType} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
+}
+
+function formatTrimJobText(jobEvent: JobEvent): string {
+  return `trim:${jobEvent.id} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
+}
+
 export function AppRouter() {
   const { theme, toggleTheme } = useTheme();
   const [activeView, setActiveView] = useState<AppView>("browser");
@@ -35,8 +69,22 @@ export function AppRouter() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([]);
+  const [scanProgressEvent, setScanProgressEvent] =
+    useState<ScanProgress | null>(null);
+  const [previewJobEvent, setPreviewJobEvent] = useState<JobEvent | null>(null);
+  const [trimJobEvent, setTrimJobEvent] = useState<JobEvent | null>(null);
+  const [dependencyJobEvent, setDependencyJobEvent] = useState<JobEvent | null>(
+    null,
+  );
   const consoleViewportRef = useRef<HTMLDivElement | null>(null);
   const lastConsoleEventRef = useRef<{ key: string; at: number } | null>(null);
+  const previewClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const trimClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dependencyClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const appendConsole = useCallback(
     (level: ConsoleEntry["level"], message: string) => {
@@ -142,6 +190,7 @@ export function AppRouter() {
     let unlisten: (() => void) | null = null;
     let disposed = false;
     onScanProgress((payload) => {
+      setScanProgressEvent(payload);
       appendConsole(
         payload.status.toLowerCase() === "failed" ? "error" : "info",
         `[scan:${payload.scanId}] ${payload.status} · ${payload.count} files${payload.lastFile ? ` · ${payload.lastFile}` : ""}`,
@@ -184,6 +233,62 @@ export function AppRouter() {
         payload.status === "failed" ? "error" : "info",
         `[job:${payload.id}] ${payload.jobType} · ${payload.status}${progressText}${payload.message ? ` · ${payload.message}` : ""}`,
       );
+
+      const isPreviewJob =
+        payload.jobType === "generate_waveform" ||
+        payload.jobType === "generate_video_thumbnail";
+      const isTrimJob = payload.jobType === "trim_media";
+      const isDependencyJob =
+        payload.jobType === "dependencies_install" ||
+        payload.jobType === "dependencies_update";
+
+      if (isPreviewJob) {
+        if (previewClearTimerRef.current) {
+          clearTimeout(previewClearTimerRef.current);
+          previewClearTimerRef.current = null;
+        }
+
+        setPreviewJobEvent(payload);
+
+        if (isTerminalStatus(payload.status)) {
+          previewClearTimerRef.current = setTimeout(() => {
+            previewClearTimerRef.current = null;
+            setPreviewJobEvent(null);
+          }, 1800);
+        }
+      }
+
+      if (isTrimJob) {
+        if (trimClearTimerRef.current) {
+          clearTimeout(trimClearTimerRef.current);
+          trimClearTimerRef.current = null;
+        }
+
+        setTrimJobEvent(payload);
+
+        if (isTerminalStatus(payload.status)) {
+          trimClearTimerRef.current = setTimeout(() => {
+            trimClearTimerRef.current = null;
+            setTrimJobEvent(null);
+          }, 2200);
+        }
+      }
+
+      if (isDependencyJob) {
+        if (dependencyClearTimerRef.current) {
+          clearTimeout(dependencyClearTimerRef.current);
+          dependencyClearTimerRef.current = null;
+        }
+
+        setDependencyJobEvent(payload);
+
+        if (isTerminalStatus(payload.status)) {
+          dependencyClearTimerRef.current = setTimeout(() => {
+            dependencyClearTimerRef.current = null;
+            setDependencyJobEvent(null);
+          }, 2600);
+        }
+      }
     })
       .then((stop) => {
         if (disposed) {
@@ -205,8 +310,75 @@ export function AppRouter() {
         unlisten();
         unlisten = null;
       }
+      if (previewClearTimerRef.current) {
+        clearTimeout(previewClearTimerRef.current);
+        previewClearTimerRef.current = null;
+      }
+      if (trimClearTimerRef.current) {
+        clearTimeout(trimClearTimerRef.current);
+        trimClearTimerRef.current = null;
+      }
+      if (dependencyClearTimerRef.current) {
+        clearTimeout(dependencyClearTimerRef.current);
+        dependencyClearTimerRef.current = null;
+      }
     };
   }, [appendConsole]);
+
+  const activeProgressItems = useMemo<FloatingProgressItem[]>(() => {
+    const items: FloatingProgressItem[] = [];
+
+    if (scanProgressEvent && !isTerminalStatus(scanProgressEvent.status)) {
+      items.push({
+        key: "scan",
+        text: formatScanProgressText(scanProgressEvent),
+      });
+    }
+
+    if (previewJobEvent && isActiveProgressStatus(previewJobEvent.status)) {
+      items.push({
+        key: "preview",
+        text: formatPreviewJobText(previewJobEvent),
+        progress: normalizeProgress(previewJobEvent.progress),
+      });
+    }
+
+    if (trimJobEvent && isActiveProgressStatus(trimJobEvent.status)) {
+      items.push({
+        key: "trim",
+        text: formatTrimJobText(trimJobEvent),
+        progress: normalizeProgress(trimJobEvent.progress),
+      });
+    }
+
+    return items;
+  }, [previewJobEvent, scanProgressEvent, trimJobEvent]);
+
+  const compactProgressTextByKey: Record<string, string> = {
+    scan: "Scanning",
+    preview: "Preview",
+    trim: "Trimming",
+  };
+
+  const dependencyProgressValue =
+    typeof dependencyJobEvent?.progress === "number"
+      ? Math.max(0, Math.min(100, dependencyJobEvent.progress))
+      : undefined;
+  const dependencyProgressActive =
+    !!dependencyJobEvent && !isTerminalStatus(dependencyJobEvent.status);
+  const dependencyProgressStatus =
+    dependencyJobEvent?.status.toLowerCase() ?? "idle";
+  const dependencyProgressShellClass =
+    dependencyProgressStatus === "done" ? "is-success" : "";
+  const dependencyCompactLabel = dependencyProgressActive
+    ? "Install"
+    : dependencyProgressStatus === "queued"
+      ? "Queued"
+      : dependencyProgressStatus === "done"
+        ? "Done"
+        : dependencyProgressStatus === "failed"
+          ? "Failed"
+          : "Stopped";
 
   const toggleAlwaysOnTop = () => {
     if (!isTauriRuntime()) {
@@ -414,6 +586,71 @@ export function AppRouter() {
                 </p>
               ))
             )}
+          </div>
+        </section>
+      ) : null}
+      {activeProgressItems.length > 0 ? (
+        <div className="explorer-progress-float" aria-live="polite">
+          <div className="explorer-progress-card">
+            {(() => {
+              const primaryItem = activeProgressItems[0];
+              if (!primaryItem) {
+                return null;
+              }
+
+              const hasNumericProgress =
+                typeof primaryItem.progress === "number";
+              const compactText =
+                compactProgressTextByKey[primaryItem.key] ?? "Working";
+
+              return (
+                <div
+                  className="explorer-progress-inline"
+                  title={primaryItem.text}
+                >
+                  <span
+                    className="explorer-progress-spinner"
+                    aria-hidden="true"
+                  />
+                  <p className="explorer-progress-compact-text">
+                    {activeProgressItems.length > 1
+                      ? `${activeProgressItems.length} jobs`
+                      : compactText}
+                  </p>
+                  {hasNumericProgress ? (
+                    <span className="explorer-progress-percent">
+                      {Math.max(
+                        0,
+                        Math.min(100, Math.round(primaryItem.progress ?? 0)),
+                      )}
+                      %
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
+      {dependencyJobEvent ? (
+        <section
+          className="youtube-progress-float"
+          aria-live="polite"
+        >
+          <div
+            className={`dependency-progress-mini ${dependencyProgressShellClass}`}
+            title={dependencyJobEvent.message || "Dependencies install"}
+          >
+            <span
+              className={`dependency-progress-spinner ${dependencyProgressActive ? "" : "is-paused"}`}
+              aria-hidden="true"
+            />
+            <p className="dependency-progress-text">{dependencyCompactLabel}</p>
+            {typeof dependencyProgressValue === "number" ? (
+              <span className="dependency-progress-percent">
+                {dependencyProgressValue}%
+              </span>
+            ) : null}
           </div>
         </section>
       ) : null}

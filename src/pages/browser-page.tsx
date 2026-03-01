@@ -34,7 +34,6 @@ import {
 import { onScanProgress, useAssetsStore } from "@/features/assets";
 import type {
   QueryAssetsInput,
-  ScanProgress,
   ScanRoot,
 } from "@/features/assets/api/assets-api";
 import { onTrimReady, trimMedia } from "@/features/assets/api/assets-api";
@@ -47,7 +46,6 @@ import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
-import { Progress } from "@/shared/ui/progress";
 import { Slider } from "@/shared/ui/slider";
 import { StatusText } from "@/shared/ui/status-text";
 
@@ -68,8 +66,6 @@ type AssetMutationInput = {
   newName?: string;
   tags?: string[];
 };
-
-type FloatingProgressItem = { key: string; text: string; progress?: number };
 
 const ASSET_KIND_META: Record<
   AssetKind,
@@ -97,33 +93,6 @@ function toFileSrc(path: string | null): string | null {
     return null;
   }
   return isTauriRuntime() ? convertFileSrc(path) : path;
-}
-
-function normalizeProgress(
-  value: number | null | undefined,
-): number | undefined {
-  if (typeof value !== "number") {
-    return undefined;
-  }
-
-  return value;
-}
-
-function formatScanProgressText(scanProgress: ScanProgress): string {
-  return `${scanProgress.scanId} · ${scanProgress.status} · ${scanProgress.count} files${scanProgress.lastFile ? ` · ${scanProgress.lastFile}` : ""}`;
-}
-
-function formatPreviewJobText(jobEvent: JobEvent): string {
-  return `job:${jobEvent.id} · ${jobEvent.jobType} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
-}
-
-function formatTrimJobText(jobEvent: JobEvent): string {
-  return `trim:${jobEvent.id} · ${jobEvent.status}${typeof jobEvent.progress === "number" ? ` · ${jobEvent.progress}%` : ""}${jobEvent.message ? ` · ${jobEvent.message}` : ""}`;
-}
-
-function isTerminalStatus(status: string): boolean {
-  const lowered = status.toLowerCase();
-  return lowered === "done" || lowered === "failed" || lowered === "cancelled";
 }
 
 function isActiveProgressStatus(status: string): boolean {
@@ -1652,35 +1621,6 @@ export function BrowserPage() {
     }
   };
 
-  const activeProgressItems = useMemo<FloatingProgressItem[]>(() => {
-    const items: FloatingProgressItem[] = [];
-
-    if (scanProgress && !isTerminalStatus(scanProgress.status)) {
-      items.push({
-        key: "scan",
-        text: formatScanProgressText(scanProgress),
-      });
-    }
-
-    if (previewJobEvent && isActiveProgressStatus(previewJobEvent.status)) {
-      items.push({
-        key: "preview",
-        text: formatPreviewJobText(previewJobEvent),
-        progress: normalizeProgress(previewJobEvent.progress),
-      });
-    }
-
-    if (trimJobEvent && isActiveProgressStatus(trimJobEvent.status)) {
-      items.push({
-        key: "trim",
-        text: formatTrimJobText(trimJobEvent),
-        progress: normalizeProgress(trimJobEvent.progress),
-      });
-    }
-
-    return items;
-  }, [previewJobEvent, scanProgress, trimJobEvent]);
-
   const compactFilterMeta = ASSET_KIND_META[typeFilter];
   const CompactFilterIcon = compactFilterMeta.icon;
 
@@ -2444,22 +2384,6 @@ export function BrowserPage() {
           </div>
         ) : null}
       </Dialog>
-
-      {activeProgressItems.length > 0 ? (
-        <div className="explorer-progress-float" aria-live="polite">
-          <div className="explorer-progress-float-inner">
-            {activeProgressItems.map((item) => (
-              <div key={item.key} className="explorer-progress-item">
-                <StatusText text={item.text} />
-                <Progress
-                  indeterminate={typeof item.progress !== "number"}
-                  value={item.progress}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
