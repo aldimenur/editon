@@ -15,6 +15,31 @@ type UpdatePhase =
   | "ready"
   | "error";
 
+const UPDATE_CHECK_TIMEOUT_MS = 15_000;
+const UPDATE_INSTALL_TIMEOUT_MS = 10 * 60_000;
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    void promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((reason: unknown) => {
+        window.clearTimeout(timer);
+        reject(reason);
+      });
+  });
+}
+
 export function SystemPage() {
   const { error, checkDependencies } = useSystemStore();
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
@@ -27,6 +52,8 @@ export function SystemPage() {
     version: string;
     downloadAndInstall: (onEvent?: (event: unknown) => void) => Promise<void>;
   } | null>(null);
+  const updateCheckInFlightRef = useRef(false);
+  const updateInstallInFlightRef = useRef(false);
   const installClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -45,13 +72,23 @@ export function SystemPage() {
       return;
     }
 
+    if (updateCheckInFlightRef.current || updateInstallInFlightRef.current) {
+      return;
+    }
+
+    updateCheckInFlightRef.current = true;
+
     setUpdatePhase("checking");
     setUpdateProgress(null);
     setUpdateStatusText(manual ? "Checking for updates..." : "Ready.");
 
     try {
       const { check } = await import("@tauri-apps/plugin-updater");
-      const update = await check();
+      const update = await withTimeout(
+        check(),
+        UPDATE_CHECK_TIMEOUT_MS,
+        "Timed out while checking for updates.",
+      );
       if (!update) {
         updateRef.current = null;
         setUpdateVersion(null);
@@ -74,11 +111,17 @@ export function SystemPage() {
         reason instanceof Error ? reason.message : "Failed to check updates";
       setUpdatePhase("error");
       setUpdateStatusText(message);
+    } finally {
+      updateCheckInFlightRef.current = false;
     }
   }, []);
 
   const installAppUpdate = useCallback(async () => {
     if (!isTauriRuntime()) {
+      return;
+    }
+
+    if (updateInstallInFlightRef.current || updateCheckInFlightRef.current) {
       return;
     }
 
@@ -88,6 +131,8 @@ export function SystemPage() {
       return;
     }
 
+    updateInstallInFlightRef.current = true;
+
     setUpdatePhase("downloading");
     setUpdateProgress(0);
     setUpdateStatusText(`Downloading update ${update.version}...`);
@@ -95,37 +140,41 @@ export function SystemPage() {
     try {
       let downloaded = 0;
       let totalBytes = 0;
-      await update.downloadAndInstall((event: unknown) => {
-        if (!event || typeof event !== "object") {
-          return;
-        }
-        const typed = event as {
-          event?: string;
-          data?: { contentLength?: number; chunkLength?: number };
-        };
-
-        if (typed.event === "Started") {
-          totalBytes = typed.data?.contentLength ?? 0;
-          setUpdateProgress(0);
-          return;
-        }
-
-        if (typed.event === "Progress") {
-          downloaded += typed.data?.chunkLength ?? 0;
-          if (totalBytes > 0) {
-            const percent = Math.max(
-              0,
-              Math.min(100, Math.round((downloaded / totalBytes) * 100)),
-            );
-            setUpdateProgress(percent);
+      await withTimeout(
+        update.downloadAndInstall((event: unknown) => {
+          if (!event || typeof event !== "object") {
+            return;
           }
-          return;
-        }
+          const typed = event as {
+            event?: string;
+            data?: { contentLength?: number; chunkLength?: number };
+          };
 
-        if (typed.event === "Finished") {
-          setUpdateProgress(100);
-        }
-      });
+          if (typed.event === "Started") {
+            totalBytes = typed.data?.contentLength ?? 0;
+            setUpdateProgress(0);
+            return;
+          }
+
+          if (typed.event === "Progress") {
+            downloaded += typed.data?.chunkLength ?? 0;
+            if (totalBytes > 0) {
+              const percent = Math.max(
+                0,
+                Math.min(100, Math.round((downloaded / totalBytes) * 100)),
+              );
+              setUpdateProgress(percent);
+            }
+            return;
+          }
+
+          if (typed.event === "Finished") {
+            setUpdateProgress(100);
+          }
+        }),
+        UPDATE_INSTALL_TIMEOUT_MS,
+        "Timed out while installing update. Please try again.",
+      );
 
       updateRef.current = null;
       setUpdatePhase("ready");
@@ -137,6 +186,8 @@ export function SystemPage() {
         reason instanceof Error ? reason.message : "Failed to install update";
       setUpdatePhase("error");
       setUpdateStatusText(message);
+    } finally {
+      updateInstallInFlightRef.current = false;
     }
   }, [checkForAppUpdate]);
 

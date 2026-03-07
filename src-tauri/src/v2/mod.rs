@@ -15,9 +15,10 @@ use crate::v2::state::AppState;
 use rusqlite::{params, ToSql};
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{atomic::Ordering, Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
@@ -65,6 +66,12 @@ const YT_DLP_WINDOWS_URL: &str =
 const FFMPEG_WINDOWS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip";
 const DENO_WINDOWS_URL: &str =
     "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
+const DEPENDENCY_DOWNLOAD_ATTEMPTS: usize = 4;
+const DEPENDENCY_EXTRACT_ATTEMPTS: usize = 3;
+const DEPENDENCY_REPLACE_ATTEMPTS: usize = 6;
+const DEPENDENCY_RETRY_BASE_DELAY_MS: u64 = 600;
+const SCAN_PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+const SCAN_PROGRESS_EMIT_EVERY_FILES: usize = 200;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -100,6 +107,129 @@ fn should_enqueue_thumbnail_for_asset(
 
 fn should_capture_scanned_asset_for_job_enqueue(asset_type: &str) -> bool {
     asset_type == "audio" || is_thumbnail_asset_type(asset_type)
+}
+
+fn should_emit_scan_progress(count: usize, last_emit_at: &mut Instant) -> bool {
+    if count <= 10 || count % SCAN_PROGRESS_EMIT_EVERY_FILES == 0 {
+        *last_emit_at = Instant::now();
+        return true;
+    }
+
+    if last_emit_at.elapsed() >= SCAN_PROGRESS_EMIT_INTERVAL {
+        *last_emit_at = Instant::now();
+        return true;
+    }
+
+    false
+}
+
+struct ScannedAssetRecord {
+    filename: String,
+    extension: String,
+    original_path: String,
+    media_type: String,
+    file_size: i64,
+    mtime_ms: i64,
+    enqueue_preview_jobs: bool,
+}
+
+fn flush_scanned_assets_batch(
+    db: &Arc<Mutex<rusqlite::Connection>>,
+    root_path: &str,
+    records: &[ScannedAssetRecord],
+    queued_asset_ids: &mut Vec<i64>,
+) -> Result<(), String> {
+    if records.is_empty() {
+        return Ok(());
+    }
+
+    let mut conn = db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    for record in records {
+        let asset_id = tx
+            .query_row(
+                "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(original_path) DO UPDATE SET
+                     filename = excluded.filename,
+                     extension = excluded.extension,
+                     root_path = excluded.root_path,
+                     type = excluded.type,
+                     file_size = excluded.file_size,
+                     mtime_ms = excluded.mtime_ms,
+                     date_modified = CURRENT_TIMESTAMP
+                 RETURNING id",
+                params![
+                    record.filename,
+                    record.extension,
+                    record.original_path,
+                    root_path,
+                    record.media_type,
+                    record.file_size,
+                    record.mtime_ms
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        if record.enqueue_preview_jobs {
+            queued_asset_ids.push(asset_id);
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn flush_pending_scan_assets(
+    db: &Arc<Mutex<rusqlite::Connection>>,
+    root_path: &str,
+    pending_assets: &mut Vec<ScannedAssetRecord>,
+    pending_enqueue_ids: &mut Vec<i64>,
+    state_for_jobs: &AppState,
+) {
+    if pending_assets.is_empty() {
+        return;
+    }
+
+    let flush_result = flush_scanned_assets_batch(
+        db,
+        root_path,
+        pending_assets.as_slice(),
+        pending_enqueue_ids,
+    );
+    pending_assets.clear();
+
+    if flush_result.is_err() {
+        pending_enqueue_ids.clear();
+        return;
+    }
+
+    for asset_id in pending_enqueue_ids.drain(..) {
+        let _ = enqueue_waveform_job_if_needed(state_for_jobs, asset_id, 1);
+        let _ = enqueue_video_thumbnail_job_if_needed(state_for_jobs, asset_id, 1);
+    }
+}
+
+fn build_assets_fts_query(input: &str) -> Option<String> {
+    let terms = input
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .map(|term| term.to_lowercase())
+        .collect::<Vec<_>>();
+
+    if terms.is_empty() {
+        return None;
+    }
+
+    Some(
+        terms
+            .iter()
+            .map(|term| format!("{}*", term))
+            .collect::<Vec<_>>()
+            .join(" AND "),
+    )
 }
 
 fn should_skip_image_thumbnail(extension: &str) -> bool {
@@ -168,77 +298,6 @@ fn parse_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetDto> {
         waveform_data,
         date_modified: row.get(9)?,
     })
-}
-
-fn fuzzy_subsequence_score(value: &str, query: &str) -> Option<i64> {
-    let target = value.to_lowercase();
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return Some(0);
-    }
-
-    if let Some(start_idx) = target.find(&needle) {
-        let compact_bonus = (needle.chars().count() as i64) * 40;
-        return Some(10_000 + compact_bonus - start_idx as i64);
-    }
-
-    let target_chars: Vec<char> = target.chars().collect();
-    let needle_chars: Vec<char> = needle.chars().collect();
-    let mut cursor = 0usize;
-    let mut score = 0i64;
-    let mut last_idx: Option<usize> = None;
-
-    for wanted in needle_chars.iter().copied() {
-        let mut found: Option<usize> = None;
-        for (idx, current) in target_chars.iter().enumerate().skip(cursor) {
-            if *current == wanted {
-                found = Some(idx);
-                break;
-            }
-        }
-
-        let idx = found?;
-        score += 25;
-        if let Some(prev) = last_idx {
-            if idx == prev + 1 {
-                score += 30;
-            }
-            let gap_penalty = (idx.saturating_sub(prev + 1) as i64).min(6);
-            score -= gap_penalty;
-        } else {
-            score -= (idx as i64).min(6);
-        }
-
-        last_idx = Some(idx);
-        cursor = idx + 1;
-    }
-
-    score += (needle_chars.len() as i64) * 10;
-    score -= ((target_chars.len() as i64 - needle_chars.len() as i64) / 5).max(0);
-    Some(score.max(1))
-}
-
-fn fuzzy_asset_score(asset: &AssetDto, query: &str) -> Option<i64> {
-    let mut best_score: Option<i64> = None;
-
-    if let Some(score) = fuzzy_subsequence_score(&asset.filename, query) {
-        best_score = Some(score + 500);
-    }
-
-    if let Some(score) = fuzzy_subsequence_score(&asset.original_path, query) {
-        let weighted = score + 150;
-        best_score = Some(best_score.map_or(weighted, |current| current.max(weighted)));
-    }
-
-    if !asset.tags.is_empty() {
-        let tags_blob = asset.tags.join(" ");
-        if let Some(score) = fuzzy_subsequence_score(&tags_blob, query) {
-            let weighted = score + 250;
-            best_score = Some(best_score.map_or(weighted, |current| current.max(weighted)));
-        }
-    }
-
-    best_score
 }
 
 pub fn setup(app: AppHandle) -> Result<AppState, String> {
@@ -316,6 +375,9 @@ pub fn v2_scan_start(
         );
         let mut count = 0usize;
         let mut cancelled = false;
+        let mut pending_assets: Vec<ScannedAssetRecord> = Vec::with_capacity(96);
+        let mut pending_enqueue_ids: Vec<i64> = Vec::with_capacity(96);
+        let mut last_progress_emit_at = Instant::now();
 
         let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = emit_app.emit(
@@ -333,6 +395,13 @@ pub fn v2_scan_start(
                 .filter_map(Result::ok)
             {
                 if cancel.load(Ordering::SeqCst) {
+                    flush_pending_scan_assets(
+                        &db,
+                        &root_path_for_db,
+                        &mut pending_assets,
+                        &mut pending_enqueue_ids,
+                        &state_for_jobs,
+                    );
                     cancelled = true;
                     let _ = emit_app.emit(
                         "v2-scan-progress",
@@ -358,7 +427,7 @@ pub fn v2_scan_start(
                     .to_string();
                 count += 1;
 
-                if count <= 10 || count % 25 == 0 {
+                if should_emit_scan_progress(count, &mut last_progress_emit_at) {
                     let _ = emit_app.emit(
                         "v2-scan-progress",
                         ScanProgress {
@@ -381,58 +450,46 @@ pub fn v2_scan_start(
                 };
 
                 let original_path = file_path.to_string_lossy().to_string();
-                let file_size = entry.metadata().map(|m| m.len() as i64).unwrap_or(0);
-                let mtime_ms = entry
-                    .metadata()
+                let metadata = match entry.metadata() {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+                let file_size = metadata.len() as i64;
+                let mtime_ms = metadata
+                    .modified()
                     .ok()
-                    .and_then(|m| m.modified().ok())
                     .and_then(|ts| ts.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_millis() as i64)
                     .unwrap_or(0);
 
-                let mut queued_asset_id: Option<i64> = None;
+                pending_assets.push(ScannedAssetRecord {
+                    filename,
+                    extension: ext.to_lowercase(),
+                    original_path,
+                    media_type: media_type.clone(),
+                    file_size,
+                    mtime_ms,
+                    enqueue_preview_jobs: should_capture_scanned_asset_for_job_enqueue(&media_type),
+                });
 
-                if let Ok(conn) = db.lock() {
-                    let _ = conn.execute(
-                        "INSERT INTO assets(filename, extension, original_path, root_path, type, file_size, mtime_ms)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                         ON CONFLICT(original_path) DO UPDATE SET
-                             filename = excluded.filename,
-                             extension = excluded.extension,
-                             root_path = excluded.root_path,
-                             type = excluded.type,
-                             file_size = excluded.file_size,
-                             mtime_ms = excluded.mtime_ms,
-                             date_modified = CURRENT_TIMESTAMP",
-                        params![
-                            filename.clone(),
-                            ext.to_lowercase(),
-                            original_path.clone(),
-                            root_path_for_db.clone(),
-                            media_type,
-                            file_size,
-                            mtime_ms
-                        ],
+                if pending_assets.len() >= 96 {
+                    flush_pending_scan_assets(
+                        &db,
+                        &root_path_for_db,
+                        &mut pending_assets,
+                        &mut pending_enqueue_ids,
+                        &state_for_jobs,
                     );
-
-                    if should_capture_scanned_asset_for_job_enqueue(&media_type) {
-                        let asset_id: Result<i64, _> = conn.query_row(
-                            "SELECT id FROM assets WHERE original_path = ?1",
-                            params![original_path],
-                            |row| row.get(0),
-                        );
-
-                        if let Ok(asset_id) = asset_id {
-                            queued_asset_id = Some(asset_id);
-                        }
-                    }
-                }
-
-                if let Some(asset_id) = queued_asset_id {
-                    let _ = enqueue_waveform_job_if_needed(&state_for_jobs, asset_id, 1);
-                    let _ = enqueue_video_thumbnail_job_if_needed(&state_for_jobs, asset_id, 1);
                 }
             }
+
+            flush_pending_scan_assets(
+                &db,
+                &root_path_for_db,
+                &mut pending_assets,
+                &mut pending_enqueue_ids,
+                &state_for_jobs,
+            );
         }));
 
         match scan_result {
@@ -709,42 +766,74 @@ pub fn v2_assets_query(
     let params_refs: Vec<&dyn ToSql> = params_values.iter().map(|v| v.as_ref()).collect();
 
     if let Some(search) = search_query {
-        let sql = format!("{} ORDER BY id DESC", base_sql);
-        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params_refs.as_slice(), parse_asset_row)
+        let Some(fts_query) = build_assets_fts_query(&search) else {
+            return Ok(AssetsQueryResult {
+                data: Vec::new(),
+                next_cursor: None,
+                total_items: 0,
+                total_pages: 1,
+                current_page: 1,
+                page_size,
+            });
+        };
+
+        let count_sql = format!(
+            "WITH matched_assets AS (
+                 SELECT rowid AS asset_id
+                 FROM assets_fts
+                 WHERE assets_fts MATCH ?1
+             )
+             SELECT COUNT(*)
+             FROM matched_assets
+             JOIN assets ON assets.id = matched_assets.asset_id
+             {}",
+            where_sql
+        );
+        let mut count_params_refs: Vec<&dyn ToSql> = Vec::with_capacity(params_refs.len() + 1);
+        count_params_refs.push(&fts_query);
+        count_params_refs.extend(params_refs.iter().copied());
+
+        let total_items: u64 = conn
+            .query_row(&count_sql, count_params_refs.as_slice(), |row| {
+                row.get::<_, i64>(0).map(|value| value as u64)
+            })
             .map_err(|e| e.to_string())?;
 
-        let mut ranked_assets: Vec<(i64, AssetDto)> = Vec::new();
-        for row in rows {
-            let asset = row.map_err(|e| e.to_string())?;
-            if let Some(score) = fuzzy_asset_score(&asset, &search) {
-                ranked_assets.push((score, asset));
-            }
-        }
-
-        ranked_assets.sort_by(|left, right| {
-            right
-                .0
-                .cmp(&left.0)
-                .then_with(|| right.1.id.cmp(&left.1.id))
-        });
-
-        let total_items = ranked_assets.len() as u64;
         let total_pages = if total_items == 0 {
             1
         } else {
             ((total_items as f64) / (page_size as f64)).ceil() as u32
         };
-
         let effective_page = current_page.min(total_pages);
-        let page_offset = effective_page.saturating_sub(1) as usize * page_size as usize;
-        let data = ranked_assets
-            .into_iter()
-            .skip(page_offset)
-            .take(page_size as usize)
-            .map(|(_, asset)| asset)
-            .collect::<Vec<_>>();
+        let page_offset = (effective_page.saturating_sub(1) * page_size) as i64;
+
+        let sql = format!(
+            "WITH matched_assets AS (
+                 SELECT rowid AS asset_id, bm25(assets_fts) AS rank_score
+                 FROM assets_fts
+                 WHERE assets_fts MATCH ?1
+             )
+             SELECT assets.id, assets.filename, assets.extension, assets.original_path, assets.type,
+                    asset_previews.thumbnail_path, assets.file_size, assets.mtime_ms, assets.tags,
+                    assets.date_modified, asset_previews.waveform_data
+             FROM matched_assets
+             JOIN assets ON assets.id = matched_assets.asset_id
+             LEFT JOIN asset_previews ON asset_previews.asset_id = assets.id
+             {}
+             ORDER BY matched_assets.rank_score ASC, assets.id DESC
+             LIMIT {} OFFSET {}",
+            where_sql, page_size, page_offset
+        );
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(count_params_refs.as_slice(), parse_asset_row)
+            .map_err(|e| e.to_string())?;
+
+        let mut data = Vec::new();
+        for row in rows {
+            data.push(row.map_err(|e| e.to_string())?);
+        }
 
         let next_cursor = if effective_page < total_pages {
             data.last().map(|x| x.id)
@@ -1781,18 +1870,18 @@ where
 
     let install_result = (|| -> Result<(), String> {
         on_progress("10% Downloading yt-dlp.exe");
-        download_file_with_powershell(YT_DLP_WINDOWS_URL, &yt_file)?;
+        download_file_with_retry(YT_DLP_WINDOWS_URL, &yt_file)?;
         on_progress("25% Downloading ffmpeg build archive");
-        download_file_with_powershell(FFMPEG_WINDOWS_URL, &ffmpeg_zip)?;
+        download_file_with_retry(FFMPEG_WINDOWS_URL, &ffmpeg_zip)?;
         on_progress("40% Downloading deno archive");
-        download_file_with_powershell(DENO_WINDOWS_URL, &deno_zip)?;
+        download_file_with_retry(DENO_WINDOWS_URL, &deno_zip)?;
 
         std::fs::create_dir_all(&ffmpeg_extract_dir).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&deno_extract_dir).map_err(|e| e.to_string())?;
         on_progress("55% Extracting ffmpeg archive");
-        expand_archive_with_powershell(&ffmpeg_zip, &ffmpeg_extract_dir)?;
+        expand_archive_with_retry(&ffmpeg_zip, &ffmpeg_extract_dir)?;
         on_progress("65% Extracting deno archive");
-        expand_archive_with_powershell(&deno_zip, &deno_extract_dir)?;
+        expand_archive_with_retry(&deno_zip, &deno_extract_dir)?;
 
         let ffmpeg_src = find_file_recursive(&ffmpeg_extract_dir, "ffmpeg.exe")
             .ok_or("ffmpeg.exe not found after extraction")?;
@@ -1801,11 +1890,14 @@ where
         let deno_src = find_file_recursive(&deno_extract_dir, "deno.exe")
             .ok_or("deno.exe not found after extraction")?;
 
-        on_progress("78% Copying binaries to app bin folder");
-        copy_binary(&yt_file, &bin_dir.join("yt-dlp.exe"))?;
-        copy_binary(&ffmpeg_src, &bin_dir.join("ffmpeg.exe"))?;
-        copy_binary(&ffprobe_src, &bin_dir.join("ffprobe.exe"))?;
-        copy_binary(&deno_src, &bin_dir.join("deno.exe"))?;
+        on_progress("78% Installing yt-dlp binary");
+        install_binary(&yt_file, &bin_dir.join("yt-dlp.exe"), "--version")?;
+        on_progress("82% Installing ffmpeg binary");
+        install_binary(&ffmpeg_src, &bin_dir.join("ffmpeg.exe"), "-version")?;
+        on_progress("85% Installing ffprobe binary");
+        install_binary(&ffprobe_src, &bin_dir.join("ffprobe.exe"), "-version")?;
+        on_progress("88% Installing deno binary");
+        install_binary(&deno_src, &bin_dir.join("deno.exe"), "--version")?;
 
         on_progress("90% Verifying installed binaries");
         verify_binary(&bin_dir.join("yt-dlp.exe"), "--version")?;
@@ -1835,10 +1927,47 @@ fn find_file_recursive(root: &Path, file_name: &str) -> Option<std::path::PathBu
     None
 }
 
-fn copy_binary(source: &Path, destination: &Path) -> Result<(), String> {
-    if destination.exists() {
-        std::fs::remove_file(destination).map_err(|e| e.to_string())?;
+fn ensure_file_non_empty(path: &Path, label: &str) -> Result<(), String> {
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        format!(
+            "Failed to access {} at {}: {}",
+            label,
+            path.display(),
+            e
+        )
+    })?;
+
+    if metadata.len() == 0 {
+        return Err(format!("{} is empty at {}", label, path.display()));
     }
+
+    Ok(())
+}
+
+fn retry_with_backoff<F>(attempts: usize, mut operation: F) -> Result<(), String>
+where
+    F: FnMut(usize) -> Result<(), String>,
+{
+    let mut last_error = String::new();
+
+    for attempt in 1..=attempts {
+        match operation(attempt) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last_error = error;
+                if attempt < attempts {
+                    std::thread::sleep(Duration::from_millis(
+                        DEPENDENCY_RETRY_BASE_DELAY_MS * attempt as u64,
+                    ));
+                }
+            }
+        }
+    }
+
+    Err(last_error)
+}
+
+fn copy_binary_file(source: &Path, destination: &Path) -> Result<(), String> {
     std::fs::copy(source, destination).map(|_| ()).map_err(|e| {
         format!(
             "Failed to copy {} to {}: {}",
@@ -1847,6 +1976,100 @@ fn copy_binary(source: &Path, destination: &Path) -> Result<(), String> {
             e
         )
     })
+}
+
+fn temp_binary_path(destination: &Path, suffix: &str) -> Result<PathBuf, String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| format!("Cannot resolve destination parent for {}", destination.display()))?;
+    let stem = destination
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("dependency");
+    let ext = destination.extension().and_then(|value| value.to_str());
+    let file_name = match ext {
+        Some(value) if !value.is_empty() => format!("{}.{}.{}", stem, suffix, value),
+        _ => format!("{}.{}", stem, suffix),
+    };
+    Ok(parent.join(file_name))
+}
+
+fn replace_binary_with_retries(
+    staged_path: &Path,
+    destination: &Path,
+    backup_path: &Path,
+) -> Result<(), String> {
+    retry_with_backoff(DEPENDENCY_REPLACE_ATTEMPTS, |attempt| {
+        if backup_path.exists() {
+            let _ = std::fs::remove_file(backup_path);
+        }
+
+        if destination.exists() {
+            std::fs::rename(destination, backup_path).map_err(|e| {
+                format!(
+                    "Attempt {} failed to move existing binary {}: {}",
+                    attempt,
+                    destination.display(),
+                    e
+                )
+            })?;
+        }
+
+        if let Err(error) = std::fs::rename(staged_path, destination) {
+            if backup_path.exists() {
+                let _ = std::fs::rename(backup_path, destination);
+            }
+            return Err(format!(
+                "Attempt {} failed to place binary {}: {}",
+                attempt,
+                destination.display(),
+                error
+            ));
+        }
+
+        if backup_path.exists() {
+            let _ = std::fs::remove_file(backup_path);
+        }
+
+        Ok(())
+    })
+}
+
+fn install_binary(source: &Path, destination: &Path, version_arg: &str) -> Result<(), String> {
+    let destination_parent = destination
+        .parent()
+        .ok_or_else(|| format!("Cannot resolve destination parent for {}", destination.display()))?;
+    std::fs::create_dir_all(destination_parent).map_err(|e| e.to_string())?;
+
+    ensure_file_non_empty(source, "dependency binary")?;
+
+    let existing_healthy = destination.exists() && verify_binary(destination, version_arg).is_ok();
+    let staged_path = temp_binary_path(destination, "incoming")?;
+    let backup_path = temp_binary_path(destination, "backup")?;
+
+    if staged_path.exists() {
+        let _ = std::fs::remove_file(&staged_path);
+    }
+    if backup_path.exists() {
+        let _ = std::fs::remove_file(&backup_path);
+    }
+
+    copy_binary_file(source, &staged_path)?;
+    verify_binary(&staged_path, version_arg)?;
+
+    match replace_binary_with_retries(&staged_path, destination, &backup_path) {
+        Ok(()) => verify_binary(destination, version_arg),
+        Err(error) => {
+            let _ = std::fs::remove_file(&staged_path);
+            let _ = std::fs::remove_file(&backup_path);
+            if existing_healthy {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 fn verify_binary(path: &Path, version_arg: &str) -> Result<(), String> {
@@ -1867,11 +2090,75 @@ fn verify_binary(path: &Path, version_arg: &str) -> Result<(), String> {
 
 fn download_file_with_powershell(url: &str, destination: &Path) -> Result<(), String> {
     let script = format!(
-        "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+        "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing -TimeoutSec 300",
         ps_quote_single(url),
         ps_quote_single(&destination.to_string_lossy())
     );
     run_powershell_script(&script)
+}
+
+fn download_file_with_curl(url: &str, destination: &Path) -> Result<(), String> {
+    let mut last_error = String::new();
+
+    for command_name in ["curl.exe", "curl"] {
+        let output = hidden_command(command_name)
+            .args([
+                "-fL",
+                "--retry",
+                "3",
+                "--retry-delay",
+                "2",
+                "--connect-timeout",
+                "20",
+                "--max-time",
+                "600",
+                "-o",
+                &destination.to_string_lossy(),
+                url,
+            ])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => return Ok(()),
+            Ok(result) => {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                last_error = format!(
+                    "{} failed. stdout: {} stderr: {}",
+                    command_name,
+                    stdout.trim(),
+                    stderr.trim()
+                );
+            }
+            Err(error) => {
+                last_error = format!("{} unavailable: {}", command_name, error);
+            }
+        }
+    }
+
+    Err(format!("Curl download failed: {}", last_error))
+}
+
+fn download_file_with_retry(url: &str, destination: &Path) -> Result<(), String> {
+    retry_with_backoff(DEPENDENCY_DOWNLOAD_ATTEMPTS, |attempt| {
+        if destination.exists() {
+            let _ = std::fs::remove_file(destination);
+        }
+
+        match download_file_with_powershell(url, destination) {
+            Ok(()) => {}
+            Err(powershell_error) => {
+                download_file_with_curl(url, destination).map_err(|curl_error| {
+                    format!(
+                        "Attempt {} download failed. PowerShell: {}. Curl: {}",
+                        attempt, powershell_error, curl_error
+                    )
+                })?;
+            }
+        }
+
+        ensure_file_non_empty(destination, &format!("downloaded artifact from {}", url))
+    })
 }
 
 fn expand_archive_with_powershell(zip_path: &Path, destination_dir: &Path) -> Result<(), String> {
@@ -1881,6 +2168,57 @@ fn expand_archive_with_powershell(zip_path: &Path, destination_dir: &Path) -> Re
         ps_quote_single(&destination_dir.to_string_lossy())
     );
     run_powershell_script(&script)
+}
+
+fn expand_archive_with_tar(zip_path: &Path, destination_dir: &Path) -> Result<(), String> {
+    let output = hidden_command("tar")
+        .args([
+            "-xf",
+            &zip_path.to_string_lossy(),
+            "-C",
+            &destination_dir.to_string_lossy(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute tar extraction: {}", e))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Err(format!(
+        "Tar extraction failed. stdout: {} stderr: {}",
+        stdout, stderr
+    ))
+}
+
+fn expand_archive_with_retry(zip_path: &Path, destination_dir: &Path) -> Result<(), String> {
+    retry_with_backoff(DEPENDENCY_EXTRACT_ATTEMPTS, |attempt| {
+        if destination_dir.exists() {
+            let _ = std::fs::remove_dir_all(destination_dir);
+        }
+        std::fs::create_dir_all(destination_dir).map_err(|e| {
+            format!(
+                "Attempt {} failed to prepare extraction directory {}: {}",
+                attempt,
+                destination_dir.display(),
+                e
+            )
+        })?;
+
+        match expand_archive_with_powershell(zip_path, destination_dir) {
+            Ok(()) => Ok(()),
+            Err(powershell_error) => {
+                expand_archive_with_tar(zip_path, destination_dir).map_err(|tar_error| {
+                    format!(
+                        "Attempt {} extraction failed. PowerShell: {}. Tar: {}",
+                        attempt, powershell_error, tar_error
+                    )
+                })
+            }
+        }
+    })
 }
 
 fn run_powershell_script(script: &str) -> Result<(), String> {

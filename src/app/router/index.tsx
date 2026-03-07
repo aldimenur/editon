@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Focus,
   Maximize2,
@@ -13,12 +21,10 @@ import {
 import { onScanProgress } from "@/features/assets";
 import type { ScanProgress } from "@/features/assets/api/assets-api";
 import { onJobUpdated, type JobEvent } from "@/features/jobs/api/jobs-api";
-import { BrowserPage } from "@/pages/browser-page";
-import { SystemPage } from "@/pages/system-page";
-import { YoutubePage } from "@/pages/youtube-page";
 import { isTauriRuntime } from "@/shared/lib/guards/is-tauri";
 import { useTheme } from "@/shared/hooks/use-theme";
 import { Button } from "@/shared/ui/button";
+import { StatusText } from "@/shared/ui/status-text";
 
 type AppView = "browser" | "youtube" | "settings";
 
@@ -29,6 +35,24 @@ type ConsoleEntry = {
 };
 
 type FloatingProgressItem = { key: string; text: string; progress?: number };
+
+const BrowserPage = lazy(() =>
+  import("@/pages/browser-page").then((module) => ({
+    default: module.BrowserPage,
+  })),
+);
+
+const YoutubePage = lazy(() =>
+  import("@/pages/youtube-page").then((module) => ({
+    default: module.YoutubePage,
+  })),
+);
+
+const SystemPage = lazy(() =>
+  import("@/pages/system-page").then((module) => ({
+    default: module.SystemPage,
+  })),
+);
 
 function isTerminalStatus(status: string): boolean {
   const lowered = status.toLowerCase();
@@ -551,9 +575,17 @@ export function AppRouter() {
       )}
 
       <main className="app-shell">
-        {activeView === "browser" ? <BrowserPage /> : null}
-        {activeView === "youtube" ? <YoutubePage /> : null}
-        {activeView === "settings" ? <SystemPage /> : null}
+        <Suspense
+          fallback={
+            <section className="page-shell settings-page">
+              <StatusText text="Loading view..." />
+            </section>
+          }
+        >
+          {activeView === "browser" ? <BrowserPage /> : null}
+          {activeView === "youtube" ? <YoutubePage /> : null}
+          {activeView === "settings" ? <SystemPage /> : null}
+        </Suspense>
       </main>
       {isConsoleOpen ? (
         <section
@@ -633,10 +665,7 @@ export function AppRouter() {
         </div>
       ) : null}
       {dependencyJobEvent ? (
-        <section
-          className="youtube-progress-float"
-          aria-live="polite"
-        >
+        <section className="youtube-progress-float" aria-live="polite">
           <div
             className={`dependency-progress-mini ${dependencyProgressShellClass}`}
             title={dependencyJobEvent.message || "Dependencies install"}

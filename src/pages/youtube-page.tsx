@@ -1,4 +1,3 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -81,6 +80,19 @@ function isValidYouTubeUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function pickDirectory(title: string): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title,
+  });
+
+  return typeof selected === "string" && selected.trim().length > 0
+    ? selected
+    : null;
 }
 
 type LiveJobProgress = {
@@ -293,12 +305,8 @@ export function YoutubePage() {
       return;
     }
 
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Choose output directory",
-    });
-    if (!selected || typeof selected !== "string") {
+    const selected = await pickDirectory("Choose output directory");
+    if (!selected) {
       return;
     }
     setDestinationPath(selected);

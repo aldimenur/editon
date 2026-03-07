@@ -1,8 +1,4 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Menu } from "@tauri-apps/api/menu";
-import { startDrag } from "@crabnebula/tauri-plugin-drag";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Compass,
@@ -166,6 +162,40 @@ async function buildDragIconWithFilename(filename: string): Promise<string> {
   context.fillText(trimDragLabel(filename || "Untitled"), 72, 36);
 
   return canvas.toDataURL("image/png");
+}
+
+async function pickDirectory(title: string): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title,
+  });
+
+  return typeof selected === "string" && selected.trim().length > 0
+    ? selected
+    : null;
+}
+
+async function startAssetDrag(paths: string[], icon: string) {
+  const { startDrag } = await import("@crabnebula/tauri-plugin-drag");
+  await startDrag({
+    item: paths,
+    icon,
+    mode: "copy",
+  });
+}
+
+async function revealAssetInFolder(path: string) {
+  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+  await revealItemInDir(path);
+}
+
+async function createAssetContextMenu(
+  items: Parameters<(typeof import("@tauri-apps/api/menu"))["Menu"]["new"]>[0],
+) {
+  const { Menu } = await import("@tauri-apps/api/menu");
+  return Menu.new(items);
 }
 
 function formatRootLabel(rootPath: string): string {
@@ -882,12 +912,8 @@ export function BrowserPage() {
   }, [visibleAssets]);
 
   const importRoot = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Import parent folder",
-    });
-    if (typeof selected === "string" && selected.trim().length > 0) {
+    const selected = await pickDirectory("Import parent folder");
+    if (selected) {
       setRootPath(selected);
       void beginScan();
     }
@@ -1468,11 +1494,7 @@ export function BrowserPage() {
         : leadAssetName;
     const dragIcon = await buildDragIconWithFilename(dragLabel);
 
-    await startDrag({
-      item: dragPaths,
-      icon: dragIcon,
-      mode: "copy",
-    });
+    await startAssetDrag(dragPaths, dragIcon);
   };
 
   const runAssetMutation = async (
@@ -1503,7 +1525,7 @@ export function BrowserPage() {
     }
 
     try {
-      await revealItemInDir(asset.originalPath);
+      await revealAssetInFolder(asset.originalPath);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -1576,7 +1598,7 @@ export function BrowserPage() {
 
     setSelectedAssetIds([asset.id]);
 
-    const menu = await Menu.new({
+    const menu = await createAssetContextMenu({
       items: [
         {
           id: `asset-caption-${asset.id}`,
