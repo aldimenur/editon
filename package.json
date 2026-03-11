@@ -1,15 +1,20 @@
 {
   "name": "editon",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "tauri:build:mac:arm64": "tauri build --target aarch64-apple-darwin",
+    "tauri:build:mac:x64": "tauri build --target x86_64-apple-darwin",
     "update:manifest": "node ./scripts/update-update-json.mjs",
-    "release:github": "node ./scripts/release-github.mjs"
+    "release:github": "node ./scripts/release-github.mjs",
+    "release:github:all": "node ./scripts/release-github.mjs --target x86_64-pc-windows-msvc --target x86_64-apple-darwin --target aarch64-apple-darwin --target x86_64-unknown-linux-gnu",
+    "release:github:mac:arm64": "node ./scripts/release-github.mjs --target aarch64-apple-darwin",
+    "release:github:mac:x64": "node ./scripts/release-github.mjs --target x86_64-apple-darwin"
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "^2.1.0",

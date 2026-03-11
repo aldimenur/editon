@@ -78,6 +78,11 @@ function main() {
       fileName: `Editon_${version}_aarch64.dmg`,
       sigPath: path.join(bundleDir, "dmg", `Editon_${version}_aarch64.dmg.sig`),
     },
+    {
+      platform: "darwin-x86_64",
+      fileName: `Editon_${version}_x64.dmg`,
+      sigPath: path.join(bundleDir, "dmg", `Editon_${version}_x64.dmg.sig`),
+    },
   ];
 
   const platforms = {};

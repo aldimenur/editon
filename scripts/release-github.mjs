@@ -182,7 +182,23 @@ function filterAssetsByVersion(assets, version) {
   });
 }
 
+function parseTargets(argv) {
+  const targets = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== "--target") continue;
+    const value = argv[i + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error("Missing value for --target");
+    }
+    targets.push(value);
+    i += 1;
+  }
+
+  return [...new Set(targets)];
+}
+
 function main() {
+  const targets = parseTargets(process.argv.slice(2));
   const packageJsonPath = path.join(rootDir, "package.json");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
   const version = packageJson.version;
@@ -209,8 +225,17 @@ function main() {
     );
   }
 
-  console.log(`[release] Building Tauri app for ${tag}...`);
-  run("npm", ["run", "tauri", "build"]);
+  const targetLabel =
+    targets.length > 0 ? ` (targets: ${targets.join(", ")})` : "";
+  console.log(`[release] Building Tauri app for ${tag}${targetLabel}...`);
+  const tauriArgs = ["run", "tauri", "build"];
+  if (targets.length > 0) {
+    tauriArgs.push("--");
+    for (const target of targets) {
+      tauriArgs.push("--target", target);
+    }
+  }
+  run("npm", tauriArgs);
   run("npm", ["run", "update:manifest"]);
 
   let assets = [];

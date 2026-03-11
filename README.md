@@ -133,6 +133,26 @@ npm run release:github
 
 Script ini akan build aplikasi (`tauri build`), mengumpulkan artefak bundle, lalu membuat atau meng-update release di GitHub sesuai versi di `package.json`.
 
+### macOS Release Build
+
+```bash
+npm run tauri:build:mac:arm64
+npm run tauri:build:mac:x64
+```
+
+Atau release langsung ke GitHub untuk target tertentu:
+
+```bash
+npm run release:github:mac:arm64
+npm run release:github:mac:x64
+```
+
+Script `release:github` juga mendukung target manual:
+
+```bash
+npm run release:github -- --target aarch64-apple-darwin --target x86_64-apple-darwin
+```
+
 ```bash
 npm run update:manifest
 ```
