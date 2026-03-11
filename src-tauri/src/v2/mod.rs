@@ -24,6 +24,8 @@ use walkdir::WalkDir;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 struct ActiveScanGuard {
     active_scan_id: Arc<Mutex<Option<String>>>,
@@ -66,6 +68,13 @@ const YT_DLP_WINDOWS_URL: &str =
 const FFMPEG_WINDOWS_URL: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip";
 const DENO_WINDOWS_URL: &str =
     "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
+const YT_DLP_MACOS_URL: &str =
+    "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.03/yt-dlp_macos";
+const FFMPEG_MACOS_URL: &str = "https://evermeet.cx/ffmpeg/ffmpeg-123275-g248b481c33.7z";
+const DENO_MACOS_X64_URL: &str =
+    "https://github.com/denoland/deno/releases/download/v2.7.5/deno-x86_64-apple-darwin.zip";
+const DENO_MACOS_ARM64_URL: &str =
+    "https://github.com/denoland/deno/releases/download/v2.7.5/deno-aarch64-apple-darwin.zip";
 const DEPENDENCY_DOWNLOAD_ATTEMPTS: usize = 4;
 const DEPENDENCY_EXTRACT_ATTEMPTS: usize = 3;
 const DEPENDENCY_REPLACE_ATTEMPTS: usize = 6;
@@ -1182,60 +1191,61 @@ pub async fn v2_ytdlp_download(
 pub fn v2_dependencies_status(app: AppHandle) -> Result<DependencyStatus, String> {
     let bin_dir = get_bin_dir(&app)?;
 
-    let yt_name = if cfg!(target_os = "windows") {
-        "yt-dlp.exe"
+    let (yt_dlp_installed, yt_dlp_path) = if cfg!(target_os = "windows") {
+        resolve_dependency_status(&bin_dir, "yt-dlp.exe", &["yt-dlp"], "--version")
     } else {
-        "yt-dlp"
+        resolve_dependency_status(&bin_dir, "yt-dlp", &["yt-dlp"], "--version")
     };
-    let ffmpeg_name = if cfg!(target_os = "windows") {
-        "ffmpeg.exe"
+    let (ffmpeg_installed, ffmpeg_path) = if cfg!(target_os = "windows") {
+        resolve_dependency_status(&bin_dir, "ffmpeg.exe", &["ffmpeg"], "-version")
     } else {
-        "ffmpeg"
+        resolve_dependency_status(&bin_dir, "ffmpeg", &["ffmpeg"], "-version")
     };
-    let ffprobe_name = if cfg!(target_os = "windows") {
-        "ffprobe.exe"
+    let (ffprobe_installed, ffprobe_path) = if cfg!(target_os = "windows") {
+        resolve_dependency_status(&bin_dir, "ffprobe.exe", &["ffprobe"], "-version")
     } else {
-        "ffprobe"
+        resolve_dependency_status(&bin_dir, "ffprobe", &["ffprobe"], "-version")
     };
-    let deno_name = if cfg!(target_os = "windows") {
-        "deno.exe"
+    let (deno_installed, deno_path) = if cfg!(target_os = "windows") {
+        resolve_dependency_status(&bin_dir, "deno.exe", &["deno"], "--version")
     } else {
-        "deno"
+        resolve_dependency_status(&bin_dir, "deno", &["deno"], "--version")
     };
-
-    let yt_dlp_path = bin_dir.join(yt_name);
-    let ffmpeg_path = bin_dir.join(ffmpeg_name);
-    let ffprobe_path = bin_dir.join(ffprobe_name);
-    let deno_path = bin_dir.join(deno_name);
 
     Ok(DependencyStatus {
-        yt_dlp_installed: yt_dlp_path.exists(),
-        ffmpeg_installed: ffmpeg_path.exists(),
-        ffprobe_installed: ffprobe_path.exists(),
-        deno_installed: deno_path.exists(),
-        yt_dlp_path: yt_dlp_path
-            .exists()
-            .then(|| yt_dlp_path.to_string_lossy().to_string()),
-        ffmpeg_path: ffmpeg_path
-            .exists()
-            .then(|| ffmpeg_path.to_string_lossy().to_string()),
-        ffprobe_path: ffprobe_path
-            .exists()
-            .then(|| ffprobe_path.to_string_lossy().to_string()),
-        deno_path: deno_path
-            .exists()
-            .then(|| deno_path.to_string_lossy().to_string()),
+        yt_dlp_installed,
+        ffmpeg_installed,
+        ffprobe_installed,
+        deno_installed,
+        yt_dlp_path,
+        ffmpeg_path,
+        ffprobe_path,
+        deno_path,
     })
 }
 
 #[tauri::command]
 pub async fn v2_dependencies_install(state: State<'_, AppState>) -> Result<String, String> {
+    if !cfg!(target_os = "windows") && !cfg!(target_os = "macos") {
+        return Err(
+            "Automatic dependency install is currently supported on Windows and macOS only."
+                .to_string(),
+        );
+    }
+
     let id = enqueue_job(&state, "dependencies_install", "{}", 1).await?;
     Ok(format!("Queued dependency install job {}", id))
 }
 
 #[tauri::command]
 pub async fn v2_dependencies_update(state: State<'_, AppState>) -> Result<String, String> {
+    if !cfg!(target_os = "windows") && !cfg!(target_os = "macos") {
+        return Err(
+            "Automatic dependency update is currently supported on Windows and macOS only."
+                .to_string(),
+        );
+    }
+
     let id = enqueue_job(&state, "dependencies_update", "{}", 1).await?;
     Ok(format!("Queued dependency update job {}", id))
 }
@@ -1850,68 +1860,151 @@ pub(crate) fn process_dependencies_install_job<F>(
 where
     F: FnMut(&str),
 {
-    if !cfg!(target_os = "windows") {
-        return Err("Dependency installer currently supports Windows only".to_string());
+    if cfg!(target_os = "windows") {
+        let bin_dir = get_bin_dir(app)?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis();
+        let temp_root = std::env::temp_dir().join(format!("editon-deps-{}", stamp));
+        std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
+
+        let yt_file = temp_root.join("yt-dlp.exe");
+        let ffmpeg_zip = temp_root.join("ffmpeg.zip");
+        let ffmpeg_extract_dir = temp_root.join("ffmpeg");
+        let deno_zip = temp_root.join("deno.zip");
+        let deno_extract_dir = temp_root.join("deno");
+
+        let install_result = (|| -> Result<(), String> {
+            on_progress("10% Downloading yt-dlp.exe");
+            download_file_with_retry(YT_DLP_WINDOWS_URL, &yt_file)?;
+            on_progress("25% Downloading ffmpeg build archive");
+            download_file_with_retry(FFMPEG_WINDOWS_URL, &ffmpeg_zip)?;
+            on_progress("40% Downloading deno archive");
+            download_file_with_retry(DENO_WINDOWS_URL, &deno_zip)?;
+
+            std::fs::create_dir_all(&ffmpeg_extract_dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&deno_extract_dir).map_err(|e| e.to_string())?;
+            on_progress("55% Extracting ffmpeg archive");
+            expand_archive_with_retry(&ffmpeg_zip, &ffmpeg_extract_dir)?;
+            on_progress("65% Extracting deno archive");
+            expand_archive_with_retry(&deno_zip, &deno_extract_dir)?;
+
+            let ffmpeg_src = find_file_recursive(&ffmpeg_extract_dir, "ffmpeg.exe")
+                .ok_or("ffmpeg.exe not found after extraction")?;
+            let ffprobe_src = find_file_recursive(&ffmpeg_extract_dir, "ffprobe.exe")
+                .ok_or("ffprobe.exe not found after extraction")?;
+            let deno_src = find_file_recursive(&deno_extract_dir, "deno.exe")
+                .ok_or("deno.exe not found after extraction")?;
+
+            on_progress("78% Installing yt-dlp binary");
+            install_binary(&yt_file, &bin_dir.join("yt-dlp.exe"), "--version")?;
+            on_progress("82% Installing ffmpeg binary");
+            install_binary(&ffmpeg_src, &bin_dir.join("ffmpeg.exe"), "-version")?;
+            on_progress("85% Installing ffprobe binary");
+            install_binary(&ffprobe_src, &bin_dir.join("ffprobe.exe"), "-version")?;
+            on_progress("88% Installing deno binary");
+            install_binary(&deno_src, &bin_dir.join("deno.exe"), "--version")?;
+
+            on_progress("90% Verifying installed binaries");
+            verify_binary(&bin_dir.join("yt-dlp.exe"), "--version")?;
+            verify_binary(&bin_dir.join("ffmpeg.exe"), "-version")?;
+            verify_binary(&bin_dir.join("ffprobe.exe"), "-version")?;
+            verify_binary(&bin_dir.join("deno.exe"), "--version")?;
+
+            on_progress("100% Dependencies installed successfully");
+
+            Ok(())
+        })();
+
+        let _ = std::fs::remove_dir_all(&temp_root);
+        return install_result;
     }
 
-    let bin_dir = get_bin_dir(app)?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_millis();
-    let temp_root = std::env::temp_dir().join(format!("editon-deps-{}", stamp));
-    std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
+    if cfg!(target_os = "macos") {
+        let bin_dir = get_bin_dir(app)?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis();
+        let temp_root = std::env::temp_dir().join(format!("editon-deps-{}", stamp));
+        std::fs::create_dir_all(&temp_root).map_err(|e| e.to_string())?;
 
-    let yt_file = temp_root.join("yt-dlp.exe");
-    let ffmpeg_zip = temp_root.join("ffmpeg.zip");
-    let ffmpeg_extract_dir = temp_root.join("ffmpeg");
-    let deno_zip = temp_root.join("deno.zip");
-    let deno_extract_dir = temp_root.join("deno");
+        let yt_file = temp_root.join("yt-dlp");
+        let ffmpeg_archive = temp_root.join("ffmpeg.7z");
+        let ffmpeg_extract_dir = temp_root.join("ffmpeg");
+        let deno_zip = temp_root.join("deno.zip");
+        let deno_extract_dir = temp_root.join("deno");
 
-    let install_result = (|| -> Result<(), String> {
-        on_progress("10% Downloading yt-dlp.exe");
-        download_file_with_retry(YT_DLP_WINDOWS_URL, &yt_file)?;
-        on_progress("25% Downloading ffmpeg build archive");
-        download_file_with_retry(FFMPEG_WINDOWS_URL, &ffmpeg_zip)?;
-        on_progress("40% Downloading deno archive");
-        download_file_with_retry(DENO_WINDOWS_URL, &deno_zip)?;
+        let install_result = (|| -> Result<(), String> {
+            on_progress("10% Downloading yt-dlp");
+            download_file_with_retry(YT_DLP_MACOS_URL, &yt_file)?;
+            on_progress("25% Downloading ffmpeg archive");
+            download_file_with_retry(FFMPEG_MACOS_URL, &ffmpeg_archive)?;
+            on_progress("40% Downloading deno archive");
+            download_file_with_retry(selected_deno_macos_url(), &deno_zip)?;
 
-        std::fs::create_dir_all(&ffmpeg_extract_dir).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(&deno_extract_dir).map_err(|e| e.to_string())?;
-        on_progress("55% Extracting ffmpeg archive");
-        expand_archive_with_retry(&ffmpeg_zip, &ffmpeg_extract_dir)?;
-        on_progress("65% Extracting deno archive");
-        expand_archive_with_retry(&deno_zip, &deno_extract_dir)?;
+            ensure_archive_extractor_available(&ffmpeg_archive)?;
 
-        let ffmpeg_src = find_file_recursive(&ffmpeg_extract_dir, "ffmpeg.exe")
-            .ok_or("ffmpeg.exe not found after extraction")?;
-        let ffprobe_src = find_file_recursive(&ffmpeg_extract_dir, "ffprobe.exe")
-            .ok_or("ffprobe.exe not found after extraction")?;
-        let deno_src = find_file_recursive(&deno_extract_dir, "deno.exe")
-            .ok_or("deno.exe not found after extraction")?;
+            std::fs::create_dir_all(&ffmpeg_extract_dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&deno_extract_dir).map_err(|e| e.to_string())?;
+            on_progress("55% Extracting ffmpeg archive");
+            expand_archive_with_retry(&ffmpeg_archive, &ffmpeg_extract_dir)?;
+            on_progress("65% Extracting deno archive");
+            expand_archive_with_retry(&deno_zip, &deno_extract_dir)?;
 
-        on_progress("78% Installing yt-dlp binary");
-        install_binary(&yt_file, &bin_dir.join("yt-dlp.exe"), "--version")?;
-        on_progress("82% Installing ffmpeg binary");
-        install_binary(&ffmpeg_src, &bin_dir.join("ffmpeg.exe"), "-version")?;
-        on_progress("85% Installing ffprobe binary");
-        install_binary(&ffprobe_src, &bin_dir.join("ffprobe.exe"), "-version")?;
-        on_progress("88% Installing deno binary");
-        install_binary(&deno_src, &bin_dir.join("deno.exe"), "--version")?;
+            let ffmpeg_src =
+                find_file_recursive(&ffmpeg_extract_dir, "ffmpeg").ok_or("ffmpeg not found after extraction")?;
+            let ffprobe_src = find_file_recursive(&ffmpeg_extract_dir, "ffprobe");
+            let deno_src =
+                find_file_recursive(&deno_extract_dir, "deno").ok_or("deno not found after extraction")?;
 
-        on_progress("90% Verifying installed binaries");
-        verify_binary(&bin_dir.join("yt-dlp.exe"), "--version")?;
-        verify_binary(&bin_dir.join("ffmpeg.exe"), "-version")?;
-        verify_binary(&bin_dir.join("ffprobe.exe"), "-version")?;
-        verify_binary(&bin_dir.join("deno.exe"), "--version")?;
+            on_progress("78% Installing yt-dlp binary");
+            install_binary(&yt_file, &bin_dir.join("yt-dlp"), "--version")?;
+            on_progress("82% Installing ffmpeg binary");
+            install_binary(&ffmpeg_src, &bin_dir.join("ffmpeg"), "-version")?;
+            match ffprobe_src {
+                Some(path) => {
+                    on_progress("85% Installing ffprobe binary");
+                    install_binary(&path, &bin_dir.join("ffprobe"), "-version")?;
+                }
+                None => {
+                    if verify_binary_program("ffprobe", "-version") {
+                        on_progress("85% ffprobe not bundled; using system ffprobe");
+                    } else {
+                        return Err(
+                            "ffprobe not found in ffmpeg archive and system ffprobe is unavailable. Install ffprobe (e.g. brew install ffmpeg) and retry."
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+            on_progress("88% Installing deno binary");
+            install_binary(&deno_src, &bin_dir.join("deno"), "--version")?;
 
-        on_progress("100% Dependencies installed successfully");
+            on_progress("90% Verifying installed binaries");
+            verify_binary(&bin_dir.join("yt-dlp"), "--version")?;
+            verify_binary(&bin_dir.join("ffmpeg"), "-version")?;
+            if bin_dir.join("ffprobe").exists() {
+                verify_binary(&bin_dir.join("ffprobe"), "-version")?;
+            } else if !verify_binary_program("ffprobe", "-version") {
+                return Err(
+                    "ffprobe verification failed: neither bundled nor system ffprobe is available."
+                        .to_string(),
+                );
+            }
+            verify_binary(&bin_dir.join("deno"), "--version")?;
 
-        Ok(())
-    })();
+            on_progress("100% Dependencies installed successfully");
 
-    let _ = std::fs::remove_dir_all(&temp_root);
-    install_result
+            Ok(())
+        })();
+
+        let _ = std::fs::remove_dir_all(&temp_root);
+        return install_result;
+    }
+
+    Err("Dependency installer currently supports Windows and macOS only".to_string())
 }
 
 fn find_file_recursive(root: &Path, file_name: &str) -> Option<std::path::PathBuf> {
@@ -1976,6 +2069,33 @@ fn copy_binary_file(source: &Path, destination: &Path) -> Result<(), String> {
             e
         )
     })
+}
+
+fn ensure_executable_on_unix(path: &Path) -> Result<(), String> {
+    #[cfg(not(unix))]
+    let _ = path;
+
+    #[cfg(unix)]
+    {
+        let metadata = std::fs::metadata(path).map_err(|e| {
+            format!(
+                "Failed to read file metadata for {}: {}",
+                path.display(),
+                e
+            )
+        })?;
+
+        let mut permissions = metadata.permissions();
+        let current_mode = permissions.mode();
+        if current_mode & 0o111 == 0 {
+            permissions.set_mode(current_mode | 0o755);
+            std::fs::set_permissions(path, permissions).map_err(|e| {
+                format!("Failed to set executable permission on {}: {}", path.display(), e)
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 fn temp_binary_path(destination: &Path, suffix: &str) -> Result<PathBuf, String> {
@@ -2056,6 +2176,7 @@ fn install_binary(source: &Path, destination: &Path, version_arg: &str) -> Resul
     }
 
     copy_binary_file(source, &staged_path)?;
+    ensure_executable_on_unix(&staged_path)?;
     verify_binary(&staged_path, version_arg)?;
 
     match replace_binary_with_retries(&staged_path, destination, &backup_path) {
@@ -2095,6 +2216,66 @@ fn download_file_with_powershell(url: &str, destination: &Path) -> Result<(), St
         ps_quote_single(&destination.to_string_lossy())
     );
     run_powershell_script(&script)
+}
+
+fn verify_binary_program(program: &str, version_arg: &str) -> bool {
+    hidden_command(program)
+        .arg(version_arg)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn has_command_program(program: &str) -> bool {
+    hidden_command(program).arg("--version").output().is_ok()
+}
+
+fn selected_deno_macos_url() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        DENO_MACOS_ARM64_URL
+    } else {
+        DENO_MACOS_X64_URL
+    }
+}
+
+fn ensure_archive_extractor_available(archive_path: &Path) -> Result<(), String> {
+    let lower = archive_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if lower.ends_with(".7z") {
+        let has_7z = ["7z", "7zz", "7za"].iter().any(|name| has_command_program(name));
+        if !has_7z {
+            return Err(
+                "Cannot extract .7z archive: 7z/7zz/7za is not installed. Install p7zip (brew install p7zip) and retry."
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_dependency_status(
+    bin_dir: &Path,
+    bundled_name: &str,
+    fallback_names: &[&str],
+    version_arg: &str,
+) -> (bool, Option<String>) {
+    let bundled_path = bin_dir.join(bundled_name);
+    if bundled_path.exists() && verify_binary(&bundled_path, version_arg).is_ok() {
+        return (true, Some(bundled_path.to_string_lossy().to_string()));
+    }
+
+    for fallback in fallback_names {
+        if verify_binary_program(fallback, version_arg) {
+            return (true, Some((*fallback).to_string()));
+        }
+    }
+
+    (false, None)
 }
 
 fn download_file_with_curl(url: &str, destination: &Path) -> Result<(), String> {
@@ -2145,16 +2326,22 @@ fn download_file_with_retry(url: &str, destination: &Path) -> Result<(), String>
             let _ = std::fs::remove_file(destination);
         }
 
-        match download_file_with_powershell(url, destination) {
-            Ok(()) => {}
-            Err(powershell_error) => {
-                download_file_with_curl(url, destination).map_err(|curl_error| {
-                    format!(
-                        "Attempt {} download failed. PowerShell: {}. Curl: {}",
-                        attempt, powershell_error, curl_error
-                    )
-                })?;
+        if cfg!(target_os = "windows") {
+            match download_file_with_powershell(url, destination) {
+                Ok(()) => {}
+                Err(powershell_error) => {
+                    download_file_with_curl(url, destination).map_err(|curl_error| {
+                        format!(
+                            "Attempt {} download failed. PowerShell: {}. Curl: {}",
+                            attempt, powershell_error, curl_error
+                        )
+                    })?;
+                }
             }
+        } else {
+            download_file_with_curl(url, destination).map_err(|curl_error| {
+                format!("Attempt {} download failed. Curl: {}", attempt, curl_error)
+            })?;
         }
 
         ensure_file_non_empty(destination, &format!("downloaded artifact from {}", url))
@@ -2193,6 +2380,40 @@ fn expand_archive_with_tar(zip_path: &Path, destination_dir: &Path) -> Result<()
     ))
 }
 
+fn expand_archive_with_7z(archive_path: &Path, destination_dir: &Path) -> Result<(), String> {
+    let mut last_error = String::new();
+
+    for command_name in ["7z", "7zz", "7za"] {
+        let output = hidden_command(command_name)
+            .args([
+                "x",
+                &archive_path.to_string_lossy(),
+                &format!("-o{}", destination_dir.to_string_lossy()),
+                "-y",
+            ])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => return Ok(()),
+            Ok(result) => {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                last_error = format!(
+                    "{} failed. stdout: {} stderr: {}",
+                    command_name,
+                    stdout.trim(),
+                    stderr.trim()
+                );
+            }
+            Err(error) => {
+                last_error = format!("{} unavailable: {}", command_name, error);
+            }
+        }
+    }
+
+    Err(format!("7z extraction failed: {}", last_error))
+}
+
 fn expand_archive_with_retry(zip_path: &Path, destination_dir: &Path) -> Result<(), String> {
     retry_with_backoff(DEPENDENCY_EXTRACT_ATTEMPTS, |attempt| {
         if destination_dir.exists() {
@@ -2207,16 +2428,27 @@ fn expand_archive_with_retry(zip_path: &Path, destination_dir: &Path) -> Result<
             )
         })?;
 
-        match expand_archive_with_powershell(zip_path, destination_dir) {
-            Ok(()) => Ok(()),
-            Err(powershell_error) => {
-                expand_archive_with_tar(zip_path, destination_dir).map_err(|tar_error| {
+        if cfg!(target_os = "windows") {
+            match expand_archive_with_powershell(zip_path, destination_dir) {
+                Ok(()) => Ok(()),
+                Err(powershell_error) => {
+                    expand_archive_with_tar(zip_path, destination_dir).map_err(|tar_error| {
+                        format!(
+                            "Attempt {} extraction failed. PowerShell: {}. Tar: {}",
+                            attempt, powershell_error, tar_error
+                        )
+                    })
+                }
+            }
+        } else {
+            expand_archive_with_tar(zip_path, destination_dir).or_else(|tar_error| {
+                expand_archive_with_7z(zip_path, destination_dir).map_err(|seven_zip_error| {
                     format!(
-                        "Attempt {} extraction failed. PowerShell: {}. Tar: {}",
-                        attempt, powershell_error, tar_error
+                        "Attempt {} extraction failed. Tar: {}. 7z: {}",
+                        attempt, tar_error, seven_zip_error
                     )
                 })
-            }
+            })
         }
     })
 }

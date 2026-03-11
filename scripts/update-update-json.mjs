@@ -56,24 +56,46 @@ function main() {
       ? normalizeGitHubUrl(remote.stdout)
       : "https://github.com/aldimenur/editon";
 
-  const fileName = `Editon_${version}_x64-setup.exe`;
-  const signaturePath = path.join(
+  const bundleDir = path.join(
     rootDir,
     "src-tauri",
     "target",
     "release",
     "bundle",
-    "nsis",
-    `${fileName}.sig`,
   );
+  const platformArtifacts = [
+    {
+      platform: "windows-x86_64",
+      fileName: `Editon_${version}_x64-setup.exe`,
+      sigPath: path.join(
+        bundleDir,
+        "nsis",
+        `Editon_${version}_x64-setup.exe.sig`,
+      ),
+    },
+    {
+      platform: "darwin-aarch64",
+      fileName: `Editon_${version}_aarch64.dmg`,
+      sigPath: path.join(bundleDir, "dmg", `Editon_${version}_aarch64.dmg.sig`),
+    },
+  ];
 
-  if (!existsSync(signaturePath)) {
-    throw new Error(
-      `Signature file not found: ${signaturePath}. Run tauri build first.`,
-    );
+  const platforms = {};
+  for (const artifact of platformArtifacts) {
+    if (!existsSync(artifact.sigPath)) continue;
+
+    const signature = readFileSync(artifact.sigPath, "utf-8").trim();
+    platforms[artifact.platform] = {
+      signature,
+      url: `${repoUrl}/releases/download/v${version}/${artifact.fileName}`,
+    };
   }
 
-  const signature = readFileSync(signaturePath, "utf-8").trim();
+  if (Object.keys(platforms).length === 0) {
+    throw new Error(
+      `No updater signatures found in ${bundleDir}. Run tauri build first.`,
+    );
+  }
   const notes =
     previousVersion && previousVersion !== version
       ? `Full Changelog: ${repoUrl}/compare/v${previousVersion}...v${version}`
@@ -83,12 +105,7 @@ function main() {
     version,
     notes,
     pub_date: new Date().toISOString(),
-    platforms: {
-      "windows-x86_64": {
-        signature,
-        url: `${repoUrl}/releases/download/v${version}/${fileName}`,
-      },
-    },
+    platforms,
   };
 
   writeFileSync(
