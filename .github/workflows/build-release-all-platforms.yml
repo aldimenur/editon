@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -62,10 +62,10 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
           - name: macOS Intel
-            os: macos-13
+            os: macos-latest
             target: x86_64-apple-darwin
           - name: macOS Apple Silicon
-            os: macos-14
+            os: macos-latest
             target: aarch64-apple-darwin
           - name: Linux x64
             os: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
